@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+{% block title %}Nueva instalación{% endblock %}
+
+{% block extra_head %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+<style>
+  .ni{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1; --ok:#177A56; --danger:#C2362F;
+    color:var(--ink);
+  }
+  .ni{ max-width:880px; margin:0 auto; padding:8px 0 40px; }
+  .ni-back{ display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--ink-soft); text-decoration:none; margin-bottom:10px; }
+  .ni-back:hover{ color:var(--accent); }
+  .ni-head{ margin-bottom:20px; }
+  .ni-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .ni-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
+
+  .ni-section{ background:var(--surface); border:1px solid var(--line); border-radius:10px; margin-bottom:16px; }
+  .ni-section-head{ padding:16px 20px 0; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .ni-section-head h2{ font-size:16px; font-weight:600; margin:0; }
+  .ni-body{ padding:16px 20px 20px; }
+  .ni-grid{ display:grid; grid-template-columns:repeat(6, 1fr); gap:16px; }
+  .s2{ grid-column:span 2; } .s3{ grid-column:span 3; } .s4{ grid-column:span 4; } .s6{ grid-column:1 / -1; }
+
+  /* Selector cliente nuevo / existente */
+  .ni-seg{ display:inline-flex; padding:3px; background:#EEF2F6; border-radius:8px; }
+  .ni-seg input{ position:absolute; opacity:0; pointer-events:none; }
+  .ni-seg label{ padding:6px 14px; border-radius:6px; font-size:13.5px; font-weight:500; color:var(--ink-soft); cursor:pointer; }
+  .ni-seg input:checked + label{ background:#fff; color:var(--ink); box-shadow:0 1px 2px rgba(15,27,45,.12); }
+  .ni-seg input:focus-visible + label{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .ni-field label{ display:block; font-size:14px; font-weight:500; margin-bottom:6px; }
+  .ni-field label .req{ color:var(--danger); margin-left:2px; }
+  .ni-field label .opt{ color:var(--ink-faint); font-weight:400; font-size:13px; }
+  .ni-input, .ni-field select, .ni-field textarea{
+    width:100%; height:42px; padding:0 12px; font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .ni-field textarea{ height:auto; min-height:90px; padding:10px 12px; resize:vertical; line-height:1.5; }
+  .ni-input::placeholder, .ni-field textarea::placeholder{ color:#9AA5B4; }
+  .ni-input:focus, .ni-field select:focus, .ni-field textarea:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .ni-field.invalid .ni-input, .ni-field.invalid .select2-selection, #fMeses.invalid .ni-input{ border-color:var(--danger) !important; }
+  .ni-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
+  .ni-subtitle{ grid-column:1 / -1; font-size:13px; font-weight:600; color:var(--ink-soft); margin:6px 0 -6px; }
+
+  /* Select2 */
+  .ni .select2-container--default .select2-selection--single{ height:42px; border:1px solid var(--line); border-radius:8px; }
+  .ni .select2-container--default .select2-selection--single .select2-selection__rendered{ line-height:40px; padding-left:12px; padding-right:48px; font-size:14px; color:var(--ink); }
+  .ni .select2-container--default .select2-selection--single .select2-selection__placeholder{ color:#9AA5B4; }
+  .ni .select2-container--default .select2-selection--single .select2-selection__arrow{ height:40px; right:8px; }
+  .ni .select2-container--default.select2-container--focus .select2-selection--single,
+  .ni .select2-container--default.select2-container--open .select2-selection--single{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .select2-dropdown{ border-color:#D9E0E8 !important; border-radius:8px !important; overflow:hidden; font-size:14px; }
+  .select2-results__option--highlighted{ background:#0284C7 !important; }
+
+  .ni-client{ display:none; margin-top:14px; border:1px solid var(--line-soft); border-radius:8px; background:#F9FAFC; }
+  .ni-client.show{ display:grid; grid-template-columns:repeat(3, 1fr); }
+  .ni-client div{ padding:10px 14px; }
+  .ni-client dt{ font-size:12.5px; font-weight:400; color:var(--ink-faint); }
+  .ni-client dd{ margin:0; font-size:14px; font-weight:500; }
+
+  /* Ubicación */
+  .ni-loc{ display:flex; gap:8px; }
+  .ni-loc .ni-input{ flex:1; }
+  .ni-loc-status{ display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13px; color:var(--ink-faint); }
+  .ni-loc-status.ok{ color:var(--ok); }
+
+  /* Equipos */
+  .ni-checks{ display:flex; flex-wrap:wrap; gap:8px; }
+  .ni-check input{ position:absolute; opacity:0; pointer-events:none; }
+  .ni-check span{
+    display:inline-flex; align-items:center; gap:8px; height:38px; padding:0 14px;
+    border:1px solid var(--line); border-radius:8px; font-size:14px; cursor:pointer; background:#fff; user-select:none;
+  }
+  .ni-check span::before{ content:""; width:16px; height:16px; border:1.5px solid #B7C2D0; border-radius:4px; }
+  .ni-check input:checked + span{ border-color:var(--accent); background:#F0F9FF; }
+  .ni-check input:checked + span::before{
+    background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat;
+    border-color:var(--accent);
+  }
+  .ni-check input:focus-visible + span{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  /* Botones */
+  .ni-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    height:42px; padding:0 16px; border-radius:8px; font-size:14px; font-weight:500;
+    text-decoration:none; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+  }
+  .ni-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .ni-btn:disabled{ opacity:.7; cursor:progress; }
+  .ni-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
+  .ni-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+  .ni-actions{ display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+
+  /* Pegar ubicación de Google Maps */
+  .gm-row{ display:flex; gap:8px; }
+  .gm-row input{ flex:1; }
+  .gm-msg{ font-size:13px; margin-top:6px; color:var(--ink-faint); min-height:0; }
+  .gm-msg.ok{ color:#177A56; }
+  .gm-msg.error{ color:#C2362F; }
+  .gm-how{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; line-height:1.5; }
+  .gm-prev{ margin-top:12px; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .gm-prev iframe{ display:block; width:100%; height:240px; border:0; }
+  .gm-prev a{ display:flex; align-items:center; gap:6px; padding:8px 12px; font-size:13px; font-weight:500; color:var(--accent); text-decoration:none; border-top:1px solid var(--line-soft); }
+  .gm-alt{ background:none; border:0; padding:0; font:inherit; font-size:13px; color:var(--accent); font-weight:500; cursor:pointer; }
+  .gm-alt:hover, .gm-prev a:hover{ text-decoration:underline; text-underline-offset:3px; }
+  @media (max-width:720px){ .gm-row{ flex-direction:column; } }
+
+  [hidden]{ display:none !important; }
+
+  @media (max-width:720px){
+    .ni-grid{ grid-template-columns:1fr; }
+    .s2, .s3, .s4{ grid-column:auto; }
+    .ni-client.show{ grid-template-columns:1fr 1fr; }
+    .ni-loc{ flex-direction:column; }
+    .ni-actions{ flex-direction:column-reverse; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ni">
+  <a class="ni-back" href="{{ url_for('instalaciones') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver a instalaciones</a>
+  <div class="ni-head">
+    <h1>Nueva instalación</h1>
+    <p>Registra una conexión nueva. Si el cliente todavía no existe, se crea en el mismo paso.</p>
+  </div>
+
+  <form method="post" id="niForm" novalidate>
+
+    <!-- ============ Cliente ============ -->
+    <section class="ni-section">
+      <div class="ni-section-head">
+        <h2>Cliente</h2>
+        <div class="ni-seg" role="radiogroup" aria-label="Tipo de cliente">
+          <input type="radio" name="modo" id="modoNuevo" value="nuevo" {{ 'checked' if not cliente_pre }}>
+          <label for="modoNuevo">Cliente nuevo</label>
+          <input type="radio" name="modo" id="modoExistente" value="existente" {{ 'checked' if cliente_pre }}>
+          <label for="modoExistente">Cliente existente</label>
+        </div>
+      </div>
+
+      <!-- Cliente nuevo -->
+      <div class="ni-body" id="bloqueNuevo">
+        <div class="ni-grid">
+          <div class="ni-field s4" id="fNombre">
+            <label for="nombre">Nombre y apellido<span class="req" aria-hidden="true">*</span></label>
+            <input class="ni-input" id="nombre" name="nombre" autocomplete="off">
+          </div>
+          <div class="ni-field s2">
+            <label for="cedula">Cédula (CI)</label>
+            <input class="ni-input" id="cedula" name="cedula" inputmode="numeric" autocomplete="off" placeholder="Ej.: 4.123.456">
+          </div>
+          <div class="ni-field s2" id="fTelefono">
+            <label for="telefono">Teléfono<span class="req" aria-hidden="true">*</span></label>
+            <input class="ni-input" id="telefono" name="telefono" type="tel" autocomplete="off" placeholder="09xx xxx xxx">
+          </div>
+          <div class="ni-field s4">
+            <label for="barrio">Barrio</label>
+            <input class="ni-input" id="barrio" name="barrio" autocomplete="off">
+          </div>
+          <div class="ni-field s3">
+            <label for="direccion">Dirección</label>
+            <input class="ni-input js-dir" id="direccion" name="direccion" autocomplete="off" placeholder="Calle y número">
+          </div>
+          <div class="ni-field s3">
+            <label for="referencia">Referencia</label>
+            <input class="ni-input" id="referencia" name="referencia" autocomplete="off" placeholder="Ej.: frente a la plaza">
+          </div>
+
+          <div class="ni-subtitle">Servicio contratado</div>
+          <div class="ni-field s2">
+            <label for="valor">Plan (Gs.)</label>
+            <input class="ni-input" id="valor" name="valor" inputmode="numeric" autocomplete="off" placeholder="Ej.: 130.000">
+          </div>
+          <div class="ni-field s2">
+            <label for="pppoe">Usuario PPPoE <span class="opt">(opcional)</span></label>
+            <input class="ni-input" id="pppoe" name="pppoe" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Ej.: vaida456">
+          </div>
+          <div class="ni-field s2">
+            <label for="vencimiento">Vencimiento</label>
+            <input class="ni-input" id="vencimiento" name="vencimiento" inputmode="numeric" autocomplete="off" placeholder="Día del mes">
+          </div>
+        </div>
+        <div class="ni-hint" style="margin-top:12px">El cliente se crea como "pendiente de instalación" y pasa a activo cuando marques la instalación como realizada.</div>
+      </div>
+
+      <!-- Cliente existente -->
+      <div class="ni-body" id="bloqueExistente" hidden>
+        <div class="ni-field" id="fCliente">
+          <label for="cliente_id">Cliente<span class="req" aria-hidden="true">*</span></label>
+          <select id="cliente_id" name="cliente_id">
+            <option value=""></option>
+            {% for c in clientes %}
+              <option value="{{ c.id }}" {{ 'selected' if c.id == cliente_pre }}
+                      data-cedula="{{ c.cedula or '' }}" data-telefono="{{ c.telefono or '' }}"
+                      data-barrio="{{ c.barrio or '' }}" data-direccion="{{ c.direccion or '' }}"
+                      data-referencia="{{ c.referencia or '' }}" data-lat="{{ c.lat or '' }}" data-lng="{{ c.lng or '' }}"
+                      data-onu="{{ c.onu_serie or '' }}" data-contrato="{{ c.contrato_tipo or '' }}" data-meses="{{ c.contrato_meses or '' }}"
+                      data-vivienda="{{ c.vivienda or '' }}" data-dnombre="{{ c.dueno_nombre or '' }}"
+                      data-dci="{{ c.dueno_ci or '' }}" data-dtel="{{ c.dueno_telefono or '' }}">
+                {{ ((c.nombre or '') ~ ' ' ~ (c.apellido or ''))|trim }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <dl class="ni-client" id="niClientCard">
+          <div><dt>Cédula</dt><dd id="vCed">—</dd></div>
+          <div><dt>Teléfono</dt><dd id="vTel">—</dd></div>
+          <div><dt>Barrio</dt><dd id="vBar">—</dd></div>
+        </dl>
+        <div class="ni-field" style="margin-top:14px">
+          <label for="direccion_existente">Dirección de la instalación</label>
+          <input class="ni-input js-dir" id="direccion_existente" name="direccion_existente" autocomplete="off" placeholder="Calle y número">
+          <div class="ni-hint">Se completa con la del cliente; cámbiala si la instalación es en otro lugar.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Ubicación ============ -->
+    <section class="ni-section">
+      <div class="ni-section-head"><h2>Ubicación</h2></div>
+      <div class="ni-body">
+        <div class="ni-field">
+          <label for="gmapsPegar">Ubicación de Google Maps</label>
+          <div class="gm-row">
+            <input class="ni-input" id="gmapsPegar" autocomplete="off" spellcheck="false"
+                   placeholder="Pega el enlace de Google Maps o las coordenadas (ej.: -25.5949, -56.8732)"
+                   title="Google Maps: clic derecho sobre la casa y clic en los números, o Compartir → Copiar enlace">
+            <button type="button" class="ni-btn" id="btnPegar">Usar</button>
+          </div>
+          <div class="gm-msg" id="gmapsMsg" aria-live="polite"></div>
+        </div>
+        <div class="gm-prev" id="gmapsPrev" hidden>
+          <iframe title="Vista previa en Google Maps" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+          <a href="#" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir en Google Maps</a>
+        </div>
+        <input type="hidden" name="lat" id="lat">
+        <input type="hidden" name="lng" id="lng">
+      </div>
+    </section>
+
+    <!-- ============ Equipo, contrato y vivienda ============ -->
+    <section class="ni-section">
+      <div class="ni-section-head"><h2>Equipo, contrato y vivienda</h2></div>
+      <div class="ni-body ni-grid">
+        <div class="ni-field s3">
+          <label for="onu_serie">N.º de serie de la ONU <span class="opt">(si ya se sabe)</span></label>
+          <input class="ni-input" id="onu_serie" name="onu_serie" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Ej.: HWTC1A2B3C4D">
+          <div class="ni-hint">Si todavía no se sabe, el técnico lo anota en la orden de trabajo.</div>
+        </div>
+
+        <div class="ni-field s3">
+          <label>Duración del servicio</label>
+          <div class="ni-seg" role="radiogroup" aria-label="Duración del servicio">
+            <input type="radio" name="contrato_tipo" id="ctIndef" value="indefinido" checked><label for="ctIndef">Indefinido</label>
+            <input type="radio" name="contrato_tipo" id="ctTemp" value="temporal"><label for="ctTemp">Por tiempo determinado</label>
+          </div>
+          <div id="bloqueMeses" hidden style="margin-top:10px">
+            <div class="d-flex align-items-center gap-2" id="fMeses">
+              <input class="ni-input" id="contrato_meses" name="contrato_meses" type="number" min="1" max="120" style="max-width:110px" placeholder="Ej.: 6" list="dlMeses">
+              <span style="font-size:14px;color:var(--ink-soft)">meses</span>
+              <datalist id="dlMeses"><option value="1"><option value="3"><option value="6"><option value="12"><option value="24"></datalist>
+            </div>
+          </div>
+        </div>
+
+        <div class="ni-field s6">
+          <label>La casa es</label>
+          <div class="ni-seg" role="radiogroup" aria-label="Tipo de vivienda">
+            <input type="radio" name="vivienda" id="vvPropia" value="propia" checked><label for="vvPropia">Propia</label>
+            <input type="radio" name="vivienda" id="vvAlq" value="alquilada"><label for="vvAlq">Alquilada</label>
+          </div>
+        </div>
+
+        <div class="s6 ni-grid" id="bloqueDueno" hidden style="padding:14px;border:1px solid var(--line-soft);border-radius:8px;background:#F9FAFC">
+          <div class="ni-subtitle" style="margin:0 0 -4px">Datos del dueño de la casa</div>
+          <div class="ni-field s3" id="fDNombre">
+            <label for="dueno_nombre">Nombre y apellido<span class="req" aria-hidden="true">*</span></label>
+            <input class="ni-input" id="dueno_nombre" name="dueno_nombre" autocomplete="off">
+          </div>
+          <div class="ni-field s3" id="fDTel">
+            <label for="dueno_telefono">Teléfono<span class="req" aria-hidden="true">*</span></label>
+            <input class="ni-input" id="dueno_telefono" name="dueno_telefono" type="tel" autocomplete="off" placeholder="09xx xxx xxx">
+          </div>
+          <div class="ni-field s3">
+            <label for="dueno_ci">Cédula (CI)</label>
+            <input class="ni-input" id="dueno_ci" name="dueno_ci" inputmode="numeric" autocomplete="off">
+          </div>
+          <div class="ni-hint s6" style="margin:0">Sirve para coordinar el retiro de los equipos si el inquilino cancela el servicio o se muda.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Visita ============ -->
+    <section class="ni-section">
+      <div class="ni-section-head"><h2>Visita de instalación</h2></div>
+      <div class="ni-body ni-grid">
+        <div class="ni-field s3">
+          <label for="programada_local">Fecha y hora <span class="opt">(opcional)</span></label>
+          <input type="datetime-local" class="ni-input" id="programada_local" name="programada_local">
+        </div>
+        <div class="ni-field s3">
+          <label for="tecnico_id">Técnico</label>
+          <select id="tecnico_id" name="tecnico_id">
+            <option value="">Sin asignar</option>
+            {% for t in tecnicos %}<option value="{{ t['id'] }}">{{ t['nombre'] }}</option>{% endfor %}
+          </select>
+        </div>
+
+        <div class="ni-field s6">
+          <label>Equipos y materiales a llevar</label>
+          <div class="ni-checks">
+            {% for e in ['ONU', 'Router WiFi', 'ONU con WiFi', 'Conectores', 'Roseta óptica'] %}
+              <label class="ni-check"><input type="checkbox" name="equipos" value="{{ e }}" {{ 'checked' if e == 'ONU' }}><span>{{ e }}</span></label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="ni-field s2">
+          <label for="metros">Cable de acometida (m) <span class="opt">(aprox.)</span></label>
+          <input class="ni-input" id="metros" name="metros" inputmode="numeric" autocomplete="off" placeholder="Ej.: 80">
+        </div>
+        <div class="ni-field s6">
+          <label for="observaciones">Observaciones</label>
+          <textarea id="observaciones" name="observaciones" placeholder="Horario preferido del cliente, acceso al domicilio, caja NAP sugerida…"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <div class="ni-actions">
+      <a class="ni-btn ni-btn-ghost" href="{{ url_for('instalaciones') }}">Cancelar</a>
+      <button class="ni-btn ni-btn-ghost" type="submit" name="despues" value="ot">
+        <i class="fa-regular fa-file-lines" aria-hidden="true"></i> Guardar y ver OT
+      </button>
+      <button class="ni-btn" type="submit" name="despues" value="lista" id="btnGuardar">
+        <i class="fa-solid fa-check" aria-hidden="true"></i> Guardar instalación
+      </button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(() => {
+  const $id = id => document.getElementById(id);
+  const form = $id('niForm');
+  const bloqueNuevo = $id('bloqueNuevo'), bloqueExist = $id('bloqueExistente');
+  const latEl = $id('lat'), lngEl = $id('lng'), status = $id('geoStatus');
+
+  // ---------- Ubicación ----------
+  function setStatus(ok, text){
+    if (!status) return;
+    status.className = 'ni-loc-status' + (ok ? ' ok' : '');
+    status.innerHTML = `<i class="${ok ? 'fa-solid fa-circle-check' : 'fa-regular fa-circle'}" aria-hidden="true"></i><span></span>`;
+    status.querySelector('span').textContent = text;
+  }
+  function setCoords(lat, lng){
+    latEl.value = Number(lat).toFixed(6); lngEl.value = Number(lng).toFixed(6);
+    setStatus(true, `Ubicación cargada (${latEl.value}, ${lngEl.value})`);
+    mostrarPrevia();
+  }
+  function clearCoords(){ latEl.value = ''; lngEl.value = ''; setStatus(false, 'Sin ubicación'); mostrarPrevia(); }
+
+  // ---------- Pegar ubicación de Google Maps ----------
+  const pegarEl = document.getElementById('gmapsPegar');
+  const prevEl  = document.getElementById('gmapsPrev');
+  const pegarMsg = document.getElementById('gmapsMsg');
+  function mostrarPrevia(){
+    const la = parseFloat(latEl.value), lo = parseFloat(lngEl.value);
+    if (isNaN(la) || isNaN(lo)){ prevEl.hidden = true; return; }
+    const src = MapaSelector.vistaGoogle(la, lo);
+    const fr = prevEl.querySelector('iframe');
+    if (fr.dataset.src !== src){ fr.src = src; fr.dataset.src = src; }
+    prevEl.querySelector('a').href = `https://www.google.com/maps?q=${la},${lo}`;
+    prevEl.hidden = false;
+  }
+  async function usarPegado(){
+    const txt = pegarEl.value.trim();
+    if (!txt){ pegarMsg.textContent = ''; return; }
+    pegarMsg.className = 'gm-msg'; pegarMsg.textContent = 'Leyendo ubicación…';
+    try {
+      const p = await MapaSelector.leerUbicacion(txt);
+      if (!p){
+        pegarMsg.className = 'gm-msg error';
+        pegarMsg.textContent = 'No se encontraron coordenadas. Copia los números del clic derecho o el enlace de "Compartir".';
+        return;
+      }
+      setCoords(p[0], p[1]);
+      pegarEl.value = '';
+      pegarMsg.className = 'gm-msg ' + (MapaSelector.enParaguay(p[0], p[1]) ? 'ok' : 'error');
+      pegarMsg.textContent = MapaSelector.enParaguay(p[0], p[1])
+        ? 'Ubicación cargada. Revisa en la vista previa que sea la casa correcta.'
+        : 'Atención: esa ubicación queda fuera de Paraguay. Revisa lo que copiaste.';
+    } catch (e) {
+      pegarMsg.className = 'gm-msg error';
+      pegarMsg.textContent = 'No se pudo leer el enlace. Prueba copiando las coordenadas (clic derecho en Google Maps).';
+    }
+  }
+  pegarEl.addEventListener('paste', () => setTimeout(usarPegado, 0));
+  pegarEl.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); usarPegado(); } });
+  document.getElementById('btnPegar').addEventListener('click', usarPegado);
+
+
+  // ---------- Modo nuevo / existente ----------
+  const modo = () => form.querySelector('input[name=modo]:checked').value;
+  function aplicarModo(){
+    const nuevo = modo() === 'nuevo';
+    bloqueNuevo.hidden = !nuevo;
+    bloqueExist.hidden = nuevo;
+    document.querySelectorAll('.ni-field.invalid').forEach(f => f.classList.remove('invalid'));
+  }
+  form.querySelectorAll('input[name=modo]').forEach(r => r.addEventListener('change', () => {
+    aplicarModo();
+    if (modo() === 'existente') jQuery('#cliente_id').select2('open'); else $id('nombre').focus();
+  }));
+
+  // ---------- Cliente existente ----------
+  const sel = $id('cliente_id');
+  function fillCliente(){
+    const op = sel.options[sel.selectedIndex];
+    const card = $id('niClientCard');
+    if (!op || !op.value){ card.classList.remove('show'); $id('direccion_existente').value = ''; clearCoords(); return; }
+    const d = op.dataset;
+    $id('vCed').textContent = d.cedula || '—';
+    $id('vTel').textContent = d.telefono || '—';
+    $id('vBar').textContent = d.barrio || '—';
+    card.classList.add('show');
+    $id('direccion_existente').value = d.direccion || [d.barrio, d.referencia].filter(Boolean).join(' - ');
+    $id('fCliente').classList.remove('invalid');
+    if (d.lat && d.lng) setCoords(d.lat, d.lng); else clearCoords();
+    precargarServicio(d);
+  }
+  // ---------- Contrato y vivienda ----------
+  const radio = n => form.querySelector(`input[name=${n}]:checked`).value;
+  function syncServicio(){
+    $id('bloqueMeses').hidden = radio('contrato_tipo') !== 'temporal';
+    $id('bloqueDueno').hidden = radio('vivienda') !== 'alquilada';
+  }
+  form.querySelectorAll('input[name=contrato_tipo], input[name=vivienda]').forEach(r => r.addEventListener('change', () => {
+    syncServicio();
+    if (radio('contrato_tipo') === 'temporal' && !$id('bloqueMeses').hidden && !$id('contrato_meses').value) $id('contrato_meses').focus();
+  }));
+  syncServicio();
+
+  function precargarServicio(d){
+    $id('onu_serie').value = d.onu || '';
+    (d.contrato === 'temporal' ? $id('ctTemp') : $id('ctIndef')).checked = true;
+    $id('contrato_meses').value = d.meses || '';
+    (d.vivienda === 'alquilada' ? $id('vvAlq') : $id('vvPropia')).checked = true;
+    $id('dueno_nombre').value = d.dnombre || '';
+    $id('dueno_ci').value = d.dci || '';
+    $id('dueno_telefono').value = d.dtel || '';
+    syncServicio();
+  }
+
+  jQuery('#cliente_id').select2({
+    width: '100%', placeholder: 'Escribe el nombre del cliente', allowClear: true,
+    language: { noResults: () => 'Sin resultados' }
+  }).on('change', fillCliente);
+
+  aplicarModo();
+  if (sel.value) fillCliente();
+
+  // ---------- Fecha mínima ----------
+  (() => {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    $id('programada_local').min = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T00:00`;
+  })();
+
+  // ---------- Validación y envío ----------
+  form.addEventListener('submit', e => {
+    let primero = null;
+    const marcar = (fieldId, ok, focusEl) => {
+      $id(fieldId).classList.toggle('invalid', !ok);
+      if (!ok && !primero) primero = focusEl;
+    };
+    if (modo() === 'nuevo'){
+      marcar('fNombre', $id('nombre').value.trim(), $id('nombre'));
+      marcar('fTelefono', $id('telefono').value.trim(), $id('telefono'));
+    } else {
+      marcar('fCliente', sel.value, null);
+      if (!sel.value && !primero) primero = 'select2';
+    }
+    if (radio('contrato_tipo') === 'temporal') marcar('fMeses', parseInt($id('contrato_meses').value, 10) > 0, $id('contrato_meses'));
+    if (radio('vivienda') === 'alquilada'){
+      marcar('fDNombre', $id('dueno_nombre').value.trim(), $id('dueno_nombre'));
+      marcar('fDTel', $id('dueno_telefono').value.trim(), $id('dueno_telefono'));
+    }
+    if (primero){
+      e.preventDefault();
+      if (primero === 'select2') jQuery('#cliente_id').select2('open'); else primero.focus();
+      return;
+    }
+    form.querySelectorAll('button[type=submit]').forEach(b => b.disabled = true);
+    // Los botones deshabilitados no se envían: pasar la elección en un campo oculto
+    const h = document.createElement('input');
+    h.type = 'hidden'; h.name = 'despues'; h.value = (e.submitter && e.submitter.value) || 'lista';
+    form.appendChild(h);
+    $id('btnGuardar').innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Guardando…';
+  });
+  ['nombre', 'telefono', 'dueno_nombre', 'dueno_telefono'].forEach(id => $id(id).addEventListener('input', e => e.target.closest('.ni-field').classList.remove('invalid')));
+  $id('contrato_meses').addEventListener('input', () => $id('fMeses').classList.remove('invalid'));
+  window.addEventListener('pageshow', () => form.querySelectorAll('button[type=submit]').forEach(b => b.disabled = false));
+})();
+</script>
+{% endblock %}

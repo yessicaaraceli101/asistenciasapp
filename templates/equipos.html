@@ -1,0 +1,764 @@
+{% extends "base.html" %}
+{% block title %}Equipos — SPYnet{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+<style>
+.bg-soft{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(900px 500px at -5% 20%,rgba(37,99,235,.10),transparent 60%),
+    radial-gradient(700px 500px at 105% 80%,rgba(14,165,233,.10),transparent 60%),
+    linear-gradient(180deg,#f0f4ff 0%,#eef2ff 100%);
+}
+.page{position:relative;z-index:1;padding-bottom:3rem;}
+
+/* header */
+.eq-header{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;margin-bottom:1.5rem;flex-wrap:wrap;
+}
+.eq-title{
+  margin:0;font-size:clamp(22px,4vw,28px);font-weight:800;letter-spacing:-.3px;
+  background:linear-gradient(90deg,#1d4ed8,#3b82f6);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.eq-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+/* botones base */
+.btn-back{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 14px;border-radius:10px;
+  border:1px solid #dbeafe;background:#fff;
+  color:#1e40af;font-size:.875rem;font-weight:600;
+  text-decoration:none;cursor:pointer;transition:background .15s;
+}
+.btn-back:hover{background:#eff6ff;}
+.btn-primary-eq{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:10px;
+  background:#2563eb;border:none;
+  color:#fff;font-size:.875rem;font-weight:700;
+  cursor:pointer;transition:background .15s;
+}
+.btn-primary-eq:hover{background:#1d4ed8;}
+.btn-success-eq{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:10px;
+  background:#16a34a;border:none;
+  color:#fff;font-size:.875rem;font-weight:700;
+  cursor:pointer;transition:background .15s;
+}
+.btn-success-eq:hover{background:#15803d;}
+
+/* stats */
+.eq-stats{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:12px;margin-bottom:1.5rem;
+}
+.eq-stat{
+  background:#fff;border:1px solid #e2e8f0;
+  border-radius:14px;padding:1rem 1.25rem;
+  display:flex;align-items:center;gap:.85rem;
+}
+.eq-stat-icon{
+  width:42px;height:42px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;flex-shrink:0;
+}
+.eq-stat strong{display:block;font-size:1.5rem;font-weight:800;line-height:1;}
+.eq-stat span{font-size:.75rem;color:#64748b;}
+
+.stat-blue .eq-stat-icon{background:#eff6ff;color:#2563eb;}
+.stat-blue strong{color:#1d4ed8;}
+.stat-orange .eq-stat-icon{background:#fff7ed;color:#ea580c;}
+.stat-orange strong{color:#c2410c;}
+.stat-green .eq-stat-icon{background:#f0fdf4;color:#16a34a;}
+.stat-green strong{color:#15803d;}
+
+/* toolbar */
+.eq-toolbar{
+  background:#fff;border:1px solid #dbeafe;
+  border-radius:14px;padding:.875rem 1.25rem;
+  margin-bottom:1.25rem;
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px;
+}
+.eq-search{
+  display:flex;align-items:center;gap:8px;
+  background:#f8fafc;border:1px solid #e2e8f0;
+  border-radius:10px;padding:7px 12px;flex:1;min-width:200px;max-width:380px;
+}
+.eq-search i{color:#94a3b8;font-size:15px;flex-shrink:0;}
+.eq-search input{
+  border:none;background:transparent;outline:none;
+  font-size:.875rem;color:#0f172a;width:100%;
+}
+.eq-search input::placeholder{color:#94a3b8;}
+
+.check-label{
+  display:flex;align-items:center;gap:6px;
+  font-size:.85rem;color:#475569;font-weight:600;cursor:pointer;
+}
+
+.btn-ghost-sm{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 12px;border-radius:9px;
+  border:1px solid #e2e8f0;background:#f8fafc;
+  color:#475569;font-size:.82rem;font-weight:600;cursor:pointer;
+  transition:background .15s;
+}
+.btn-ghost-sm:hover{background:#f1f5f9;}
+
+/* filtros rango */
+.eq-filters{
+  background:#fff;border:1px solid #dbeafe;
+  border-radius:14px;padding:.875rem 1.25rem;
+  margin-bottom:1.5rem;
+}
+.filters-grid{
+  display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;
+}
+.fgroup{display:flex;flex-direction:column;gap:4px;}
+.fgroup label{font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;}
+.fgroup input,.fgroup select{
+  border:1px solid #dbeafe;border-radius:10px;
+  padding:7px 11px;font-size:.875rem;color:#1e293b;
+  background:#fff;outline:none;
+}
+.fgroup input:focus,.fgroup select:focus{
+  border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.10);
+}
+
+/* tabs */
+.eq-tabs{
+  display:flex;gap:4px;margin-bottom:1.25rem;
+  background:#f1f5f9;border-radius:12px;padding:4px;
+  width:fit-content;
+}
+.eq-tab{
+  padding:8px 18px;border-radius:9px;
+  font-size:.875rem;font-weight:600;color:#64748b;
+  cursor:pointer;border:none;background:transparent;
+  transition:background .15s,color .15s;
+}
+.eq-tab.active{background:#fff;color:#1d4ed8;box-shadow:0 1px 4px rgba(15,23,42,.08);}
+
+/* grid de equipos */
+.eq-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+  gap:14px;
+}
+.eq-card{
+  background:#fff;border:1px solid #e2e8f0;
+  border-radius:16px;overflow:hidden;
+  display:flex;flex-direction:column;
+  transition:box-shadow .15s,transform .15s;
+}
+.eq-card:hover{
+  box-shadow:0 10px 28px rgba(15,23,42,.10);
+  transform:translateY(-2px);
+}
+.eq-card-img{
+  width:100%;height:130px;object-fit:cover;
+  background:#f1f5f9;display:flex;align-items:center;justify-content:center;
+}
+.eq-card-img-placeholder{
+  width:100%;height:130px;background:#f1f5f9;
+  display:flex;align-items:center;justify-content:center;
+  color:#cbd5e1;font-size:2.5rem;
+}
+.eq-card-body{padding:14px 16px;flex:1;display:flex;flex-direction:column;gap:10px;}
+
+.eq-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.eq-card-name{font-weight:700;font-size:.95rem;color:#0f172a;margin:0;}
+.eq-card-type{font-size:.75rem;color:#94a3b8;margin:2px 0 0;}
+
+/* badge de stock */
+.stock-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:4px 10px;border-radius:999px;
+  font-size:.78rem;font-weight:700;flex-shrink:0;
+}
+.stock-ok{background:#dcfce7;color:#166534;border:1px solid #bbf7d0;}
+.stock-low{background:#fef9c3;color:#92400e;border:1px solid #fde68a;}
+.stock-zero{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+
+.eq-card-desc{font-size:.8rem;color:#64748b;flex:1;}
+
+/* usar equipo inline */
+.eq-use-form{
+  display:flex;gap:6px;align-items:center;
+  background:#f8fafc;border:1px solid #e2e8f0;
+  border-radius:10px;padding:8px 10px;
+}
+.eq-use-form input[type=number]{
+  width:64px;border:1px solid #dbeafe;border-radius:8px;
+  padding:5px 8px;font-size:.85rem;outline:none;
+  text-align:center;
+}
+.eq-use-form input[type=number]:focus{border-color:#2563eb;}
+.btn-usar{
+  flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  padding:6px 10px;border-radius:8px;
+  background:#2563eb;border:none;color:#fff;
+  font-size:.8rem;font-weight:700;cursor:pointer;
+  transition:background .15s;
+}
+.btn-usar:hover{background:#1d4ed8;}
+.btn-usar:disabled{background:#93c5fd;cursor:not-allowed;}
+
+.eq-card-actions{display:flex;gap:6px;}
+.btn-edit-sm,.btn-del-sm{
+  flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  padding:6px 10px;border-radius:8px;
+  font-size:.8rem;font-weight:600;cursor:pointer;
+  transition:background .15s;border:1px solid;
+}
+.btn-edit-sm{background:#fff;border-color:#dbeafe;color:#1e40af;}
+.btn-edit-sm:hover{background:#eff6ff;}
+.btn-del-sm{background:#fff;border-color:#fecaca;color:#dc2626;}
+.btn-del-sm:hover{background:#fff1f2;}
+
+.eq-no-stock{
+  font-size:.75rem;color:#ef4444;
+  display:flex;align-items:center;gap:4px;
+}
+
+/* historial tabla */
+.hist-wrap{
+  background:#fff;border:1px solid #e2e8f0;
+  border-radius:14px;overflow:hidden;
+}
+.hist-table{width:100%;border-collapse:collapse;font-size:.875rem;}
+.hist-table thead th{
+  background:#f8fafc;border-bottom:1px solid #e2e8f0;
+  padding:10px 14px;font-weight:700;font-size:.75rem;
+  text-transform:uppercase;letter-spacing:.06em;color:#64748b;
+  white-space:nowrap;text-align:left;
+}
+.hist-table tbody td{
+  padding:10px 14px;border-bottom:1px solid #f1f5f9;
+  color:#334155;
+}
+.hist-table tbody tr:last-child td{border-bottom:none;}
+.hist-table tbody tr:hover{background:#f8fafc;}
+.hist-empty{padding:2rem;text-align:center;color:#94a3b8;font-size:.875rem;}
+
+/* vacío */
+.eq-empty{
+  grid-column:1/-1;
+  background:#fff;border:1px solid #e2e8f0;border-radius:14px;
+  padding:2.5rem;text-align:center;color:#94a3b8;
+}
+.eq-empty i{font-size:2.5rem;display:block;margin-bottom:.75rem;}
+
+/* modales */
+.sp-modal-backdrop{
+  position:fixed;inset:0;background:rgba(15,23,42,.45);
+  z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px;
+}
+.sp-modal{
+  background:#fff;width:100%;max-width:480px;
+  border-radius:20px;padding:0;overflow:hidden;
+  box-shadow:0 25px 60px rgba(0,0,0,.22);
+}
+.sp-modal-head{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:18px 22px;border-bottom:1px solid #e2e8f0;
+}
+.sp-modal-head h3{margin:0;font-size:1.05rem;font-weight:700;color:#0f172a;}
+.sp-modal-body{padding:22px;}
+.sp-modal-foot{
+  display:flex;gap:8px;justify-content:flex-end;
+  padding:16px 22px;border-top:1px solid #e2e8f0;
+}
+.btn-close-modal{
+  width:36px;height:36px;border-radius:9px;
+  border:1px solid #e2e8f0;background:#f8fafc;
+  color:#64748b;font-size:1rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.btn-close-modal:hover{background:#f1f5f9;}
+
+.sp-form-group{margin-bottom:14px;}
+.sp-form-group label{
+  display:block;font-size:.78rem;font-weight:700;
+  color:#475569;text-transform:uppercase;letter-spacing:.06em;
+  margin-bottom:5px;
+}
+.sp-form-group input,.sp-form-group select,.sp-form-group textarea{
+  width:100%;border:1px solid #dbeafe;border-radius:10px;
+  padding:9px 12px;font-size:.9rem;color:#0f172a;
+  background:#fff;outline:none;
+}
+.sp-form-group input:focus,.sp-form-group select:focus,.sp-form-group textarea:focus{
+  border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.10);
+}
+
+/* responsive */
+@media(max-width:760px){
+  .eq-stats{grid-template-columns:1fr 1fr;}
+  .eq-stats .eq-stat:last-child{grid-column:1/-1;}
+  .eq-grid{grid-template-columns:1fr 1fr;}
+}
+@media(max-width:480px){
+  .eq-stats,.eq-grid{grid-template-columns:1fr;}
+}
+</style>
+
+<div class="bg-soft"></div>
+<div class="container page">
+
+  <!-- header -->
+  <div class="eq-header">
+    <h2 class="eq-title"><i class="bi bi-router" style="font-size:.85em;vertical-align:-.05em;"></i> Equipos</h2>
+    <div class="eq-actions">
+      <a class="btn-back" href="{{ url_for('menu') }}"><i class="bi bi-arrow-left"></i> Volver</a>
+      <button class="btn-success-eq" onclick="abrirModal('modalReponerStock')"><i class="bi bi-plus-circle"></i> Reponer stock</button>
+      <button class="btn-primary-eq" onclick="abrirModal('modalNuevoEquipo')"><i class="bi bi-plus-lg"></i> Nuevo equipo</button>
+    </div>
+  </div>
+
+  <!-- stats -->
+  <div class="eq-stats">
+    <div class="eq-stat stat-blue">
+      <div class="eq-stat-icon"><i class="bi bi-router"></i></div>
+      <div><strong>{{ total }}</strong><span>Total ítems</span></div>
+    </div>
+    <div class="eq-stat stat-orange">
+      <div class="eq-stat-icon"><i class="bi bi-tools"></i></div>
+      <div><strong>{{ en_uso }}</strong><span>Usados hoy</span></div>
+    </div>
+    <div class="eq-stat stat-green">
+      <div class="eq-stat-icon"><i class="bi bi-check-circle"></i></div>
+      <div><strong>{{ disponibles }}</strong><span>Disponibles</span></div>
+    </div>
+  </div>
+
+  <!-- toolbar -->
+  <div class="eq-toolbar">
+    <div class="eq-search">
+      <i class="bi bi-search"></i>
+      <input id="filterInput" type="text" placeholder="Buscar equipo…">
+    </div>
+    <label class="check-label">
+      <input type="checkbox" id="chkSoloStock" checked style="accent-color:#2563eb;">
+      Solo con stock
+    </label>
+    <button class="btn-ghost-sm" id="btnLimpiarVista"><i class="bi bi-x-circle"></i> Limpiar</button>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn-ghost-sm" onclick="location.href='{{ url_for('equipos_descargar_hoy_csv') }}'">
+        <i class="bi bi-file-earmark-spreadsheet" style="color:#16a34a;"></i> CSV hoy
+      </button>
+      <button class="btn-ghost-sm" onclick="location.href='{{ url_for('equipos_descargar_hoy_pdf') }}'">
+        <i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF hoy
+      </button>
+    </div>
+  </div>
+
+  <!-- filtros rango -->
+  <div class="eq-filters">
+    <form method="GET" class="filters-grid">
+      <div class="fgroup">
+        <label>Desde</label>
+        <input type="date" name="desde" value="{{ filtros.desde }}" style="width:150px;">
+      </div>
+      <div class="fgroup">
+        <label>Hasta</label>
+        <input type="date" name="hasta" value="{{ filtros.hasta }}" style="width:150px;">
+      </div>
+      <div class="fgroup">
+        <label>Técnico</label>
+        <select name="tecnico_id" style="width:180px;">
+          <option value="">Todos</option>
+          {% for t in tecnicos %}
+            <option value="{{ t.id }}" {% if filtros.tecnico_id and filtros.tecnico_id|string == t.id|string %}selected{% endif %}>{{ t.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="fgroup" style="justify-content:flex-end;">
+        <label>&nbsp;</label>
+        <button class="btn-primary-eq" type="submit"><i class="bi bi-funnel"></i> Filtrar</button>
+      </div>
+      <div class="fgroup" style="justify-content:flex-end;">
+        <label>&nbsp;</label>
+        <button class="btn-ghost-sm" type="button" onclick="exportRango('csv')">
+          <i class="bi bi-file-earmark-spreadsheet" style="color:#16a34a;"></i> CSV rango
+        </button>
+      </div>
+      <div class="fgroup" style="justify-content:flex-end;">
+        <label>&nbsp;</label>
+        <button class="btn-ghost-sm" type="button" onclick="exportRango('pdf')">
+          <i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF rango
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- tabs -->
+  <div class="eq-tabs">
+    <button class="eq-tab active" onclick="switchTab('equipos', this)"><i class="bi bi-grid-3x3-gap"></i> Equipos</button>
+    <button class="eq-tab" onclick="switchTab('historial', this)"><i class="bi bi-clock-history"></i> Historial</button>
+  </div>
+
+  <!-- TAB: equipos -->
+  <div id="tab-equipos">
+    <div class="eq-grid" id="equiposList">
+      {% for e in equipos %}
+      {% set stk = e['stock'] or 0 %}
+      <div class="eq-card item-card-wrapper"
+           data-name="{{ e['nombre']|lower }}"
+           data-type="{{ e['tipo']|lower }}"
+           data-desc="{{ (e['descripcion'] or '')|lower }}"
+           data-stock="{{ stk }}">
+
+        {% if e['imagen'] %}
+          <img class="eq-card-img" src="{{ url_for('static', filename='img/equipos/' ~ e['imagen']) }}" alt="{{ e['nombre'] }}">
+        {% else %}
+          <div class="eq-card-img-placeholder"><i class="bi bi-router"></i></div>
+        {% endif %}
+
+        <div class="eq-card-body">
+          <div class="eq-card-top">
+            <div>
+              <p class="eq-card-name">{{ e['nombre'] }}</p>
+              <p class="eq-card-type">{{ e['tipo'] }}</p>
+            </div>
+            {% if stk > 5 %}
+              <span class="stock-badge stock-ok"><i class="bi bi-check-circle"></i> {{ stk }}</span>
+            {% elif stk > 0 %}
+              <span class="stock-badge stock-low"><i class="bi bi-exclamation-triangle"></i> {{ stk }}</span>
+            {% else %}
+              <span class="stock-badge stock-zero"><i class="bi bi-x-circle"></i> Sin stock</span>
+            {% endif %}
+          </div>
+
+          {% if e['descripcion'] %}
+            <p class="eq-card-desc">{{ e['descripcion'] }}</p>
+          {% endif %}
+
+          <!-- registrar uso -->
+          <form method="POST" action="{{ url_for('registrar_uso_item') }}" class="eq-use-form">
+            <input type="hidden" name="item_id" value="{{ e['id'] }}">
+            <input type="hidden" name="servicio" value="uso equipo">
+            <input type="hidden" name="item_kind" value="equipo">
+            <input type="hidden" name="tecnico" value="{{ session['usuario'] }}">
+            <input type="number" name="cantidad" min="1" max="{{ stk }}" value="1" {% if stk == 0 %}disabled{% endif %}>
+            <button type="submit" class="btn-usar" {% if stk == 0 %}disabled{% endif %}>
+              <i class="bi bi-check-lg"></i> Usar
+            </button>
+          </form>
+
+          {% if stk == 0 %}
+            <p class="eq-no-stock"><i class="bi bi-exclamation-triangle"></i> Sin stock disponible</p>
+          {% endif %}
+
+          <div class="eq-card-actions">
+            <button class="btn-edit-sm"
+              onclick="abrirEditar('{{ e['id'] }}','{{ e['nombre']|e }}','{{ e['tipo']|e }}','{{ (e['descripcion'] or '')|e }}')">
+              <i class="bi bi-pencil"></i> Editar
+            </button>
+            <button class="btn-del-sm"
+              onclick="abrirEliminar('{{ e['id'] }}','{{ e['nombre']|e }}')">
+              <i class="bi bi-trash"></i> Eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+      {% else %}
+        <div class="eq-empty">
+          <i class="bi bi-inbox"></i>
+          <p>No hay equipos registrados todavía.</p>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- TAB: historial -->
+  <div id="tab-historial" style="display:none;">
+    <div class="hist-wrap">
+      <table class="hist-table">
+        <thead>
+          <tr>
+            <th>Ítem</th>
+            <th>Tipo</th>
+            <th>Técnico</th>
+            <th>Cantidad</th>
+            <th>Fecha</th>
+            <th>Servicio</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in historial %}
+          <tr>
+            <td style="font-weight:600;color:#0f172a;">{{ u['nombre_item'] }}</td>
+            <td style="color:#64748b;text-transform:capitalize;">{{ u['item_type'] }}</td>
+            <td>{{ u['tecnico'] }}</td>
+            <td>
+              <span style="font-weight:700;color:#1d4ed8;">{{ u['cantidad'] or 1 }}</span>
+            </td>
+            <td style="color:#64748b;">{{ u['fecha'] }}</td>
+            <td style="color:#64748b;">{{ u['servicio'] or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="hist-empty">No hay registros para el filtro seleccionado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- MODAL: Nuevo equipo -->
+<div id="modalNuevoEquipo" class="sp-modal-backdrop" style="display:none;">
+  <div class="sp-modal">
+    <div class="sp-modal-head">
+      <h3><i class="bi bi-plus-circle" style="color:#2563eb;margin-right:6px;"></i> Nuevo equipo</h3>
+      <button class="btn-close-modal" onclick="cerrarModal('modalNuevoEquipo')"><i class="bi bi-x"></i></button>
+    </div>
+    <form method="POST" action="{{ url_for('registrar_equipo') }}">
+      <div class="sp-modal-body">
+        <div class="sp-form-group">
+          <label>Nombre del equipo</label>
+          <input type="text" name="nombre" placeholder="Ej: Router Mikrotik hAP" required>
+        </div>
+        <div class="sp-form-group">
+          <label>Tipo</label>
+          <select name="tipo" required>
+            <option value="" disabled selected>Elegí un tipo…</option>
+            <option>Router 5G</option>
+            <option>Router 2.4</option>
+            <option>ONU</option>
+            <option>Puntero</option>
+            <option>Drop</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="sp-form-group">
+          <label>Stock inicial</label>
+          <input type="number" name="stock" min="0" value="0" placeholder="Cantidad disponible">
+        </div>
+        <div class="sp-form-group">
+          <label>Descripción (opcional)</label>
+          <textarea name="descripcion" rows="2" placeholder="Detalles del equipo…"></textarea>
+        </div>
+      </div>
+      <div class="sp-modal-foot">
+        <button type="button" class="btn-back" onclick="cerrarModal('modalNuevoEquipo')">Cancelar</button>
+        <button type="submit" class="btn-primary-eq">Guardar equipo</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Reponer stock -->
+<div id="modalReponerStock" class="sp-modal-backdrop" style="display:none;">
+  <div class="sp-modal">
+
+    <div class="sp-modal-head">
+      <h3>
+        <i class="bi bi-plus-circle" style="color:#16a34a;margin-right:6px;"></i>
+        Reponer stock
+      </h3>
+      <button class="btn-close-modal"
+              onclick="cerrarModal('modalReponerStock')">
+        <i class="bi bi-x"></i>
+      </button>
+    </div>
+
+    <form method="POST"
+          action="{{ url_for('equipos_ingresar_stock') }}">
+
+      <div class="sp-modal-body">
+
+        <div class="sp-form-group">
+          <label>Equipo</label>
+
+          <select name="equipo_id" required>
+            <option value="" disabled selected>
+              Seleccioná un equipo…
+            </option>
+
+            {% for e in equipos %}
+            <option value="{{ e['id'] }}">
+              {{ e['nombre'] }} — {{ e['tipo'] }}
+              (stock: {{ e['stock'] or 0 }})
+            </option>
+            {% endfor %}
+          </select>
+
+        </div>
+
+        <div class="sp-form-group">
+          <label>Cantidad a agregar</label>
+
+          <input
+              type="number"
+              name="cantidad"
+              min="1"
+              value="1"
+              required>
+        </div>
+
+        <div class="sp-form-group">
+          <label>Nota (opcional)</label>
+
+          <input
+              type="text"
+              name="nota"
+              placeholder="Ej: Compra del 10/06">
+        </div>
+
+      </div>
+
+      <div class="sp-modal-foot">
+
+        <button
+            type="button"
+            class="btn-back"
+            onclick="cerrarModal('modalReponerStock')">
+          Cancelar
+        </button>
+
+        <button
+            type="submit"
+            class="btn-success-eq">
+          <i class="bi bi-plus-circle"></i>
+          Reponer
+        </button>
+
+      </div>
+
+    </form>
+
+  </div>
+</div>
+<!-- MODAL: Editar equipo -->
+<div id="modalEditarEquipo" class="sp-modal-backdrop" style="display:none;">
+  <div class="sp-modal">
+    <div class="sp-modal-head">
+      <h3><i class="bi bi-pencil" style="color:#2563eb;margin-right:6px;"></i> Editar equipo</h3>
+      <button class="btn-close-modal" onclick="cerrarModal('modalEditarEquipo')"><i class="bi bi-x"></i></button>
+    </div>
+    <form id="formEditarEquipo" method="POST">
+      <div class="sp-modal-body">
+        <div class="sp-form-group">
+          <label>Nombre</label>
+          <input type="text" id="editNombre" name="nombre" required>
+        </div>
+        <div class="sp-form-group">
+          <label>Tipo</label>
+          <input type="text" id="editTipo" name="tipo" required>
+        </div>
+        <div class="sp-form-group">
+          <label>Descripción</label>
+          <textarea id="editDescripcion" name="descripcion" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="sp-modal-foot">
+        <button type="button" class="btn-back" onclick="cerrarModal('modalEditarEquipo')">Cancelar</button>
+        <button type="submit" class="btn-primary-eq">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Eliminar equipo -->
+<div id="modalEliminarEquipo" class="sp-modal-backdrop" style="display:none;">
+  <div class="sp-modal">
+    <div class="sp-modal-head">
+      <h3><i class="bi bi-trash" style="color:#dc2626;margin-right:6px;"></i> Eliminar equipo</h3>
+      <button class="btn-close-modal" onclick="cerrarModal('modalEliminarEquipo')"><i class="bi bi-x"></i></button>
+    </div>
+    <form id="formEliminarEquipo" method="POST">
+      <div class="sp-modal-body">
+        <p style="color:#334155;margin:0;">
+          ¿Confirmás eliminar <strong id="delNombre"></strong>?<br>
+          <span style="color:#94a3b8;font-size:.85rem;">Esta acción no se puede deshacer.</span>
+        </p>
+      </div>
+      <div class="sp-modal-foot">
+        <button type="button" class="btn-back" onclick="cerrarModal('modalEliminarEquipo')">Cancelar</button>
+        <button type="submit" style="padding:8px 16px;border-radius:10px;background:#dc2626;border:none;color:#fff;font-weight:700;cursor:pointer;">Eliminar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+/* tabs */
+function switchTab(name, btn){
+  document.getElementById('tab-equipos').style.display  = name==='equipos'  ? '' : 'none';
+  document.getElementById('tab-historial').style.display = name==='historial' ? '' : 'none';
+  document.querySelectorAll('.eq-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+/* modales */
+function abrirModal(id){ document.getElementById(id).style.display = 'flex'; }
+function cerrarModal(id){ document.getElementById(id).style.display = 'none'; }
+
+/* cerrar haciendo click afuera */
+document.querySelectorAll('.sp-modal-backdrop').forEach(backdrop => {
+  backdrop.addEventListener('click', e => {
+    if(e.target === backdrop) backdrop.style.display = 'none';
+  });
+});
+
+/* editar */
+function abrirEditar(id, nombre, tipo, desc){
+  document.getElementById('editNombre').value = nombre;
+  document.getElementById('editTipo').value = tipo;
+  document.getElementById('editDescripcion').value = desc;
+  const base = `{{ url_for('equipos_editar', eid=0) }}`;
+  document.getElementById('formEditarEquipo').action = base.replace('/0/', '/'+id+'/');
+  abrirModal('modalEditarEquipo');
+}
+
+/* eliminar */
+function abrirEliminar(id, nombre){
+  document.getElementById('delNombre').textContent = nombre;
+  const base = `{{ url_for('equipos_eliminar', eid=0) }}`;
+  document.getElementById('formEliminarEquipo').action = base.replace('/0/', '/'+id+'/');
+  abrirModal('modalEliminarEquipo');
+}
+
+/* filtro live */
+const filterInput  = document.getElementById('filterInput');
+const chkSoloStock = document.getElementById('chkSoloStock');
+
+function aplicarFiltros(){
+  const q = (filterInput?.value || '').trim().toLowerCase();
+  const soloStock = chkSoloStock?.checked;
+  document.querySelectorAll('.item-card-wrapper').forEach(w => {
+    const matchText = (w.dataset.name||'').includes(q) || (w.dataset.type||'').includes(q) || (w.dataset.desc||'').includes(q);
+    const tieneStock = parseInt(w.dataset.stock||'0',10) > 0;
+    w.style.display = (matchText && (!soloStock || tieneStock)) ? '' : 'none';
+  });
+}
+filterInput?.addEventListener('input', aplicarFiltros);
+chkSoloStock?.addEventListener('change', aplicarFiltros);
+document.getElementById('btnLimpiarVista')?.addEventListener('click', () => {
+  filterInput.value = '';
+  chkSoloStock.checked = true;
+  aplicarFiltros();
+});
+
+/* export rango */
+function exportRango(tipo){
+  const form = document.querySelector('.eq-filters form');
+  const desde = form.querySelector('[name=desde]').value;
+  const hasta  = form.querySelector('[name=hasta]').value;
+  const tec    = form.querySelector('[name=tecnico_id]').value;
+  const base   = tipo === 'csv'
+    ? `{{ url_for('equipos_descargar_rango_csv', desde='DESDE', hasta='HASTA', tecnico_id='TEC') }}`
+    : `{{ url_for('equipos_descargar_rango_pdf', desde='DESDE', hasta='HASTA', tecnico_id='TEC') }}`;
+  location.href = base.replace('DESDE', desde).replace('HASTA', hasta).replace('TEC', tec);
+}
+
+aplicarFiltros();
+</script>
+{% endblock %}

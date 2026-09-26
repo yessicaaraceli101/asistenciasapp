@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio — SPYnet{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+
+<div class="dash">
+
+  <!-- Encabezado -->
+  <header class="dash-header">
+    <div>
+      <h1 class="dash-title">
+        Hola, <span id="dashUser">{{ session.get('nombre') or session.get('usuario') or 'operador' }}</span>
+      </h1>
+      <p class="dash-sub">Resumen de la operación de hoy en {{ g.sucursal_nombre }}.</p>
+    </div>
+    <div class="dash-date" aria-live="off">
+      <span id="dashFecha"></span>
+      <strong id="dashHora"></strong>
+    </div>
+  </header>
+
+  <!-- Indicadores -->
+  <section class="dash-stats" aria-label="Indicadores del día">
+    <a class="dstat" href="{{ url_for('tickets') }}">
+      <span class="dstat-label"><i class="ti ti-alert-circle" aria-hidden="true"></i>Tickets pendientes</span>
+      <strong class="dstat-value">{{ stats.pendientes }}</strong>
+      <span class="dstat-sub">{% if stats.en_progreso %}+{{ stats.en_progreso }} en progreso{% else %}Ninguno en progreso{% endif %}</span>
+    </a>
+    <a class="dstat" href="{{ url_for('ordenes_trabajo', vista='hoy') }}">
+      <span class="dstat-label"><i class="ti ti-tools" aria-hidden="true"></i>Instalaciones hoy</span>
+      <strong class="dstat-value">{{ stats.inst_hoy }}</strong>
+      <span class="dstat-sub">{{ stats.inst_hoy_hechas }} terminada{{ 's' if stats.inst_hoy_hechas != 1 }}</span>
+    </a>
+    <a class="dstat" href="{{ url_for('equipos') }}">
+      <span class="dstat-label"><i class="ti ti-device-desktop" aria-hidden="true"></i>Equipos en stock</span>
+      <strong class="dstat-value">{{ stats.equipos_stock }}</strong>
+      <span class="dstat-sub">unidades de {{ stats.equipos_tipos }} equipo{{ 's' if stats.equipos_tipos != 1 }}</span>
+    </a>
+    <a class="dstat" href="{{ url_for('clientes') }}">
+      <span class="dstat-label"><i class="ti ti-users" aria-hidden="true"></i>Clientes activos</span>
+      <strong class="dstat-value">{{ stats.clientes_activos }}</strong>
+      <span class="dstat-sub">de {{ stats.clientes_total }} en total</span>
+    </a>
+  </section>
+
+  <!-- Accesos -->
+  <h2 class="section-title">Módulos</h2>
+  <nav class="dash-grid" aria-label="Módulos del sistema">
+
+    <a href="{{ url_for('tickets') }}" class="dcard">
+      <i class="ti ti-ticket dcard-icon" aria-hidden="true"></i>
+      <span class="dcard-info">
+        <strong>Tickets</strong>
+        <span>Asistencia técnica y reclamos</span>
+      </span>
+      <i class="ti ti-chevron-right dcard-arrow" aria-hidden="true"></i>
+    </a>
+
+    <a href="{{ url_for('instalaciones') }}" class="dcard">
+      <i class="ti ti-plug dcard-icon" aria-hidden="true"></i>
+      <span class="dcard-info">
+        <strong>Instalaciones</strong>
+        <span>Nuevas conexiones programadas</span>
+      </span>
+      <i class="ti ti-chevron-right dcard-arrow" aria-hidden="true"></i>
+    </a>
+
+    <a href="{{ url_for('equipos') }}" class="dcard">
+      <i class="ti ti-router dcard-icon" aria-hidden="true"></i>
+      <span class="dcard-info">
+        <strong>Equipos</strong>
+        <span>Routers, ONTs y materiales</span>
+      </span>
+      <i class="ti ti-chevron-right dcard-arrow" aria-hidden="true"></i>
+    </a>
+
+    <a href="{{ url_for('clientes') }}" class="dcard">
+      <i class="ti ti-users dcard-icon" aria-hidden="true"></i>
+      <span class="dcard-info">
+        <strong>Clientes</strong>
+        <span>Base de clientes activos</span>
+      </span>
+      <i class="ti ti-chevron-right dcard-arrow" aria-hidden="true"></i>
+    </a>
+
+    <a href="{{ url_for('agenda') }}" class="dcard">
+      <i class="ti ti-calendar-event dcard-icon" aria-hidden="true"></i>
+      <span class="dcard-info">
+        <strong>Agenda</strong>
+        <span>Visitas y turnos del día</span>
+      </span>
+      <i class="ti ti-chevron-right dcard-arrow" aria-hidden="true"></i>
+    </a>
+
+    <a href="{{ url_for('mapa') }}" class="dcard">
+      <i class="ti ti-map-pin dcard-icon" aria-hidden="true"></i>
+      <span class="dcard-info">
+        <strong>Mapa</strong>
+        <span>Cobertura y nodos activos</span>
+      </span>
+      <i class="ti ti-chevron-right dcard-arrow" aria-hidden="true"></i>
+    </a>
+
+    <a href="{{ url_for('sucursales_list') }}" class="dcard">
+      <i class="ti ti-building dcard-icon" aria-hidden="true"></i>
+      <span class="dcard-info">
+        <strong>Sucursales</strong>
+        <span>Gestión de sedes</span>
+      </span>
+      <i class="ti ti-chevron-right dcard-arrow" aria-hidden="true"></i>
+    </a>
+
+    <a href="{{ url_for('ordenes_trabajo') }}" class="dcard">
+      <i class="ti ti-file-text dcard-icon" aria-hidden="true"></i>
+      <span class="dcard-info">
+        <strong>Órdenes de trabajo</strong>
+        <span>Imprimir y enviar al técnico</span>
+      </span>
+      <i class="ti ti-chevron-right dcard-arrow" aria-hidden="true"></i>
+    </a>
+
+    <a href="{{ url_for('estadisticas') }}" class="dcard">
+      <i class="ti ti-chart-bar dcard-icon" aria-hidden="true"></i>
+      <span class="dcard-info">
+        <strong>Estadísticas</strong>
+        <span>Asistencias e instalaciones del mes</span>
+      </span>
+      <i class="ti ti-chevron-right dcard-arrow" aria-hidden="true"></i>
+    </a>
+
+  </nav>
+
+  <!-- Actividad reciente -->
+  <h2 class="section-title section-gap">Actividad reciente</h2>
+  {% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Resuelto', 'cancelado':'Cancelado'} %}
+  <section class="dash-activity" id="dashActivity">
+    {% if recientes %}
+      <ul class="act-list">
+        {% for r in recientes %}
+          {% set est = (r.estado or 'pendiente')|lower %}
+          <li>
+            <a href="{{ url_for('tickets_ot', tid=r.id) }}">
+              <span class="act-main">
+                <strong>{{ r.cliente or 'Sin cliente' }}</strong>
+                <span>{{ r.tipo or 'Ticket' }}{% if r.tecnico %} · {{ r.tecnico }}{% endif %}</span>
+              </span>
+              <span class="act-status st-{{ est if est in etiquetas else 'pendiente' }}">{{ etiquetas.get(est, 'Pendiente') }}</span>
+              <span class="act-date">{{ (r.fecha or '')|string|truncate(16, true, '') }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="activity-empty">
+        <i class="ti ti-clock" aria-hidden="true"></i>
+        <span>Todavía no hay tickets en esta sucursal.</span>
+      </div>
+    {% endif %}
+  </section>
+
+</div>
+
+<style>
+.dash{
+  --ink:#0F1B2D;
+  --ink-soft:#4A5668;
+  --ink-faint:#7A8699;
+  --surface:#FFFFFF;
+  --line:#D9E0E8;
+  --line-soft:#E8EDF2;
+  --accent:#0284C7;
+  --row-hover:#F7F9FC;
+
+  font-family:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  color:var(--ink);
+  max-width:1100px;
+  margin:0 auto;
+  padding:32px 20px 48px;
+  -webkit-font-smoothing:antialiased;
+}
+.dash a:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+/* Encabezado */
+.dash-header{
+  display:flex; justify-content:space-between; align-items:flex-end;
+  gap:16px; flex-wrap:wrap;
+  margin-bottom:28px;
+}
+.dash-title{
+  font-size:clamp(22px, 3vw, 28px);
+  font-weight:600; letter-spacing:-.3px;
+  margin:0 0 6px; color:var(--ink);
+}
+.dash-sub{
+  margin:0; font-size:14px; color:var(--ink-soft);
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+}
+.dash-sub i{ font-size:16px; color:var(--ink-faint); }
+.dash-sub strong{ font-weight:600; color:var(--ink); }
+.dash-sub a{
+  margin-left:6px; color:var(--accent); font-weight:500; text-decoration:none;
+}
+.dash-sub a:hover{ text-decoration:underline; text-underline-offset:3px; }
+
+.dash-date{
+  text-align:right; font-size:14px; color:var(--ink-soft);
+  display:flex; flex-direction:column; line-height:1.4;
+}
+.dash-date span::first-letter{ text-transform:uppercase; }
+.dash-date strong{ font-size:20px; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
+
+/* Indicadores: una sola franja dividida */
+.dash-stats{
+  display:grid; grid-template-columns:repeat(4, 1fr);
+  background:var(--surface);
+  border:1px solid var(--line); border-radius:10px;
+  margin-bottom:36px;
+  overflow:hidden;
+}
+.dstat{
+  padding:18px 20px;
+  display:flex; flex-direction:column; gap:8px;
+}
+.dstat + .dstat{ border-left:1px solid var(--line-soft); }
+.dstat-label{
+  display:flex; align-items:center; gap:8px;
+  font-size:13px; color:var(--ink-soft);
+}
+.dstat-label i{ font-size:18px; color:var(--ink-faint); }
+.dstat-value{
+  font-size:28px; font-weight:600; line-height:1;
+  color:var(--ink); font-variant-numeric:tabular-nums;
+}
+
+/* Títulos de sección */
+.section-title{
+  font-size:15px; font-weight:600; color:var(--ink);
+  margin:0 0 12px;
+}
+.section-gap{ margin-top:36px; }
+
+/* Módulos */
+.dash-grid{
+  display:grid; grid-template-columns:repeat(4, 1fr);
+  gap:12px;
+}
+.dcard{
+  display:flex; align-items:center; gap:14px;
+  padding:16px;
+  background:var(--surface);
+  border:1px solid var(--line); border-radius:10px;
+  text-decoration:none; color:var(--ink);
+  transition:border-color .12s, background-color .12s;
+}
+.dcard:hover{
+  border-color:#B7C2D0; background:var(--row-hover);
+  color:var(--ink); text-decoration:none;
+}
+.dcard-icon{
+  font-size:24px; line-height:1;
+  color:var(--ink-faint); flex-shrink:0;
+  transition:color .12s;
+}
+.dcard:hover .dcard-icon{ color:var(--accent); }
+.dcard-info{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.dcard-info strong{
+  font-size:15px; font-weight:600; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.dcard-info span{
+  font-size:13px; color:var(--ink-faint); line-height:1.35;
+}
+.dcard-arrow{
+  font-size:16px; color:#C3CBD6; flex-shrink:0;
+  transition:color .12s, transform .12s;
+}
+.dcard:hover .dcard-arrow{ color:var(--accent); transform:translateX(2px); }
+
+/* Actividad */
+.dash-activity{
+  background:var(--surface);
+  border:1px solid var(--line); border-radius:10px;
+  min-height:88px; padding:20px;
+  display:flex; align-items:center;
+}
+.activity-empty{
+  display:flex; align-items:center; gap:10px;
+  color:var(--ink-faint); font-size:14px;
+}
+.activity-empty i{ font-size:20px; }
+
+/* Responsive */
+@media (max-width:960px){
+  .dash-grid{ grid-template-columns:repeat(2, 1fr); }
+  .dash-stats{ grid-template-columns:repeat(2, 1fr); }
+  .dstat:nth-child(3){ border-left:0; }
+  .dstat:nth-child(n+3){ border-top:1px solid var(--line-soft); }
+}
+@media (max-width:560px){
+  .dash{ padding:24px 16px 40px; }
+  .dash-header{ align-items:flex-start; }
+  .dash-date{ text-align:left; flex-direction:row; gap:8px; align-items:baseline; }
+  .dash-date strong{ font-size:15px; }
+  .dash-grid{ grid-template-columns:1fr; gap:0; }
+  .dash-grid .dcard{ border-radius:0; margin-top:-1px; }
+  .dash-grid .dcard:first-child{ border-radius:10px 10px 0 0; margin-top:0; }
+  .dash-grid .dcard:last-child{ border-radius:0 0 10px 10px; }
+  .dstat{ padding:14px 16px; }
+  .dstat-value{ font-size:22px; }
+}
+@media (prefers-reduced-motion: reduce){
+  .dcard, .dcard-icon, .dcard-arrow{ transition:none; }
+}
+/* Indicadores como enlaces */
+a.dstat{ text-decoration:none; color:inherit; transition:background-color .12s; }
+a.dstat:hover{ background:var(--row-hover); color:inherit; }
+a.dstat:hover .dstat-value{ color:var(--accent); }
+.dstat-sub{ font-size:12.5px; color:var(--ink-faint); }
+
+/* Actividad reciente */
+.dash-activity:has(.act-list){ padding:0; display:block; }
+.act-list{ list-style:none; margin:0; padding:0; }
+.act-list li + li{ border-top:1px solid var(--line-soft); }
+.act-list a{ display:flex; align-items:center; gap:14px; padding:12px 20px; text-decoration:none; color:var(--ink); }
+.act-list a:hover{ background:var(--row-hover); }
+.act-main{ flex:1; min-width:0; }
+.act-main strong{ display:block; font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.act-main span{ font-size:13px; color:var(--ink-faint); }
+.act-date{ font-size:13px; color:var(--ink-faint); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.act-status{
+  display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px;
+  border:1px solid transparent; font-size:12.5px; font-weight:500; white-space:nowrap;
+}
+.act-status::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+.st-pendiente  { color:#8A5A00; background:#FFF7E6; border-color:#F5E0B3; }
+.st-en_progreso{ color:#0369A1; background:#EAF6FD; border-color:#C4E4F7; }
+.st-resuelto   { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
+.st-cancelado  { color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+@media (max-width:560px){ .act-date{ display:none; } }
+</style>
+
+<script>
+/* Fecha y hora */
+function actualizarFecha(){
+  const ahora = new Date();
+  const fecha = ahora.toLocaleDateString('es-PY', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  const hora  = ahora.toLocaleTimeString('es-PY', { hour:'2-digit', minute:'2-digit' });
+  const f = document.getElementById('dashFecha');
+  const h = document.getElementById('dashHora');
+  if (f) f.textContent = fecha;
+  if (h) h.textContent = hora;
+}
+actualizarFecha();
+setInterval(actualizarFecha, 30000);
+
+/* Nombre de usuario: si la sesión de Flask no lo trae, usar localStorage (sistema de reclamos) */
+(function(){
+  const el = document.getElementById('dashUser');
+  if (!el || el.textContent.trim() !== 'operador') return;
+  try {
+    const u = JSON.parse(localStorage.getItem('usuarioActual'));
+    if (u && u.nombre) el.textContent = u.nombre;
+  } catch(e){}
+})();
+</script>
+
+{% endblock %}

@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+{% block title %}Agenda{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+<style>
+/* ── fondo ── */
+.bg-soft{
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(1000px 600px at -10% 20%, rgba(59,130,246,.10), transparent 60%),
+    radial-gradient(800px 600px at 110% 80%, rgba(37,99,235,.10), transparent 60%),
+    linear-gradient(180deg,#f0f4ff 0%,#eef2ff 100%);
+}
+.page{ position:relative; z-index:1; padding-bottom:2rem; }
+
+/* ── header ── */
+.ag-header{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:12px; margin-bottom:1.25rem; flex-wrap:wrap;
+}
+.ag-title{
+  margin:0; font-size:clamp(22px,4vw,28px); font-weight:800; letter-spacing:-.3px;
+  background:linear-gradient(90deg,#1d4ed8,#3b82f6);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.ag-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+
+/* ── botones ── */
+.btn-back{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:8px 14px; border-radius:10px;
+  border:1px solid #dbeafe; background:#fff;
+  color:#1e40af; font-size:.875rem; font-weight:600;
+  text-decoration:none; transition:background .15s;
+}
+.btn-back:hover{ background:#eff6ff; }
+
+.btn-new{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:8px 16px; border-radius:10px;
+  background:#2563eb; border:none;
+  color:#fff; font-size:.875rem; font-weight:700;
+  text-decoration:none; transition:background .15s;
+}
+.btn-new:hover{ background:#1d4ed8; }
+
+/* ── panel de filtros ── */
+.ag-filters{
+  background:#fff; border:1px solid #dbeafe;
+  border-radius:16px; padding:1rem 1.25rem;
+  margin-bottom:1.25rem;
+  box-shadow:0 4px 16px rgba(37,99,235,.06);
+}
+.filters-row{
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:.75rem;
+}
+.filters-row .form-control,
+.filters-row .form-select{
+  border:1px solid #dbeafe; border-radius:10px;
+  padding:7px 11px; font-size:.875rem; color:#1e293b;
+  background:#fff; outline:none;
+}
+.filters-row .form-control:focus,
+.filters-row .form-select:focus{
+  border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,.10);
+}
+.btn-apply{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:8px 16px; border-radius:10px;
+  background:#2563eb; border:none;
+  color:#fff; font-size:.875rem; font-weight:700; cursor:pointer;
+  transition:background .15s;
+}
+.btn-apply:hover{ background:#1d4ed8; }
+
+.btn-nav{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:36px; height:36px; border-radius:10px;
+  border:1px solid #dbeafe; background:#fff;
+  color:#1e40af; font-size:1rem; cursor:pointer;
+  transition:background .15s; flex-shrink:0;
+}
+.btn-nav:hover{ background:#eff6ff; }
+
+.form-check-label{ font-size:.85rem; color:#475569; font-weight:600; }
+
+/* ── fila de exportación ── */
+.export-row{
+  display:flex; justify-content:space-between; align-items:center;
+  flex-wrap:wrap; gap:8px; padding-top:.75rem;
+  border-top:1px solid #e0eaff;
+}
+.export-btns{ display:flex; gap:8px; flex-wrap:wrap; }
+.btn-export{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:7px 13px; border-radius:10px;
+  border:1px solid #e2e8f0; background:#f8fafc;
+  color:#334155; font-size:.82rem; font-weight:700; cursor:pointer;
+  transition:background .15s, border-color .15s;
+}
+.btn-export:hover{ background:#f1f5f9; border-color:#cbd5e1; }
+.export-note{ font-size:.8rem; color:#94a3b8; }
+
+/* ── lista de eventos ── */
+.ag-list{ display:flex; flex-direction:column; gap:10px; }
+
+.ag-item{
+  background:#fff; border:1px solid #e2e8f0;
+  border-radius:14px; padding:14px 16px;
+  display:flex; align-items:flex-start; gap:14px;
+  transition:box-shadow .15s, transform .15s;
+}
+.ag-item:hover{
+  box-shadow:0 8px 24px rgba(15,23,42,.09);
+  transform:translateY(-1px);
+}
+
+/* barra lateral de estado */
+.ag-bar{
+  width:4px; flex-shrink:0; border-radius:4px;
+  align-self:stretch; min-height:48px;
+}
+.ag-item[data-state="pendiente"]   .ag-bar{ background:#facc15; }
+.ag-item[data-state="en_progreso"] .ag-bar{ background:#3b82f6; }
+.ag-item[data-state="resuelto"]    .ag-bar{ background:#22c55e; }
+.ag-item[data-state="cancelado"]   .ag-bar{ background:#9ca3af; }
+
+.ag-body{ flex:1; min-width:0; }
+
+/* primera línea */
+.ag-top{
+  display:flex; align-items:center; gap:8px;
+  flex-wrap:wrap; margin-bottom:6px;
+}
+.ag-tipo{ font-weight:700; font-size:.95rem; color:#0f172a; }
+.ag-prioridad{ font-size:.8rem; color:#94a3b8; }
+
+/* chips de estado — sin fondo de ícono */
+.chip{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 10px; border-radius:999px;
+  font-size:.75rem; font-weight:700; line-height:1.4;
+}
+.chip i{ font-size:.8rem; }
+.chip-warn{ background:#fef9c3; color:#92400e; border:1px solid #fde68a; }
+.chip-info{ background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+.chip-ok{   background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+.chip-sec{  background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+
+/* meta info */
+.ag-meta{
+  display:flex; flex-wrap:wrap; gap:4px 16px;
+  font-size:.82rem; color:#64748b; margin-top:4px;
+}
+.ag-meta span{ display:inline-flex; align-items:center; gap:4px; }
+.ag-meta i{ font-size:.85rem; color:#94a3b8; }
+
+/* vacío */
+.ag-empty{
+  background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+  padding:2.5rem; text-align:center; color:#94a3b8;
+}
+.ag-empty i{ font-size:2.5rem; display:block; margin-bottom:.75rem; }
+.ag-empty p{ margin:0; font-size:.9rem; }
+</style>
+
+<div class="bg-soft"></div>
+
+<div class="container page">
+
+  <!-- header -->
+  <div class="ag-header">
+    <h2 class="ag-title"><i class="bi bi-calendar3" style="font-size:.85em;vertical-align:-.05em;"></i> Agenda</h2>
+    <div class="ag-actions">
+      <a class="btn-back" href="{{ url_for('menu') }}"><i class="bi bi-arrow-left"></i> Volver</a>
+      <a class="btn-new"  href="{{ url_for('nuevo_ticket') }}"><i class="bi bi-plus-lg"></i> Nuevo ticket</a>
+    </div>
+  </div>
+
+  <!-- filtros -->
+  <div class="ag-filters">
+    <div class="filters-row">
+
+      <button type="button" class="btn-nav" id="btnPrev"><i class="bi bi-chevron-left"></i></button>
+
+      <form method="get" class="d-flex flex-wrap align-items-center gap-2" id="formFiltros" style="flex:1;min-width:0;">
+        <input type="date" name="dia" value="{{ dia }}" class="form-control" id="inpDia" style="width:150px;" {{ 'disabled' if range_mode else '' }}>
+
+        <select name="estado" class="form-select" id="selEstado" style="width:150px;">
+          <option value="">Todos los estados</option>
+          {% for e in ['pendiente','en_progreso','resuelto','cancelado'] %}
+            <option value="{{ e }}" {{ 'selected' if estado_f==e else '' }}>{{ e.replace('_',' ').title() }}</option>
+          {% endfor %}
+        </select>
+
+        <select name="tecnico_id" class="form-select" id="selTec" style="width:170px;">
+          <option value="">Cualquier técnico</option>
+          {% for t in tecnicos %}
+            <option value="{{ t['id'] }}" {{ 'selected' if tecnico_f and tecnico_f|int==t['id'] else '' }}>{{ t['nombre'] }}</option>
+          {% endfor %}
+        </select>
+
+        <div class="form-check form-switch" style="margin:0 4px;">
+          <input class="form-check-input" type="checkbox" id="chkRango" {{ 'checked' if range_mode else '' }}>
+          <label class="form-check-label" for="chkRango">Rango</label>
+        </div>
+
+        <input type="date" class="form-control" id="inpDesde" style="width:145px;" value="{{ desde if range_mode else '' }}" {{ '' if range_mode else 'disabled' }}>
+        <span style="color:#94a3b8;font-size:.85rem;">→</span>
+        <input type="date" class="form-control" id="inpHasta" style="width:145px;" value="{{ hasta if range_mode else '' }}" {{ '' if range_mode else 'disabled' }}>
+
+        <button class="btn-apply" id="btnAplicar"><i class="bi bi-funnel"></i> Aplicar</button>
+      </form>
+
+      <button type="button" class="btn-nav" id="btnNext"><i class="bi bi-chevron-right"></i></button>
+    </div>
+
+    <div class="export-row">
+      <div class="export-btns">
+        <button class="btn-export" onclick="exportExcel()"><i class="bi bi-file-earmark-spreadsheet" style="color:#16a34a;"></i> Excel</button>
+        <button class="btn-export" onclick="exportPDF()"><i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF</button>
+        <button class="btn-export" onclick="exportWord()"><i class="bi bi-file-earmark-word" style="color:#2563eb;"></i> Word</button>
+      </div>
+      <span class="export-note">
+        {% if range_mode %}{{ desde }} → {{ hasta }}{% else %}{{ dia }}{% endif %}
+        &nbsp;·&nbsp; Vista actual con filtros aplicados
+      </span>
+    </div>
+  </div>
+
+  <!-- lista -->
+  {% if not eventos %}
+    <div class="ag-empty">
+      <i class="bi bi-calendar2-week"></i>
+      <p>No hay eventos programados para este período.</p>
+    </div>
+  {% else %}
+    <div class="ag-list" id="listaAgenda">
+      {% for e in eventos %}
+        {% set st = e['estado'] or 'pendiente' %}
+        <div class="ag-item" data-state="{{ st }}">
+          <div class="ag-bar"></div>
+          <div class="ag-body">
+            <div class="ag-top">
+              <span class="ag-tipo">{{ e['tipo'] or 'Asistencia' }}</span>
+              <span class="ag-prioridad">· {{ e['prioridad'] or 'Media' }}</span>
+
+              {% if st == 'pendiente' %}
+                <span class="chip chip-warn"><i class="bi bi-hourglass-split"></i> Pendiente</span>
+              {% elif st == 'en_progreso' %}
+                <span class="chip chip-info"><i class="bi bi-lightning-charge"></i> En progreso</span>
+              {% elif st == 'resuelto' %}
+                <span class="chip chip-ok"><i class="bi bi-check2-circle"></i> Resuelto</span>
+              {% else %}
+                <span class="chip chip-sec"><i class="bi bi-slash-circle"></i> {{ st }}</span>
+              {% endif %}
+            </div>
+
+            <div class="ag-meta">
+              <span><i class="bi bi-clock"></i> {{ e['programada_en'] or 'Sin horario' }}</span>
+              <span><i class="bi bi-person"></i> {{ e['c_nombre'] or e['cliente'] }} {{ e['c_apellido'] or '' }}</span>
+              {% if e['direccion'] %}
+                <span><i class="bi bi-geo-alt"></i> {{ e['direccion'] }}</span>
+              {% endif %}
+              {% if e['pppoe'] %}
+                <span><i class="bi bi-shield-lock"></i> PPPoE: {{ e['pppoe'] }}</span>
+              {% endif %}
+              {% if e['cedula'] %}
+                <span><i class="bi bi-credit-card-2-front"></i> {{ e['cedula'] }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+
+<script>
+const fmt = n => String(n).padStart(2,'0');
+function toISO(d){ return `${d.getFullYear()}-${fmt(d.getMonth()+1)}-${fmt(d.getDate())}`; }
+
+const form     = document.getElementById('formFiltros');
+const selEst   = document.getElementById('selEstado');
+const selTec   = document.getElementById('selTec');
+const inpDia   = document.getElementById('inpDia');
+const chkRango = document.getElementById('chkRango');
+const inpDesde = document.getElementById('inpDesde');
+const inpHasta = document.getElementById('inpHasta');
+
+function gotoAgenda({dia=null, desde=null, hasta=null}){
+  const p = new URLSearchParams();
+  if(chkRango.checked || (desde && hasta)){
+    p.set('desde', desde ?? inpDesde.value);
+    p.set('hasta', hasta ?? inpHasta.value);
+  } else {
+    p.set('dia', dia ?? inpDia.value);
+  }
+  if(selEst.value) p.set('estado', selEst.value);
+  if(selTec.value) p.set('tecnico_id', selTec.value);
+  window.location.search = p.toString();
+}
+
+document.getElementById('btnPrev').addEventListener('click', () => {
+  if(chkRango.checked) return;
+  const d = new Date(inpDia.value); d.setDate(d.getDate()-1);
+  gotoAgenda({dia: toISO(d)});
+});
+document.getElementById('btnNext').addEventListener('click', () => {
+  if(chkRango.checked) return;
+  const d = new Date(inpDia.value); d.setDate(d.getDate()+1);
+  gotoAgenda({dia: toISO(d)});
+});
+
+chkRango.addEventListener('change', () => {
+  const on = chkRango.checked;
+  inpDesde.disabled = inpHasta.disabled = !on;
+  inpDia.disabled = on;
+  if(on && !inpDesde.value && !inpHasta.value){
+    const now = new Date();
+    const d1 = new Date(now.getFullYear(), now.getMonth(), 1);
+    const d2 = new Date(now.getFullYear(), now.getMonth()+1, 0);
+    inpDesde.value = toISO(d1);
+    inpHasta.value = toISO(d2);
+  }
+  gotoAgenda({});
+});
+
+[selEst, selTec, inpDia, inpDesde, inpHasta].forEach(el => {
+  if(el) el.addEventListener('change', () => gotoAgenda({}));
+});
+
+document.getElementById('btnAplicar').addEventListener('click', e => {
+  e.preventDefault();
+  gotoAgenda({});
+});
+
+function baseName(){
+  const qs = new URLSearchParams(location.search);
+  const d  = qs.get('dia');
+  const ds = qs.get('desde'), hs = qs.get('hasta');
+  if(ds && hs) return `Agenda_${ds}_a_${hs}`;
+  return 'Agenda' + (d ? '_'+d : '');
+}
+
+function getRows(){
+  const rows = [];
+  document.querySelectorAll('#listaAgenda .ag-item').forEach(it => {
+    const meta   = it.querySelectorAll('.ag-meta span');
+    const hora   = meta[0]?.textContent.trim() || '';
+    const cliente= meta[1]?.textContent.trim() || '';
+    const tipo   = it.querySelector('.ag-tipo')?.textContent || '';
+    const estado = it.getAttribute('data-state') || '';
+    rows.push([hora, cliente, tipo, estado]);
+  });
+  return rows;
+}
+
+function exportExcel(){
+  const table = document.createElement('table');
+  const head  = `<thead><tr><th>Hora</th><th>Cliente</th><th>Tipo</th><th>Estado</th></tr></thead>`;
+  const body  = getRows().map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('');
+  table.innerHTML = head + `<tbody>${body}</tbody>`;
+  const wb = XLSX.utils.table_to_book(table, {sheet:"Agenda"});
+  XLSX.writeFile(wb, baseName()+'.xlsx');
+}
+
+function exportPDF(){
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF({orientation:'landscape', unit:'pt', format:'A4'});
+  doc.setFontSize(14); doc.text('Agenda SPYnet', 40, 40);
+  doc.autoTable({
+    head:[['Hora','Cliente','Tipo','Estado']],
+    body: getRows(),
+    startY:60, styles:{fontSize:10}
+  });
+  doc.save(baseName()+'.pdf');
+}
+
+function exportWord(){
+  const rows = getRows().map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('');
+  const html = `<html><head><meta charset='utf-8'><title>Agenda</title>
+    <style>table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px}th{background:#e7f0ff}</style>
+    </head><body><h2>Agenda SPYnet</h2>
+    <table><thead><tr><th>Hora</th><th>Cliente</th><th>Tipo</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>
+    </body></html>`;
+  const blob = new Blob(['\ufeff', html], {type:'application/msword'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a'); a.href=url; a.download=baseName()+'.doc';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

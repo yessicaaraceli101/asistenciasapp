@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}Sucursales{% endblock %}
+
+{% block extra_head %}
+<style>
+  .suc{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1;
+    --ok:#177A56; --ok-bg:#EDF8F3;
+    max-width:1100px; margin:0 auto; padding:8px 0 40px;
+    color:var(--ink);
+  }
+
+  /* Encabezado */
+  .suc-head{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap:16px; flex-wrap:wrap; margin-bottom:24px;
+  }
+  .suc-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .suc-head p{ margin:0; color:var(--ink-soft); font-size:14px; }
+
+  .btn-suc{
+    display:inline-flex; align-items:center; gap:8px;
+    height:40px; padding:0 16px; border-radius:8px;
+    font-size:14px; font-weight:500; text-decoration:none; cursor:pointer;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+    transition:background-color .12s, border-color .12s;
+  }
+  .btn-suc:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .btn-suc-ghost{ background:var(--surface); color:var(--ink); border-color:var(--line); }
+  .btn-suc-ghost:hover{ background:#F7F9FC; color:var(--ink); border-color:#B7C2D0; }
+  .btn-suc:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* Tabla */
+  .suc-panel{
+    background:var(--surface);
+    border:1px solid var(--line); border-radius:10px;
+    overflow:hidden;
+  }
+  .suc-scroll{ overflow-x:auto; }
+  .suc-table{ width:100%; border-collapse:collapse; font-size:14px; }
+  .suc-table th{
+    text-align:left; font-weight:500; font-size:13px; color:var(--ink-soft);
+    background:#F9FAFC; padding:12px 18px;
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+  }
+  .suc-table td{
+    padding:14px 18px; border-bottom:1px solid var(--line-soft);
+    vertical-align:middle;
+  }
+  .suc-table tr:last-child td{ border-bottom:0; }
+  .suc-table tbody tr:hover{ background:#FAFBFD; }
+  .suc-table tr.is-current{ background:#F4FAFE; }
+
+  .suc-name{ display:flex; align-items:center; gap:12px; font-weight:500; }
+  .suc-name i{ color:var(--ink-faint); font-size:18px; }
+  .muted{ color:var(--ink-faint); }
+
+  .tag-current{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:12.5px; font-weight:500; color:var(--ok);
+    background:var(--ok-bg); border:1px solid #C9EBDC;
+    padding:3px 10px; border-radius:999px; white-space:nowrap;
+  }
+  .tag-current::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--ok); }
+
+  .link-use{
+    display:inline-flex; align-items:center; gap:6px;
+    font-weight:500; color:var(--accent); text-decoration:none; white-space:nowrap;
+  }
+  .link-use:hover{ color:var(--accent-hover); text-decoration:underline; text-underline-offset:3px; }
+
+  .suc-empty{ padding:36px 18px; text-align:center; color:var(--ink-soft); }
+  .suc-empty i{ display:block; font-size:26px; color:var(--ink-faint); margin-bottom:8px; }
+
+  .suc-foot-count{ margin:10px 2px 0; font-size:13px; color:var(--ink-faint); }
+
+  /* Formulario */
+  .suc-form{
+    margin-top:32px;
+    background:var(--surface);
+    border:1px solid var(--line); border-radius:10px;
+    scroll-margin-top:80px;
+  }
+  .suc-form-head{ padding:18px 20px 0; }
+  .suc-form-head h2{ font-size:16px; font-weight:600; margin:0 0 2px; }
+  .suc-form-head p{ margin:0; font-size:13px; color:var(--ink-faint); }
+  .suc-form-body{
+    padding:18px 20px 20px;
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;
+  }
+  .suc-field label{ display:block; font-size:14px; font-weight:500; margin-bottom:6px; }
+  .suc-field label .req{ color:#C2362F; margin-left:2px; }
+  .suc-field label .opt{ color:var(--ink-faint); font-weight:400; font-size:13px; }
+  .suc-field input{
+    width:100%; height:42px; padding:0 12px;
+    font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .suc-field input::placeholder{ color:#9AA5B4; }
+  .suc-field input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .suc-form-actions{
+    grid-column:1 / -1;
+    display:flex; justify-content:flex-end; gap:8px;
+    padding-top:4px;
+  }
+
+  @media (max-width:768px){
+    .suc-form-body{ grid-template-columns:1fr; }
+    .suc-form-actions .btn-suc{ flex:1; justify-content:center; }
+    .suc-table .col-hide{ display:none; }
+  }
+  /* Acciones por fila */
+  .row-actions{ display:inline-flex; gap:2px; margin-left:14px; vertical-align:middle; }
+  .icon-btn{
+    width:34px; height:34px; border-radius:6px;
+    display:inline-grid; place-items:center;
+    border:0; background:none; color:var(--ink-faint); cursor:pointer;
+    font-size:15px;
+  }
+  .icon-btn:hover{ background:#EEF2F6; color:var(--ink); }
+  .icon-btn.danger:hover{ background:#FDF1F0; color:#C2362F; }
+  .icon-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .icon-btn:disabled{ opacity:.35; cursor:not-allowed; background:none; color:var(--ink-faint); }
+  .td-actions{ text-align:right; white-space:nowrap; }
+
+  /* Modales con la línea del sistema (fuera de .suc: repiten las variables) */
+  .suc-modal{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --accent:#0284C7; --accent-hover:#0369A1;
+    color:var(--ink);
+  }
+  .suc-modal .modal-content{ border:1px solid var(--line, #D9E0E8); border-radius:12px; }
+  .suc-modal .modal-title{ font-weight:600; font-size:18px; }
+  .suc-modal .modal-body{ padding-top:4px; }
+  .suc-modal .modal-footer{ gap:8px; }
+  .suc-modal .suc-field + .suc-field{ margin-top:14px; }
+  .suc-modal .btn-danger-solid{
+    border-color:#C2362F; background:#C2362F;
+  }
+  .suc-modal .btn-danger-solid:hover{ border-color:#A42C26; background:#A42C26; }
+  .del-warning{
+    display:flex; gap:10px; align-items:flex-start;
+    margin-top:14px; padding:10px 12px; border-radius:8px;
+    background:#FDF1F0; border:1px solid #F3CFCC; color:#8E2A24; font-size:13.5px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{# Nombre de la sucursal actual: admite 'actual' (nombre) o 'actual_id' #}
+{% set nombre_actual = actual if actual else None %}
+{% if not nombre_actual and actual_id is defined and actual_id %}
+  {% set _found = sucursales|selectattr('id','equalto', actual_id)|list %}
+  {% set nombre_actual = _found[0].nombre if _found else None %}
+{% endif %}
+
+<div class="suc">
+
+  <div class="suc-head">
+    <div>
+      <h1>Sucursales</h1>
+      <p>
+        {% if nombre_actual %}Estás trabajando en <strong>{{ nombre_actual }}</strong>.
+        {% else %}Todavía no seleccionaste una sucursal.{% endif %}
+      </p>
+    </div>
+    <a href="#nuevaSucursal" class="btn-suc" id="btnIrForm">
+      <i class="fa-solid fa-plus" aria-hidden="true"></i> Nueva sucursal
+    </a>
+  </div>
+
+  <div class="suc-panel">
+    <div class="suc-scroll">
+      <table class="suc-table">
+        <thead>
+          <tr>
+            <th scope="col">Nombre</th>
+            <th scope="col" class="col-hide">Dirección</th>
+            <th scope="col" class="col-hide">Teléfono</th>
+            <th scope="col" style="text-align:right">Estado</th>
+            <th scope="col" class="td-actions"><span class="visually-hidden">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sucursales %}
+            {% set es_actual = (actual_id is defined and actual_id and s.id == actual_id) or (actual and s.nombre == actual) %}
+            <tr class="{{ 'is-current' if es_actual }}">
+              <td>
+                <span class="suc-name">
+                  <i class="fa-regular fa-building" aria-hidden="true"></i>{{ s.nombre }}
+                </span>
+              </td>
+              <td class="col-hide">{% if s.direccion %}{{ s.direccion }}{% else %}<span class="muted">—</span>{% endif %}</td>
+              <td class="col-hide">{% if s.telefono %}{{ s.telefono }}{% else %}<span class="muted">—</span>{% endif %}</td>
+              <td style="text-align:right">
+                {% if es_actual %}
+                  <span class="tag-current">Actual</span>
+                {% else %}
+                  <a class="link-use" href="{{ url_for('sucursales_set', sid=s.id) }}">
+                    Usar esta sucursal <i class="fa-solid fa-chevron-right" style="font-size:11px" aria-hidden="true"></i>
+                  </a>
+                {% endif %}
+              </td>
+              <td class="td-actions">
+                <span class="row-actions">
+                  <button type="button" class="icon-btn js-edit"
+                          title="Editar" aria-label="Editar {{ s.nombre }}"
+                          data-action="{{ url_for('sucursales_editar', sid=s.id) }}"
+                          data-nombre="{{ s.nombre }}"
+                          data-direccion="{{ s.direccion or '' }}"
+                          data-telefono="{{ s.telefono or '' }}">
+                    <i class="fa-regular fa-pen-to-square" aria-hidden="true"></i>
+                  </button>
+                  {% if es_actual %}
+                    <span title="No puedes eliminar la sucursal en uso">
+                      <button type="button" class="icon-btn danger" disabled aria-label="No se puede eliminar {{ s.nombre }} porque está en uso">
+                        <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+                      </button>
+                    </span>
+                  {% else %}
+                    <button type="button" class="icon-btn danger js-delete"
+                            title="Eliminar" aria-label="Eliminar {{ s.nombre }}"
+                            data-action="{{ url_for('sucursales_eliminar', sid=s.id) }}"
+                            data-nombre="{{ s.nombre }}">
+                      <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+                    </button>
+                  {% endif %}
+                </span>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="5" class="suc-empty">
+                <i class="fa-regular fa-building" aria-hidden="true"></i>
+                No hay sucursales cargadas. Creá la primera con el formulario de abajo.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% if sucursales|length > 1 %}
+    <p class="suc-foot-count">{{ sucursales|length }} sucursales</p>
+  {% endif %}
+
+  <!-- Formulario para agregar nueva sucursal -->
+  <section class="suc-form" id="nuevaSucursal" aria-labelledby="nuevaSucTitle">
+    <div class="suc-form-head">
+      <h2 id="nuevaSucTitle">Agregar nueva sucursal</h2>
+      <p>Solo el nombre es obligatorio. Los demás datos se pueden completar después.</p>
+    </div>
+    <form action="{{ url_for('sucursales_nueva') }}" method="post" class="suc-form-body">
+      <div class="suc-field">
+        <label for="sucNombre">Nombre<span class="req" aria-hidden="true">*</span></label>
+        <input id="sucNombre" name="nombre" placeholder="Ej.: Encarnación" required autocomplete="off">
+      </div>
+      <div class="suc-field">
+        <label for="sucDireccion">Dirección <span class="opt">(opcional)</span></label>
+        <input id="sucDireccion" name="direccion" placeholder="Calle, ciudad" autocomplete="off">
+      </div>
+      <div class="suc-field">
+        <label for="sucTelefono">Teléfono <span class="opt">(opcional)</span></label>
+        <input id="sucTelefono" name="telefono" type="tel" placeholder="098x…" autocomplete="off">
+      </div>
+      <div class="suc-form-actions">
+        <button type="reset" class="btn-suc btn-suc-ghost">Limpiar</button>
+        <button type="submit" class="btn-suc">Crear sucursal</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+
+<!-- Modal: editar sucursal -->
+<div class="modal fade suc-modal" id="editModal" tabindex="-1" aria-labelledby="editModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="editForm" method="post" action="">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="editModalTitle">Editar sucursal</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="suc-field">
+          <label for="editNombre">Nombre<span class="req" aria-hidden="true">*</span></label>
+          <input id="editNombre" name="nombre" required autocomplete="off">
+        </div>
+        <div class="suc-field">
+          <label for="editDireccion">Dirección <span class="opt">(opcional)</span></label>
+          <input id="editDireccion" name="direccion" placeholder="Calle, ciudad" autocomplete="off">
+        </div>
+        <div class="suc-field">
+          <label for="editTelefono">Teléfono <span class="opt">(opcional)</span></label>
+          <input id="editTelefono" name="telefono" type="tel" placeholder="098x…" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn-suc btn-suc-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn-suc">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: confirmar eliminación -->
+<div class="modal fade suc-modal" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="deleteForm" method="post" action="">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="deleteModalTitle">¿Eliminar la sucursal?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        Vas a eliminar <strong id="deleteNombre"></strong>.
+        <div class="del-warning">
+          <i class="fa-solid fa-triangle-exclamation" style="margin-top:2px" aria-hidden="true"></i>
+          <span>Esta acción no se puede deshacer.</span>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn-suc btn-suc-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn-suc btn-danger-solid">Eliminar sucursal</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // "Nueva sucursal" baja al formulario y enfoca el campo Nombre
+  document.getElementById('btnIrForm')?.addEventListener('click', e => {
+    e.preventDefault();
+    const form = document.getElementById('nuevaSucursal');
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    form.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    setTimeout(() => document.getElementById('sucNombre')?.focus({ preventScroll:true }), reduce ? 0 : 350);
+  });
+  // Editar: completa el modal con los datos de la fila
+  const editModalEl = document.getElementById('editModal');
+  const editModal = new bootstrap.Modal(editModalEl);
+  document.querySelectorAll('.js-edit').forEach(btn => btn.addEventListener('click', () => {
+    document.getElementById('editForm').action = btn.dataset.action;
+    document.getElementById('editNombre').value    = btn.dataset.nombre;
+    document.getElementById('editDireccion').value = btn.dataset.direccion;
+    document.getElementById('editTelefono').value  = btn.dataset.telefono;
+    editModal.show();
+  }));
+  editModalEl.addEventListener('shown.bs.modal', () => document.getElementById('editNombre').focus());
+
+  // Eliminar: confirma con el nombre de la sucursal
+  const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  document.querySelectorAll('.js-delete').forEach(btn => btn.addEventListener('click', () => {
+    document.getElementById('deleteForm').action = btn.dataset.action;
+    document.getElementById('deleteNombre').textContent = btn.dataset.nombre;
+    deleteModal.show();
+  }));
+
+  // Evitar doble envío en los modales
+  ['editForm','deleteForm'].forEach(id => document.getElementById(id).addEventListener('submit', e => {
+    if (!e.target.checkValidity()) return;
+    e.target.querySelector('[type=submit]').disabled = true;
+  }));
+</script>
+{% endblock %}

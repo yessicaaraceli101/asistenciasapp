@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% block title %}Mapa{% endblock %}
+
+{% block content %}
+<style>
+  .map-wrap { position: relative; }
+  .map-sidebar {
+    position: absolute; z-index: 1000; top: 12px; left: 12px; width: 320px;
+    background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,.08);
+    transition: transform .25s ease;
+  }
+  .map-sidebar .hdr { padding: 10px 12px; border-bottom: 1px solid #f0f2f5; display:flex; align-items:center; justify-content:space-between; }
+  .map-sidebar .body { padding: 12px; }
+  .chip { font-size: .75rem; padding: 2px 8px; border-radius: 12px; background: #f3f4f6; }
+  .legend {
+    position: absolute; z-index: 1000; right: 12px; bottom: 12px;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 10px 12px; box-shadow: 0 10px 25px rgba(0,0,0,.08); font-size: .9rem;
+  }
+  .legend i { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; border:2px solid #fff; box-shadow:0 0 0 1px #333; }
+  .legend .square { display:inline-block; width:12px; height:12px; margin-right:6px; border:2px solid #fff; box-shadow:0 0 0 1px #333; border-radius:3px; }
+  .toolbar { gap: .5rem; }
+  #map { height: calc(100vh - 210px); min-height: 520px; border: 1px solid #e5e7eb; border-radius: .7rem; }
+  .marker-cluster-small  { background-color: rgba(13,110,253,0.2); } .marker-cluster-small div { background: rgba(13,110,253,0.7); }
+  .marker-cluster-medium { background-color: rgba(25,135,84,0.2); } .marker-cluster-medium div { background: rgba(25,135,84,0.7); }
+  .marker-cluster-large  { background-color: rgba(255,193,7,0.2); } .marker-cluster-large div { background: rgba(255,193,7,0.8); }
+</style>
+
+<h1 class="mb-3">Mapa</h1>
+
+<div class="d-flex flex-wrap align-items-center toolbar mb-3">
+  <div class="input-group" style="max-width: 360px;">
+    <span class="input-group-text"><i class="fa-regular fa-calendar"></i></span>
+    <input type="date" id="desde" class="form-control" title="Fecha desde">
+    <span class="input-group-text">→</span>
+    <input type="date" id="hasta" class="form-control" title="Fecha hasta">
+  </div>
+
+  <select id="tecSel" class="form-select" style="max-width: 320px;">
+    <option value="">(Seleccionar técnico para ver trayectoria)</option>
+    {% for t in tecnicos or [] %}
+      <option value="{{ t.id }}">{{ t.nombre }}</option>
+    {% endfor %}
+  </select>
+
+  <button id="btnRuta" class="btn btn-outline-primary"><i class="fa-solid fa-route me-1"></i> Ver trayectoria</button>
+  <button id="btnRefrescar" class="btn btn-primary"><i class="fa-solid fa-rotate me-1"></i> Refrescar</button>
+  <button id="btnLocate" class="btn btn-outline-secondary"><i class="fa-solid fa-location-crosshairs me-1"></i> Mi ubicación</button>
+  <button id="btnExport" class="btn btn-outline-success"><i class="fa-solid fa-file-arrow-down me-1"></i> Exportar CSV</button>
+  <button id="btnExportPdf" class="btn btn-outline-danger"><i class="fa-solid fa-file-pdf me-1"></i> Exportar PDF</button>
+
+  <span class="ms-auto small text-muted">
+    Auto-actualiza cada 30s •
+    <span class="chip" id="chipTickets">Tickets: 0</span>
+    <span class="chip" id="chipTec">Técnicos: 0</span>
+  </span>
+</div>
+
+<div class="map-wrap">
+  <div class="map-sidebar">
+    <div class="hdr">
+      <div class="fw-semibold"><i class="fa-solid fa-sliders me-2"></i>Capas y filtros</div>
+      <button class="btn btn-sm btn-light" id="btnToggleSidebar" title="Ocultar/mostrar"><i class="fa-solid fa-chevron-left"></i></button>
+    </div>
+    <div class="body">
+      <div class="mb-2">
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="chkTickets" checked><label class="form-check-label" for="chkTickets">Mostrar tickets</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="chkTec" checked><label class="form-check-label" for="chkTec">Mostrar técnicos</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="chkRutas" checked><label class="form-check-label" for="chkRutas">Mostrar trayectorias</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="chkSuc" checked><label class="form-check-label" for="chkSuc">Mostrar sucursales</label></div>
+      </div>
+      <hr>
+      <div class="mb-2">
+        <label class="form-label mb-1">Estado de tickets</label>
+        <select id="estadoSel" class="form-select form-select-sm">
+          <option value="">(Todos)</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="en_progreso">En progreso</option>
+          <option value="resuelto">Resuelto</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </div>
+      <div class="d-grid">
+        <button class="btn btn-sm btn-outline-secondary" id="btnResetFiltros"><i class="fa-solid fa-eraser me-1"></i> Limpiar filtros</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="map" aria-label="Mapa de tickets, técnicos y sucursales"></div>
+
+  <div class="legend">
+    <div class="fw-semibold mb-1"><i class="fa-solid fa-circle-info me-1"></i>Leyenda</div>
+    <div class="mb-1"><i style="background:#dc3545"></i> Ticket pendiente</div>
+    <div class="mb-1"><i style="background:#ffc107"></i> Ticket en progreso</div>
+    <div class="mb-1"><i style="background:#20c997"></i> Ticket resuelto</div>
+    <div class="mb-1"><i style="background:#6c757d"></i> Ticket cancelado</div>
+    <div class="mb-1"><i style="background:#0d6efd"></i> Ticket (otros)</div>
+    <div class="mb-1"><i style="background:#198754"></i> Técnico</div>
+    <div class="mb-1"><span style="display:inline-block;width:16px;height:4px;background:#0d6efd;vertical-align:middle;margin-right:6px;"></span> Trayectoria (color por técnico)</div>
+    <div class="mb-1"><span class="square" style="background:#6f42c1"></span> Sucursal</div>
+  </div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<script>
+  // util sin chocar con jQuery
+  function qs(id){ return document.getElementById(id); }
+  const fmt2 = n => String(n).padStart(2,'0');
+  const todayISO = () => { const d=new Date(); return `${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}`; };
+
+  const desdeEl = qs('desde'); const hastaEl = qs('hasta');
+  // Últimos 7 días como default
+  (function initDates(){
+    const hoy = new Date();
+    const hasta = todayISO();
+    const d = new Date(hoy); d.setDate(d.getDate()-7);
+    const desde = `${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}`;
+    desdeEl.value = desde; hastaEl.value = hasta;
+  })();
+
+  const estadoColor = (estado) => {
+    if (!estado) return '#0d6efd';
+    const s = String(estado).toLowerCase();
+    if (s==='pendiente') return '#dc3545';
+    if (s==='resuelto') return '#20c997';
+    if (s==='en_progreso') return '#ffc107';
+    if (s==='cancelado') return '#6c757d';
+    return '#0d6efd';
+  };
+
+  const colorForTech = (id) => {
+    let h = (parseInt(id || 0, 10) * 47) % 360;
+    return `hsl(${h} 85% 45%)`;
+  };
+
+  const dotIcon = (color) => L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="background:${color};width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #333"></div>`,
+    iconSize: [16,16], iconAnchor: [8,8]
+  });
+
+  /* ===== Sucursales fijas ===== */
+  // Coordenadas correctas:
+  //  - Sapucai: aproximado
+  //  - Valenzuela: -25.5949816, -56.873283 (Google Maps)
+  const sucursales = [
+    { nombre: "Sapucai",    lat: -25.6789,   lng: -56.9497 },
+    { nombre: "Valenzuela", lat: -25.5949816, lng: -56.873283 }
+  ];
+
+  // Si el backend inyectó un centro (ver app.context_processor), lo usamos
+  const injectedCenter = {{ sucursal_center|default(None)|tojson|safe }};
+  const currentSucursalName = "{{ g.sucursal_nombre|default('', true) }}";
+
+  const sucIcon = L.divIcon({
+    className: 'suc-icon',
+    html: `<div style="background:#6f42c1;width:14px;height:14px;border-radius:3px;border:2px solid #fff;box-shadow:0 0 0 1px #333"></div>`,
+    iconSize: [16,16], iconAnchor: [8,8]
+  });
+
+  // Mapa y capas
+  const map = L.map('map', { zoomControl: true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 20, attribution: '&copy; OpenStreetMap'}).addTo(map);
+
+  const clusterTickets = L.markerClusterGroup({
+    disableClusteringAtZoom: 17,
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false
+  });
+  const layerTickets   = clusterTickets;
+  const layerTecnicos  = L.layerGroup().addTo(map);
+  const layerRutas     = L.layerGroup().addTo(map);
+  const layerSucursales = L.layerGroup().addTo(map);
+  map.addLayer(clusterTickets);
+
+  function renderSucursales(){
+    layerSucursales.clearLayers();
+    sucursales.forEach(s=>{
+      L.marker([s.lat, s.lng], {icon: sucIcon})
+        .bindPopup(`<b>Sucursal ${s.nombre}</b>`)
+        .addTo(layerSucursales);
+    });
+  }
+  renderSucursales();
+
+  // Toast mini no bloqueante
+  function toast(msg){
+    const n = document.createElement('div');
+    n.textContent = msg;
+    n.style.cssText = 'position:fixed;bottom:18px;left:18px;background:#333;color:#fff;padding:8px 12px;border-radius:8px;z-index:3000;opacity:.95';
+    document.body.appendChild(n);
+    setTimeout(()=>{ n.remove(); }, 3200);
+  }
+
+  let lastData = { tickets: [], tecnicos: [] };
+
+  async function cargarDatos(){
+    try{
+      const resp = await fetch("{{ url_for('api_mapa_datos') }}", {
+        headers: { "Accept": "application/json" },
+        cache: "no-store"
+      });
+      if(resp.status === 401){ window.location = "{{ url_for('login') }}"; return; }
+      if(!resp.ok){ throw new Error(`HTTP ${resp.status}`); }
+      const data = await resp.json(); lastData = data;
+
+      layerTickets.clearLayers(); layerTecnicos.clearLayers();
+
+      const bounds=[]; const estadoFiltro=qs('estadoSel').value;
+
+      (data.tickets || []).forEach(t=>{
+        if (t.lat==null || t.lng==null) return;
+        if (estadoFiltro && String(t.estado||'').toLowerCase()!==estadoFiltro) return;
+        const m=L.marker([t.lat,t.lng],{icon:dotIcon(estadoColor(t.estado))})
+          .bindPopup(`<b>${t.cliente||'Cliente'}</b><br>${t.direccion||''}<br>
+                      <small>Tipo: ${t.tipo||'-'} | Prioridad: ${t.prioridad||'-'}</small><br>
+                      <small>Estado: ${t.estado||'-'} | Técnico: ${t.tecnico||'-'}</small><br>
+                      <small>Agenda: ${t.programada_en||''}</small>`);
+        layerTickets.addLayer(m); bounds.push([t.lat,t.lng]);
+      });
+
+      (data.tecnicos || []).forEach(t=>{
+        if (t.lat==null || t.lng==null) return;
+        const m=L.marker([t.lat,t.lng],{icon:dotIcon('#198754')})
+          .bindPopup(`<b>${t.nombre || ('Tec #'+t.id)}</b><br><small>${t.ts || ''}</small>`)
+          .on('click',()=>verTrayectoria(t.id));
+        layerTecnicos.addLayer(m); bounds.push([t.lat,t.lng]);
+      });
+
+      qs('chipTickets').textContent=`Tickets: ${layerTickets.getLayers().length}`;
+      qs('chipTec').textContent=`Técnicos: ${layerTecnicos.getLayers().length}`;
+
+      // Centro preferido: 1) inyectado por backend; 2) sucursal por nombre; 3) bounds/centro promedio
+      if (Array.isArray(injectedCenter) && injectedCenter.length === 2) {
+        map.setView([injectedCenter[0], injectedCenter[1]], 13);
+      } else {
+        const suc = sucursales.find(s => s.nombre.toLowerCase() === String(currentSucursalName||'').toLowerCase());
+        if (suc) {
+          map.setView([suc.lat, suc.lng], 13);
+        } else if (bounds.length) {
+          map.fitBounds(bounds,{padding:[40,40]});
+        } else {
+          const avgLat = (sucursales[0].lat + sucursales[1].lat) / 2;
+          const avgLng = (sucursales[0].lng + sucursales[1].lng) / 2;
+          map.setView([avgLat, avgLng], 10);
+        }
+      }
+
+      aplicarVisibilidad();
+    }catch(err){
+      toast('No pude cargar datos del mapa: '+err.message);
+      console.error(err);
+    }
+  }
+
+  // Versión con fallback: si el rango no trae puntos, reintenta sin filtros (backend amplía a 30 días)
+  async function verTrayectoria(tid){
+    if (!tid){
+      const first = qs('tecSel').value || qs('tecSel').querySelector('option[value]')?.value;
+      if (!first) { toast('Elegí un técnico.'); return; }
+      tid = first;
+    }
+
+    const base = `{{ url_for('api_tecnico_trayectoria', tid=0) }}`.replace('/0','/'+tid);
+    const url1 = `${base}?desde=${desdeEl.value}&hasta=${hastaEl.value}`;
+
+    let r = await fetch(url1, { headers: { "Accept": "application/json" }, cache: "no-store" });
+    if(r.status === 401){ window.location = "{{ url_for('login') }}"; return; }
+    let pts = (r.ok ? await r.json() : []);
+
+    if (!Array.isArray(pts)) pts = [];
+    if (!pts.length) {
+      const url2 = base; // deja al backend ampliar/ignorar sucursal
+      r = await fetch(url2, { headers: { "Accept": "application/json" }, cache: "no-store" });
+      if(r.status === 401){ window.location = "{{ url_for('login') }}"; return; }
+      pts = (r.ok ? await r.json() : []);
+    }
+
+    layerRutas.clearLayers();
+
+    if (!pts.length) {
+      toast('Sin posiciones para ese técnico. Ampliá fechas o verificá el envío de /gps.');
+      return;
+    }
+
+    const latlngs = pts.map(p=>[p.lat,p.lng]).filter(v=>v[0]!=null && v[1]!=null);
+    if (!latlngs.length) { toast('Las posiciones recuperadas no tienen coordenadas válidas.'); return; }
+
+    const color = colorForTech(tid);
+    L.polyline(latlngs,{weight:4,opacity:.95,color}).addTo(layerRutas);
+    L.circleMarker(latlngs[0],{radius:5,color,fillColor:color,fillOpacity:1}).bindPopup('Inicio').addTo(layerRutas);
+    L.circleMarker(latlngs[latlngs.length-1],{radius:5,color,fillColor:color,fillOpacity:1}).bindPopup('Fin').addTo(layerRutas);
+    map.fitBounds(L.latLngBounds(latlngs),{padding:[50,50]});
+    aplicarVisibilidad();
+  }
+
+  qs('btnLocate').addEventListener('click',()=>map.locate({setView:true,maxZoom:16}));
+
+  qs('btnExport').addEventListener('click',()=>{
+    const estadoFiltro=qs('estadoSel').value;
+    const rows=(lastData.tickets||[])
+      .filter(t=>t.lat!=null && t.lng!=null)
+      .filter(t=>!estadoFiltro || String(t.estado||'').toLowerCase()===estadoFiltro)
+      .map(t=>[t.cliente,t.direccion,t.tipo,t.prioridad,t.estado,t.tecnico,t.programada_en,t.lat,t.lng]);
+    let csv='Cliente,Direccion,Tipo,Prioridad,Estado,Tecnico,Programada,Lat,Lng\n';
+    rows.forEach(r=>{csv+=r.map(v=>`"${(v??'').toString().replace(/"/g,'""')}"`).join(',')+'\n';});
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=`tickets_${todayISO()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  });
+
+  qs('btnExportPdf').addEventListener('click',()=>{
+    const q = new URLSearchParams({
+      desde: desdeEl.value, hasta: hastaEl.value, estado: qs('estadoSel').value || ''
+    }).toString();
+    window.location.href = "{{ url_for('mapa_export_pdf') }}?"+q;
+  });
+
+  function aplicarVisibilidad(){
+    const showT=qs('chkTickets').checked, showTec=qs('chkTec').checked, showR=qs('chkRutas').checked, showSuc=qs('chkSuc').checked;
+    if (showT && !map.hasLayer(clusterTickets)) map.addLayer(clusterTickets);
+    if (!showT && map.hasLayer(clusterTickets)) map.removeLayer(clusterTickets);
+    if (showTec && !map.hasLayer(layerTecnicos)) map.addLayer(layerTecnicos);
+    if (!showTec && map.hasLayer(layerTecnicos)) map.removeLayer(layerTecnicos);
+    if (showR && !map.hasLayer(layerRutas)) map.addLayer(layerRutas);
+    if (!showR && map.hasLayer(layerRutas)) map.removeLayer(layerRutas);
+    if (showSuc && !map.hasLayer(layerSucursales)) map.addLayer(layerSucursales);
+    if (!showSuc && map.hasLayer(layerSucursales)) map.removeLayer(layerSucursales);
+  }
+  ['chkTickets','chkTec','chkRutas','chkSuc'].forEach(id=>qs(id).addEventListener('change',aplicarVisibilidad));
+  qs('estadoSel').addEventListener('change',cargarDatos);
+
+  // Spinners y protección de doble click
+  qs('btnRefrescar').addEventListener('click', async (e)=>{
+    const btn = e.currentTarget;
+    const html = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-rotate me-1 fa-spin"></i> Refrescando…';
+    await cargarDatos();
+    btn.disabled = false; btn.innerHTML = html;
+  });
+
+  qs('btnRuta').addEventListener('click', async (e)=>{
+    const tid = qs('tecSel').value;
+    if(!tid){ toast('Elegí un técnico.'); return; }
+    const btn = e.currentTarget;
+    const html = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-route me-1 fa-spin"></i> Dibujando…';
+    await verTrayectoria(tid);
+    btn.disabled = false; btn.innerHTML = html;
+  });
+
+  qs('btnResetFiltros').addEventListener('click',()=>{
+    qs('estadoSel').value=''; qs('chkTickets').checked=true; qs('chkTec').checked=true; qs('chkRutas').checked=true; qs('chkSuc').checked=true;
+    cargarDatos();
+  });
+
+  const btnToggleSidebar=qs('btnToggleSidebar'); const sidebar=document.querySelector('.map-sidebar'); let sidebarOpen=true;
+  btnToggleSidebar.addEventListener('click',()=>{
+    sidebarOpen=!sidebarOpen; sidebar.style.transform=sidebarOpen?'translateX(0)':'translateX(-110%)';
+    btnToggleSidebar.innerHTML=sidebarOpen?'<i class="fa-solid fa-chevron-left"></i>':'<i class="fa-solid fa-chevron-right"></i>';
+    setTimeout(()=>map.invalidateSize(), 250);
+  });
+
+  cargarDatos(); setInterval(cargarDatos,30000);
+</script>
+{% endblock %}

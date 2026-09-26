@@ -1,0 +1,587 @@
+{% extends "base.html" %}
+{% block title %}Nuevo ticket{% endblock %}
+
+{% block extra_head %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+<style>
+  .nt{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1;
+    --ok:#177A56; --ok-bg:#EDF8F3; --danger:#C2362F;
+    color:var(--ink);
+  }
+  .nt{ max-width:880px; margin:0 auto; padding:8px 0 40px; }
+
+  .nt-head{ margin-bottom:20px; }
+  .nt-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .nt-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
+
+  /* Secciones */
+  .nt-section{
+    background:var(--surface);
+    border:1px solid var(--line); border-radius:10px;
+    margin-bottom:16px;
+  }
+  .nt-section-head{
+    padding:16px 20px 0;
+    display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  }
+  .nt-section-head h2{ font-size:16px; font-weight:600; margin:0; }
+  .nt-section-head span{ font-size:13px; color:var(--ink-faint); }
+  .nt-section-body{ padding:16px 20px 20px; }
+
+  .nt-grid{ display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; }
+  .nt-grid .full{ grid-column:1 / -1; }
+
+  /* Campos */
+  .nt-field label{ display:block; font-size:14px; font-weight:500; margin-bottom:6px; }
+  .nt-field label .req{ color:var(--danger); margin-left:2px; }
+  .nt-field label .opt{ color:var(--ink-faint); font-weight:400; font-size:13px; }
+  .nt-input, .nt-field select, .nt-field textarea{
+    width:100%; min-height:42px; padding:0 12px;
+    font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .nt-field textarea{ padding:10px 12px; min-height:110px; resize:vertical; line-height:1.5; }
+  .nt-field select{
+    appearance:none; padding-right:36px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%237A8699' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center;
+  }
+  .nt-input::placeholder, .nt-field textarea::placeholder{ color:#9AA5B4; }
+  .nt-input:focus, .nt-field select:focus, .nt-field textarea:focus{
+    outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15);
+  }
+  .nt-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
+  .nt-error{ font-size:13px; color:var(--danger); margin-top:6px; display:none; }
+  .nt-field.invalid .nt-error{ display:block; }
+  .nt-field.invalid .select2-selection{ border-color:var(--danger) !important; }
+
+  /* Select2 con la misma línea */
+  .nt .select2-container--default .select2-selection--single{
+    height:42px; border:1px solid var(--line); border-radius:8px;
+  }
+  .nt .select2-container--default .select2-selection--single .select2-selection__rendered{
+    line-height:40px; padding-left:12px; padding-right:48px; color:var(--ink); font-size:14px;
+  }
+  .nt .select2-container--default .select2-selection--single .select2-selection__placeholder{ color:#9AA5B4; }
+  .nt .select2-container--default .select2-selection--single .select2-selection__arrow{ height:40px; right:8px; }
+  .nt .select2-container--default .select2-selection--single .select2-selection__clear{ margin-right:28px; color:var(--ink-faint); font-size:18px; }
+  .nt .select2-container--default.select2-container--focus .select2-selection--single,
+  .nt .select2-container--default.select2-container--open .select2-selection--single{
+    border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15);
+  }
+  .select2-dropdown{ border-color:#D9E0E8 !important; border-radius:8px !important; overflow:hidden; font-size:14px; }
+  .select2-search--dropdown .select2-search__field{ border:1px solid #D9E0E8 !important; border-radius:6px; height:36px; padding:0 10px; }
+  .select2-results__option--highlighted{ background:#0284C7 !important; }
+  .select2-results__option small{ display:block; font-size:12px; opacity:.75; }
+
+  /* Ficha del cliente */
+  .nt-client{
+    margin-top:14px; display:none;
+    border:1px solid var(--line-soft); border-radius:8px; background:#F9FAFC;
+  }
+  .nt-client.show{ display:block; }
+  .nt-client dl{
+    display:grid; grid-template-columns:repeat(3, 1fr);
+    margin:0; padding:4px 0;
+  }
+  .nt-client dl > div{ padding:10px 14px; }
+  .nt-client dt{ font-size:12.5px; font-weight:400; color:var(--ink-faint); margin-bottom:2px; }
+  .nt-client dd{ margin:0; font-size:14px; font-weight:500; word-break:break-word; }
+  .nt-client dd.empty{ color:var(--ink-faint); font-weight:400; }
+  .nt-client .auto{ font-size:11.5px; color:var(--ink-faint); font-weight:400; margin-left:4px; }
+
+  /* Ubicación */
+  .nt-loc{ display:flex; gap:8px; }
+  .nt-loc .nt-input{ flex:1; }
+  .nt-loc-status{
+    display:flex; align-items:center; gap:8px;
+    margin-top:8px; font-size:13px; color:var(--ink-faint);
+  }
+  .nt-loc-status i{ font-size:13px; }
+  .nt-loc-status.ok{ color:var(--ok); }
+  .nt-loc-status.searching{ color:var(--ink-soft); }
+
+  /* Botones */
+  .nt-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    height:42px; padding:0 16px; border-radius:8px;
+    font-size:14px; font-weight:500; text-decoration:none; cursor:pointer;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+    white-space:nowrap;
+    transition:background-color .12s, border-color .12s;
+  }
+  .nt-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .nt-btn:disabled{ opacity:.7; cursor:progress; }
+  .nt-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
+  .nt-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+  .nt-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  .nt-actions{
+    display:flex; justify-content:flex-end; gap:8px;
+    padding-top:4px;
+  }
+
+  /* Dispositivos (casillas tipo botón) */
+  .nt-checks{ display:flex; flex-wrap:wrap; gap:8px; }
+  .nt-check{ margin:0 !important; font-weight:400 !important; }
+  .nt-check input{ position:absolute; opacity:0; pointer-events:none; }
+  .nt-check span{
+    display:inline-flex; align-items:center; gap:8px; height:38px; padding:0 14px;
+    border:1px solid var(--line); border-radius:8px; font-size:14px; cursor:pointer; background:#fff; user-select:none;
+  }
+  .nt-check span::before{ content:""; width:16px; height:16px; border:1.5px solid #B7C2D0; border-radius:4px; flex-shrink:0; }
+  .nt-check input:checked + span{ border-color:var(--accent); background:#F0F9FF; }
+  .nt-check input:checked + span::before{
+    background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat;
+    border-color:var(--accent);
+  }
+  .nt-check input:focus-visible + span{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  /* Sí / No */
+  .nt-seg{ display:inline-flex; padding:3px; background:#EEF2F6; border-radius:8px; }
+  .nt-seg input{ position:absolute; opacity:0; pointer-events:none; }
+  .nt-seg label{ margin:0 !important; padding:7px 18px; border-radius:6px; font-size:14px; font-weight:500; color:var(--ink-soft); cursor:pointer; }
+  .nt-seg input:checked + label{ background:#fff; color:var(--ink); box-shadow:0 1px 2px rgba(15,27,45,.12); }
+  .nt-seg input:focus-visible + label{ outline:2px solid var(--accent); outline-offset:1px; }
+  [hidden]{ display:none !important; }
+
+  /* Pegar ubicación de Google Maps */
+  .gm-row{ display:flex; gap:8px; }
+  .gm-row input{ flex:1; }
+  .gm-msg{ font-size:13px; margin-top:6px; color:var(--ink-faint); min-height:0; }
+  .gm-msg.ok{ color:#177A56; }
+  .gm-msg.error{ color:#C2362F; }
+  .gm-how{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; line-height:1.5; }
+  .gm-prev{ margin-top:12px; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .gm-prev iframe{ display:block; width:100%; height:240px; border:0; }
+  .gm-prev a{ display:flex; align-items:center; gap:6px; padding:8px 12px; font-size:13px; font-weight:500; color:var(--accent); text-decoration:none; border-top:1px solid var(--line-soft); }
+  .gm-alt{ background:none; border:0; padding:0; font:inherit; font-size:13px; color:var(--accent); font-weight:500; cursor:pointer; }
+  .gm-alt:hover, .gm-prev a:hover{ text-decoration:underline; text-underline-offset:3px; }
+  @media (max-width:720px){ .gm-row{ flex-direction:column; } }
+
+  @media (max-width:720px){
+    .nt-grid{ grid-template-columns:1fr; }
+    .nt-client dl{ grid-template-columns:1fr 1fr; }
+    .nt-loc{ flex-direction:column; }
+    .nt-actions{ flex-direction:column-reverse; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="nt">
+
+  <div class="nt-head">
+    <h1>Nuevo ticket</h1>
+    <p>Registra una asistencia técnica o un reclamo de un cliente.
+       ¿Es una conexión nueva? <a href="{{ url_for('instalaciones_nueva') }}">Registrar instalación</a></p>
+  </div>
+
+  <form method="POST" action="{{ url_for('nuevo_ticket') }}" id="form-ticket" novalidate>
+
+    <!-- ============ 1. Cliente ============ -->
+    <section class="nt-section">
+      <div class="nt-section-head">
+        <h2>Cliente</h2>
+      </div>
+      <div class="nt-section-body">
+        <div class="nt-field" id="fieldCliente">
+          <label for="cliente">Cliente<span class="req" aria-hidden="true">*</span></label>
+          <select id="cliente" name="cliente" required>
+            <option value=""></option>
+            {% for c in clientes %}
+              {% set nombre_completo = (c.nombre|default('') ~ (' ' ~ c.apellido if c.apellido is defined and c.apellido else ''))|trim %}
+              <option
+                value="{{ nombre_completo }}"
+                data-id="{{ c.id|default('') }}"
+                data-cedula="{{ c.cedula|default('', true) }}"
+                data-pppoe="{{ c.pppoe|default('', true) }}"
+                data-telefono="{{ c.telefono|default('', true) }}"
+                data-barrio="{{ c.barrio|default('', true) }}"
+                data-referencia="{{ c.referencia|default('', true) }}"
+                data-direccion="{{ c.direccion|default('', true) }}"
+                data-tipo_valor="{{ c.tipo_valor|default('', true) }}"
+                data-valor="{{ c.valor|default('', true) }}"
+                data-lat="{{ c.lat|default('', true) }}"
+                data-lng="{{ c.lng|default('', true) }}"
+              >{{ nombre_completo }}</option>
+            {% endfor %}
+          </select>
+          <div class="nt-error">Selecciona un cliente.</div>
+        </div>
+
+        <!-- Datos que se envían al backend -->
+        <input type="hidden" id="cliente_id" name="cliente_id">
+        <input type="hidden" id="cedula" name="cedula">
+        <input type="hidden" id="pppoe" name="pppoe">
+        <input type="hidden" name="cliente_tipo" id="tipo_cliente_hidden" value="cliente">
+        <input type="hidden" name="cliente_valor" id="valor_cliente_hidden">
+
+        <!-- Ficha de solo lectura -->
+        <div class="nt-client" id="clientCard" aria-live="polite">
+          <dl>
+            <div><dt>Cédula</dt><dd id="vCedula"></dd></div>
+            <div><dt>PPPoE</dt><dd id="vPppoe"></dd></div>
+            <div><dt>Teléfono</dt><dd id="vTelefono"></dd></div>
+            <div><dt>Barrio</dt><dd id="vBarrio"></dd></div>
+            <div><dt>Referencia</dt><dd id="vReferencia"></dd></div>
+            <div><dt>Plan</dt><dd id="vValor"></dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 2. Ubicación ============ -->
+    <section class="nt-section">
+      <div class="nt-section-head">
+        <h2>Ubicación</h2>
+        <span>Se completa con los datos del cliente</span>
+      </div>
+      <div class="nt-section-body">
+        <div class="nt-field">
+          <label for="direccion">Dirección</label>
+          <input type="text" id="direccion" name="direccion" class="nt-input" placeholder="Calle, número, referencia" autocomplete="off">
+          <div class="nt-loc-status" id="geoStatus">
+            <i class="fa-regular fa-circle" aria-hidden="true"></i>
+            <span>Sin ubicación</span>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+        <div class="nt-field">
+          <label for="gmapsPegar">Ubicación de Google Maps</label>
+          <div class="gm-row">
+            <input class="nt-input" id="gmapsPegar" autocomplete="off" spellcheck="false"
+                   placeholder="Pega el enlace de Google Maps o las coordenadas (ej.: -25.5949, -56.8732)"
+                   title="Google Maps: clic derecho sobre la casa y clic en los números, o Compartir → Copiar enlace">
+            <button type="button" class="nt-btn" id="btnPegar">Usar</button>
+          </div>
+          <div class="gm-msg" id="gmapsMsg" aria-live="polite"></div>
+        </div>
+        <div class="gm-prev" id="gmapsPrev" hidden>
+          <iframe title="Vista previa en Google Maps" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+          <a href="#" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir en Google Maps</a>
+        </div>
+        </div>
+        <input type="hidden" name="lat" id="lat">
+        <input type="hidden" name="lng" id="lng">
+      </div>
+    </section>
+
+    <!-- ============ 3. Trabajo ============ -->
+    <section class="nt-section">
+      <div class="nt-section-head">
+        <h2>Detalle del trabajo</h2>
+      </div>
+      <div class="nt-section-body nt-grid">
+        <div class="nt-field">
+          <label for="tipo">Tipo</label>
+          <select id="tipo" name="tipo">
+            <option>Reparación</option>
+            <option>Cambio de router</option>
+            <option>Otro</option>
+          </select>
+        </div>
+
+        <div class="nt-field">
+          <label for="prioridad">Señal</label>
+          <select id="prioridad" name="prioridad">
+            <option>Alta</option>
+            <option selected>Media</option>
+            <option>Baja</option>
+          </select>
+        </div>
+
+        <div class="nt-field">
+          <label for="{{ 'tecnico_id_select' if tecnicos else 'tecnico_fijo' }}">Técnico</label>
+          {% if tecnicos %}
+            <select id="tecnico_id_select">
+              <option value="">Sin asignar</option>
+              {% for t in tecnicos %}
+                <option value="{{ t.id }}">{{ t.nombre }}</option>
+              {% endfor %}
+            </select>
+            <input type="hidden" name="tecnico_id" id="tecnico_id">
+            <input type="hidden" name="tecnico" id="tecnico_nombre">
+          {% else %}
+            <select name="tecnico" id="tecnico_fijo">
+              <option>Cristhian Alcaraz</option>
+              <option>Richard Leckie</option>
+              <option>Néstor Villalba</option>
+              <option>Robert Leckie</option>
+            </select>
+          {% endif %}
+        </div>
+
+        <div class="nt-field">
+          <label for="programada_local">Fecha y hora de la visita <span class="opt">(opcional)</span></label>
+          <input type="datetime-local" id="programada_local" name="programada_local" class="nt-input">
+          <div class="nt-hint">Si la completas, el ticket aparece en la Agenda.</div>
+        </div>
+
+        <div class="nt-field full">
+          <label>Dispositivos conectados al WiFi <span class="opt">(marca los que tenga)</span></label>
+          <div class="nt-checks">
+            {% for d in ['Televisor', 'Cámaras', 'Celulares', 'Computadora', 'Consola de juegos', 'Otro'] %}
+              <label class="nt-check"><input type="checkbox" name="dispositivos" value="{{ d }}" {% if d == 'Otro' %}id="chkOtro"{% endif %}><span>{{ d }}</span></label>
+            {% endfor %}
+          </div>
+          <input class="nt-input" id="dispositivo_otro" name="dispositivo_otro" autocomplete="off" hidden
+                 placeholder="¿Qué otro dispositivo? Ej.: impresora, alarma, parlante" style="margin-top:10px;max-width:420px">
+        </div>
+
+        <div class="nt-field full">
+          <label>¿Tiene repetidor de WiFi?</label>
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div class="nt-seg" role="radiogroup" aria-label="¿Tiene repetidor?">
+              <input type="radio" name="repetidor" id="repNo" value="no"><label for="repNo">No</label>
+              <input type="radio" name="repetidor" id="repSi" value="si"><label for="repSi">Sí</label>
+            </div>
+            <div class="d-flex align-items-center gap-2" id="bloqueRep" hidden>
+              <label for="repetidor_cant" style="margin:0;font-weight:400;color:var(--ink-soft)">Cantidad</label>
+              <input class="nt-input" type="number" id="repetidor_cant" name="repetidor_cant" min="1" max="10" value="1" style="width:80px">
+            </div>
+          </div>
+        </div>
+
+        <div class="nt-field full">
+          <label for="problema">Descripción del problema</label>
+          <textarea id="problema" name="problema" placeholder="Qué reporta el cliente, qué se observó, qué hay que llevar…"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <input type="hidden" name="canal" value="web">
+    <input type="hidden" name="estado" value="pendiente">
+
+    <div class="nt-actions">
+      <a href="{{ url_for('tickets') }}" class="nt-btn nt-btn-ghost">Cancelar</a>
+      <button class="nt-btn" type="submit" id="btnGuardar">
+        <i class="fa-solid fa-check" aria-hidden="true"></i> Guardar ticket
+      </button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+(() => {
+
+  // ---------- Referencias ----------
+  const $ = id => document.getElementById(id);
+  const form        = $('form-ticket');
+  const fieldCli    = $('fieldCliente');
+  const clientCard  = $('clientCard');
+  const direccionEl = $('direccion');
+  const latEl = $('lat'), lngEl = $('lng');
+  const geoStatus = $('geoStatus');
+
+  // ---------- Utilidades ----------
+  const extraerNumero = s => { const m = String(s || '').match(/(\d[\d.,]*)/); return m ? m[1] : ''; };
+  const slug = s => (s || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, '').replace(/\s+/g, '');
+
+  function setDD(id, value, autoNote){
+    const dd = $(id);
+    dd.textContent = value || '—';
+    dd.classList.toggle('empty', !value);
+    if (value && autoNote){
+      const s = document.createElement('span');
+      s.className = 'auto'; s.textContent = autoNote;
+      dd.appendChild(s);
+    }
+  }
+
+  function setGeoStatus(state, text){
+    geoStatus.className = 'nt-loc-status' + (state ? ' ' + state : '');
+    const icon = { ok:'fa-solid fa-circle-check', searching:'fa-solid fa-spinner fa-spin', '':'fa-regular fa-circle' }[state || ''];
+    geoStatus.innerHTML = `<i class="${icon}" aria-hidden="true"></i><span></span>`;
+    geoStatus.querySelector('span').textContent = text;
+  }
+
+  function setCoords(lat, lng){
+    latEl.value = Number(lat).toFixed(6);
+    lngEl.value = Number(lng).toFixed(6);
+    setGeoStatus('ok', `Ubicación cargada (${latEl.value}, ${lngEl.value})`);
+    mostrarPrevia();
+  }
+  function clearCoords(){
+    latEl.value = ''; lngEl.value = '';
+    setGeoStatus('', 'Sin ubicación');
+    mostrarPrevia();
+  }
+
+  // ---------- Pegar ubicación de Google Maps ----------
+  const pegarEl = document.getElementById('gmapsPegar');
+  const prevEl  = document.getElementById('gmapsPrev');
+  const pegarMsg = document.getElementById('gmapsMsg');
+  function mostrarPrevia(){
+    const la = parseFloat(latEl.value), lo = parseFloat(lngEl.value);
+    if (isNaN(la) || isNaN(lo)){ prevEl.hidden = true; return; }
+    const src = MapaSelector.vistaGoogle(la, lo);
+    const fr = prevEl.querySelector('iframe');
+    if (fr.dataset.src !== src){ fr.src = src; fr.dataset.src = src; }
+    prevEl.querySelector('a').href = `https://www.google.com/maps?q=${la},${lo}`;
+    prevEl.hidden = false;
+  }
+  async function usarPegado(){
+    const txt = pegarEl.value.trim();
+    if (!txt){ pegarMsg.textContent = ''; return; }
+    pegarMsg.className = 'gm-msg'; pegarMsg.textContent = 'Leyendo ubicación…';
+    try {
+      const p = await MapaSelector.leerUbicacion(txt);
+      if (!p){
+        pegarMsg.className = 'gm-msg error';
+        pegarMsg.textContent = 'No se encontraron coordenadas. Copia los números del clic derecho o el enlace de "Compartir".';
+        return;
+      }
+      setCoords(p[0], p[1]);
+      pegarEl.value = '';
+      pegarMsg.className = 'gm-msg ' + (MapaSelector.enParaguay(p[0], p[1]) ? 'ok' : 'error');
+      pegarMsg.textContent = MapaSelector.enParaguay(p[0], p[1])
+        ? 'Ubicación cargada. Revisa en la vista previa que sea la casa correcta.'
+        : 'Atención: esa ubicación queda fuera de Paraguay. Revisa lo que copiaste.';
+    } catch (e) {
+      pegarMsg.className = 'gm-msg error';
+      pegarMsg.textContent = 'No se pudo leer el enlace. Prueba copiando las coordenadas (clic derecho en Google Maps).';
+    }
+  }
+  pegarEl.addEventListener('paste', () => setTimeout(usarPegado, 0));
+  pegarEl.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); usarPegado(); } });
+  document.getElementById('btnPegar').addEventListener('click', usarPegado);
+
+
+  // Geocodificador: Google si hay clave, si no OpenStreetMap
+  const geocode = q => MapaSelector.geocodificar(q);
+
+  // ---------- Fecha mínima: ahora ----------
+  (() => {
+    const dt = $('programada_local'); if (!dt) return;
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    dt.min = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  })();
+
+  // ---------- Cliente ----------
+  let geocodeToken = 0; // evita que una búsqueda vieja pise a una nueva
+
+  function limpiarCliente(){
+    ['cliente_id','cedula','pppoe','valor_cliente_hidden'].forEach(id => $(id).value = '');
+    clientCard.classList.remove('show');
+    direccionEl.value = '';
+    clearCoords();
+  }
+
+  async function fillFromOption(op){
+    if (!op || !op.value){ limpiarCliente(); return; }
+    fieldCli.classList.remove('invalid');
+    const d = op.dataset;
+
+    const val = d.valor || extraerNumero(d.tipo_valor);
+    const ppp = d.pppoe || '';
+
+    $('cliente_id').value = d.id || '';
+    $('cedula').value = d.cedula || '';
+    $('pppoe').value = ppp;
+    $('valor_cliente_hidden').value = val || '';
+
+    setDD('vCedula', d.cedula);
+    setDD('vPppoe', ppp);
+    setDD('vTelefono', d.telefono);
+    setDD('vBarrio', d.barrio);
+    setDD('vReferencia', d.referencia);
+    setDD('vValor', val ? (/^\d/.test(val) ? `${val} Gs.` : val) : '');
+    clientCard.classList.add('show');
+
+    const dir = (d.direccion || '').trim() || [d.barrio, d.referencia].filter(Boolean).join(' - ');
+    direccionEl.value = dir;
+    clearCoords();
+
+    // 1) Coordenadas guardadas del cliente
+    const la = parseFloat(d.lat), lo = parseFloat(d.lng);
+    if (!isNaN(la) && !isNaN(lo)){ setCoords(la, lo); return; }
+
+    // 2) Si no, geocodificar la dirección
+    if (!dir) return;
+    const token = ++geocodeToken;
+    setGeoStatus('searching', 'Buscando la ubicación de la dirección…');
+    try {
+      const res = await geocode(dir);
+      if (token !== geocodeToken) return;
+      if (res.length) setCoords(res[0].lat, res[0].lon);
+      else setGeoStatus('', 'No se encontró la dirección. Pega la ubicación de Google Maps.');
+    } catch {
+      if (token === geocodeToken) setGeoStatus('', 'No se pudo buscar la dirección. Pega la ubicación de Google Maps.');
+    }
+  }
+
+  // Select2 dispara el "change" nativo: con un solo listener alcanza
+  jQuery('#cliente').select2({
+    width: '100%',
+    placeholder: 'Escribe el nombre del cliente',
+    allowClear: true,
+    language: {
+      noResults: () => 'Sin resultados',
+      searching: () => 'Buscando…'
+    }
+  }).on('change', function(){
+    fillFromOption(this.options[this.selectedIndex]);
+  });
+
+  // Si al volver atrás quedó un cliente elegido, rellenar
+  const sel = $('cliente');
+  if (sel.value) fillFromOption(sel.options[sel.selectedIndex]);
+
+  // Preseleccionar cliente desde la ficha: /nuevo_ticket?cliente_id=123
+  const preId = new URLSearchParams(location.search).get('cliente_id');
+  if (preId && !sel.value){
+    const op = Array.from(sel.options).find(o => o.dataset.id === preId);
+    if (op){ op.selected = true; jQuery('#cliente').trigger('change'); }
+  }
+
+  // ---------- Técnico ----------
+  const tecSel = $('tecnico_id_select');
+  if (tecSel){
+    const sync = () => {
+      const op = tecSel.options[tecSel.selectedIndex];
+      $('tecnico_id').value = op.value || '';
+      $('tecnico_nombre').value = op.value ? op.textContent.trim() : '';
+    };
+    tecSel.addEventListener('change', sync);
+    sync();
+  }
+
+  // ---------- Dispositivos y repetidor ----------
+  const chkOtro = $('chkOtro'), otroEl = $('dispositivo_otro');
+  chkOtro.addEventListener('change', () => { otroEl.hidden = !chkOtro.checked; if (chkOtro.checked) otroEl.focus(); });
+  const syncRep = () => { $('bloqueRep').hidden = !$('repSi').checked; };
+  document.querySelectorAll('input[name=repetidor]').forEach(r => r.addEventListener('change', syncRep));
+  syncRep();
+
+  // ---------- Envío ----------
+  form.addEventListener('submit', e => {
+    if (!sel.value){
+      e.preventDefault();
+      fieldCli.classList.add('invalid');
+      jQuery('#cliente').select2('open');
+      return;
+    }
+    const btn = $('btnGuardar');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Guardando…';
+  });
+  window.addEventListener('pageshow', () => {
+    const btn = $('btnGuardar');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Guardar ticket';
+  });
+})();
+</script>
+{% endblock %}

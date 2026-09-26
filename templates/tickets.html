@@ -1,0 +1,517 @@
+{% extends "base.html" %}
+{% block title %}Tickets{% endblock %}
+
+{% block extra_head %}
+<style>
+  .tk, .tk-modal{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1;
+    --danger:#C2362F; --danger-hover:#A42C26;
+    color:var(--ink);
+  }
+  .tk{ max-width:1200px; margin:0 auto; padding:8px 0 40px; }
+
+  /* Encabezado */
+  .tk-head{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap:16px; flex-wrap:wrap; margin-bottom:20px;
+  }
+  .tk-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .tk-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
+  .tk-head-actions{ display:flex; gap:8px; }
+
+  /* Botones */
+  .tk-btn{
+    display:inline-flex; align-items:center; gap:8px;
+    height:40px; padding:0 16px; border-radius:8px;
+    font-size:14px; font-weight:500; text-decoration:none; cursor:pointer;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+    white-space:nowrap;
+    transition:background-color .12s, border-color .12s, color .12s;
+  }
+  .tk-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .tk-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
+  .tk-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+  .tk-btn-danger{ background:var(--danger); border-color:var(--danger); }
+  .tk-btn-danger:hover{ background:var(--danger-hover); border-color:var(--danger-hover); }
+  .tk-btn-quiet-danger{ background:none; border-color:transparent; color:var(--danger); height:36px; padding:0 10px; }
+  .tk-btn-quiet-danger:hover{ background:#FDF1F0; border-color:transparent; color:var(--danger); }
+  .tk-btn:focus-visible, .tk-tab:focus-visible, .tk-icon:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .tk-btn.dropdown-toggle::after{ margin-left:2px; }
+  .tk .dropdown-menu{ font-size:14px; border-color:var(--line); border-radius:8px; }
+  .tk .dropdown-item i{ width:18px; color:var(--ink-faint); }
+
+  /* Panel */
+  .tk-panel{
+    background:var(--surface);
+    border:1px solid var(--line); border-radius:10px;
+    overflow:hidden;
+  }
+
+  /* Pestañas de estado */
+  .tk-tabs{
+    display:flex; gap:4px; overflow-x:auto; overflow-y:hidden;
+    padding:0 12px; border-bottom:1px solid var(--line);
+    scrollbar-width:thin;
+  }
+  .tk-tab{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:14px 10px 12px; margin-bottom:-1px;
+    background:none; border:0; border-bottom:2px solid transparent;
+    font-size:14px; font-weight:500; color:var(--ink-soft);
+    white-space:nowrap; cursor:pointer;
+  }
+  .tk-tab:hover{ color:var(--ink); }
+  .tk-tab[aria-selected="true"]{ color:var(--accent); border-bottom-color:var(--accent); }
+  .tk-tab .count{
+    font-size:12px; font-weight:500; color:var(--ink-soft);
+    background:#EEF2F6; border-radius:999px; padding:1px 8px;
+    font-variant-numeric:tabular-nums;
+  }
+  .tk-tab[aria-selected="true"] .count{ background:#E0F2FE; color:var(--accent-hover); }
+
+  /* Barra de búsqueda */
+  .tk-toolbar{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    padding:12px;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .tk-search{ position:relative; flex:1; min-width:220px; max-width:420px; }
+  .tk-search i{
+    position:absolute; left:12px; top:50%; transform:translateY(-50%);
+    color:var(--ink-faint); pointer-events:none;
+  }
+  .tk-search input{
+    width:100%; height:38px; padding:0 12px 0 36px;
+    font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .tk-search input::placeholder{ color:#9AA5B4; }
+  .tk-search input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .tk-toolbar .spacer{ flex:1; }
+  .tk-result{ font-size:13px; color:var(--ink-faint); white-space:nowrap; }
+
+  /* Tabla */
+  .tk-scroll{ overflow-x:auto; }
+  .tk-table{ width:100%; border-collapse:collapse; font-size:14px; }
+  .tk-table th{
+    text-align:left; font-size:13px; font-weight:500; color:var(--ink-soft);
+    background:#F9FAFC; padding:11px 16px;
+    border-bottom:1px solid var(--line); white-space:nowrap;
+  }
+  .tk-table td{
+    padding:12px 16px; border-bottom:1px solid var(--line-soft);
+    vertical-align:middle;
+  }
+  .tk-table tbody tr:last-child td{ border-bottom:0; }
+  .tk-table tbody tr:hover{ background:#FAFBFD; }
+
+  .tk-client strong{ display:block; font-weight:600; }
+  .tk-client small{ display:block; font-size:12.5px; color:var(--ink-faint); white-space:nowrap; }
+  .tk-muted{ color:var(--ink-faint); }
+  .tk-date{ white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .tk-date small{ display:block; color:var(--ink-faint); font-size:12.5px; }
+
+  /* Estado */
+  .tk-status{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:3px 10px; border-radius:999px;
+    font-size:12.5px; font-weight:500; white-space:nowrap;
+    border:1px solid transparent;
+  }
+  .tk-status::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .st-pendiente  { color:#8A5A00; background:#FFF7E6; border-color:#F5E0B3; }
+  .st-en_progreso{ color:#0369A1; background:#EAF6FD; border-color:#C4E4F7; }
+  .st-resuelto   { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
+  .st-cancelado  { color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+
+  /* Acciones */
+  .tk-actions{ display:flex; justify-content:flex-end; align-items:center; gap:4px; }
+  .tk-resolve{
+    display:inline-flex; align-items:center; gap:6px;
+    height:32px; padding:0 10px; border-radius:6px;
+    background:none; border:1px solid var(--line);
+    font-size:13px; font-weight:500; color:var(--ink);
+    white-space:nowrap; cursor:pointer;
+  }
+  .tk-resolve i{ color:#177A56; }
+  .tk-resolve:hover{ border-color:#9ED5BD; background:#EDF8F3; }
+  .tk-icon{
+    width:32px; height:32px; border-radius:6px;
+    display:inline-grid; place-items:center;
+    background:none; border:0; color:var(--ink-faint); cursor:pointer;
+  }
+  .tk-icon:hover{ background:#FDF1F0; color:var(--danger); }
+  .tk-icon.edit:hover{ background:#EEF2F6; color:var(--ink); }
+
+  /* Campos del modal de edición */
+  .tk-field + .tk-field{ margin-top:14px; }
+  .tk-field label{ display:block; font-size:14px; font-weight:500; color:var(--ink); margin-bottom:6px; }
+  .tk-field input, .tk-field select{
+    width:100%; height:42px; padding:0 12px;
+    font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .tk-field input:focus, .tk-field select:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .tk-field-row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+  .tk-field-row .tk-field + .tk-field{ margin-top:0; }
+  .tk-edit-client{
+    padding:10px 12px; margin-bottom:16px; border-radius:8px;
+    background:#F7F9FC; border:1px solid var(--line-soft); font-size:14px; color:var(--ink);
+  }
+  .tk-edit-client small{ display:block; color:var(--ink-faint); font-size:12.5px; }
+
+  .tk-empty{ padding:40px 16px; text-align:center; color:var(--ink-soft); }
+  .tk-empty i{ display:block; font-size:26px; color:var(--ink-faint); margin-bottom:8px; }
+
+  /* Modal */
+  .tk-modal .modal-content{ border:1px solid var(--line); border-radius:12px; }
+  .tk-modal .modal-title{ font-weight:600; font-size:18px; }
+  .tk-modal .modal-body{ padding-top:0; color:var(--ink-soft); }
+  .tk-modal .modal-footer{ gap:8px; }
+
+  @media (max-width:768px){
+    .tk-head-actions{ width:100%; }
+    .tk-head-actions > *{ flex:1; justify-content:center; }
+    .tk-search{ max-width:none; }
+    .tk-table .col-hide{ display:none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set ns = namespace(pendiente=0, en_progreso=0, resuelto=0, cancelado=0) %}
+{% for t in tickets or [] %}
+  {% set e = (t.get('estado') or 'pendiente')|lower %}
+  {% if e == 'resuelto' %}{% set ns.resuelto = ns.resuelto + 1 %}
+  {% elif e == 'en_progreso' %}{% set ns.en_progreso = ns.en_progreso + 1 %}
+  {% elif e == 'cancelado' %}{% set ns.cancelado = ns.cancelado + 1 %}
+  {% else %}{% set ns.pendiente = ns.pendiente + 1 %}{% endif %}
+{% endfor %}
+{% set total = (tickets or [])|length %}
+{% set tecnicos = (tickets or [])|map(attribute='tecnico')|select|unique|sort|list %}
+{% set tipos = ((tickets or [])|map(attribute='tipo')|select|list + ['Instalación','Reparación','Soporte','Otro'])|unique|list %}
+{% set senales = ((tickets or [])|map(attribute='prioridad')|select|list + ['Alta','Media','Baja'])|unique|list %}
+{% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Resuelto', 'cancelado':'Cancelado'} %}
+
+<div class="tk">
+
+  <!-- Encabezado -->
+  <div class="tk-head">
+    <div>
+      <h1>Tickets</h1>
+      <p>
+        {% set abiertos = ns.pendiente + ns.en_progreso %}
+        {% if total %}{{ abiertos }} abierto{{ 's' if abiertos != 1 }} de {{ total }} en total.
+        {% else %}Asistencias técnicas y reclamos de la sucursal.{% endif %}
+      </p>
+    </div>
+    <div class="tk-head-actions">
+      <div class="dropdown">
+        <button class="tk-btn tk-btn-ghost dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="fa-solid fa-download" aria-hidden="true"></i> Exportar
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+          <li><a class="dropdown-item" href="{{ url_for('descargar_pdf') }}"><i class="fa-regular fa-file-pdf" aria-hidden="true"></i> Descargar PDF</a></li>
+          <li><a class="dropdown-item" href="{{ url_for('descargar_word') }}"><i class="fa-regular fa-file-word" aria-hidden="true"></i> Descargar Word</a></li>
+        </ul>
+      </div>
+      <a href="{{ url_for('nuevo_ticket') }}" class="tk-btn">
+        <i class="fa-solid fa-plus" aria-hidden="true"></i> Nuevo ticket
+      </a>
+    </div>
+  </div>
+
+  <div class="tk-panel">
+
+    <!-- Pestañas de estado -->
+    <div class="tk-tabs" role="tablist" aria-label="Filtrar por estado">
+      <button class="tk-tab" role="tab" aria-selected="true"  data-filter="">Todos <span class="count">{{ total }}</span></button>
+      <button class="tk-tab" role="tab" aria-selected="false" data-filter="abiertos">Abiertos <span class="count">{{ ns.pendiente + ns.en_progreso }}</span></button>
+      <button class="tk-tab" role="tab" aria-selected="false" data-filter="pendiente">Pendientes <span class="count">{{ ns.pendiente }}</span></button>
+      <button class="tk-tab" role="tab" aria-selected="false" data-filter="en_progreso">En progreso <span class="count">{{ ns.en_progreso }}</span></button>
+      <button class="tk-tab" role="tab" aria-selected="false" data-filter="resuelto">Resueltos <span class="count">{{ ns.resuelto }}</span></button>
+      <button class="tk-tab" role="tab" aria-selected="false" data-filter="cancelado">Cancelados <span class="count">{{ ns.cancelado }}</span></button>
+    </div>
+
+    <!-- Búsqueda + acción masiva -->
+    <div class="tk-toolbar">
+      <div class="tk-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input id="filtroTexto" type="search" placeholder="Buscar por cliente, cédula, técnico, barrio o tipo" autocomplete="off" aria-label="Buscar tickets">
+      </div>
+      <span class="tk-result" id="tkResult" aria-live="polite"></span>
+      <span class="spacer"></span>
+      {% if ns.resuelto %}
+        <form method="post" action="{{ url_for('tickets_eliminar_resueltos') }}" class="js-confirm"
+              data-title="¿Eliminar todos los resueltos?"
+              data-body="Se eliminarán {{ ns.resuelto }} ticket{{ 's' if ns.resuelto != 1 }} en estado resuelto. Esta acción no se puede deshacer."
+              data-confirm="Eliminar {{ ns.resuelto }} ticket{{ 's' if ns.resuelto != 1 }}"
+              data-variant="danger">
+          <button type="submit" class="tk-btn tk-btn-quiet-danger">
+            <i class="fa-regular fa-trash-can" aria-hidden="true"></i> Eliminar resueltos
+          </button>
+        </form>
+      {% endif %}
+    </div>
+
+    <!-- Tabla -->
+    <div class="tk-scroll">
+      <table class="tk-table" id="tablaTickets">
+        <thead>
+          <tr>
+            <th scope="col">Cliente</th>
+            <th scope="col" class="col-hide">Barrio</th>
+            <th scope="col">Tipo</th>
+            <th scope="col" class="col-hide">Señal</th>
+            <th scope="col" class="col-hide">Técnico</th>
+            <th scope="col">Estado</th>
+            <th scope="col" class="col-hide">Fecha</th>
+            <th scope="col"><span class="visually-hidden">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tickets or [] %}
+            {% set est = (t.get('estado') or 'pendiente')|lower %}
+            {% set barrio = t.get('c_barrio') or t.get('barrio') %}
+            {% set fecha = (t.get('fecha') or '')|string %}
+            <tr data-estado="{{ est }}"
+                data-search="{{ [t.get('cliente'), t.get('cedula'), t.get('pppoe'), barrio, t.get('tipo'), t.get('tecnico'), t.get('prioridad')]|select|join(' ')|lower }}">
+              <td class="tk-client">
+                <strong>{{ t.get('cliente') or '—' }}</strong>
+                <small>
+                  CI {{ t.get('cedula') or '—' }}
+                  {% if t.get('pppoe') %}· PPPoE {{ t.get('pppoe') }}{% endif %}
+                </small>
+              </td>
+              <td class="col-hide">{% if barrio %}{{ barrio }}{% else %}<span class="tk-muted">—</span>{% endif %}</td>
+              <td>{{ t.get('tipo') or '—' }}</td>
+              <td class="col-hide">{{ t.get('prioridad') or '—' }}</td>
+              <td class="col-hide">{{ t.get('tecnico') or '—' }}</td>
+              <td>
+                <span class="tk-status st-{{ est if est in etiquetas else 'pendiente' }}">
+                  {{ etiquetas.get(est, 'Pendiente') }}
+                </span>
+              </td>
+              <td class="tk-date col-hide">
+                {{ fecha[:10] }}
+                {% if fecha|length > 10 %}<small>{{ fecha[11:16] }}</small>{% endif %}
+              </td>
+              <td>
+                <div class="tk-actions">
+                  <button type="button" class="tk-icon edit js-edit" title="Editar" aria-label="Editar ticket de {{ t.get('cliente') }}"
+                          data-action="{{ url_for('tickets_editar', tid=t['id']) }}"
+                          data-cliente="{{ t.get('cliente') or '' }}"
+                          data-fecha="{{ fecha[:16] }}"
+                          data-tipo="{{ t.get('tipo') or '' }}"
+                          data-prioridad="{{ t.get('prioridad') or '' }}"
+                          data-tecnico="{{ t.get('tecnico') or '' }}"
+                          data-estado="{{ est }}">
+                    <i class="fa-regular fa-pen-to-square" aria-hidden="true"></i>
+                  </button>
+                  {% if est != 'resuelto' %}
+                    <form method="post" action="{{ url_for('tickets_cambiar_estado', tid=t['id']) }}" class="js-confirm"
+                          data-title="¿Marcar como resuelto?"
+                          data-body="El ticket de {{ t.get('cliente') }} pasará a estado resuelto."
+                          data-confirm="Marcar como resuelto"
+                          data-variant="primary">
+                      <input type="hidden" name="estado" value="resuelto">
+                      <button type="submit" class="tk-resolve">
+                        <i class="fa-regular fa-circle-check" aria-hidden="true"></i> Resolver
+                      </button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('tickets_eliminar', tid=t['id']) }}" class="js-confirm"
+                          data-title="¿Eliminar este ticket?"
+                          data-body="Se eliminará el ticket resuelto de {{ t.get('cliente') }}. Esta acción no se puede deshacer."
+                          data-confirm="Eliminar ticket"
+                          data-variant="danger">
+                      <button type="submit" class="tk-icon" title="Eliminar" aria-label="Eliminar ticket de {{ t.get('cliente') }}">
+                        <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          <tr id="tkSinResultados" {% if total %}hidden{% endif %}>
+            <td colspan="8" class="tk-empty">
+              {% if total %}
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                Ningún ticket coincide con el filtro.
+              {% else %}
+                <i class="fa-regular fa-clipboard" aria-hidden="true"></i>
+                No hay tickets registrados. <a href="{{ url_for('nuevo_ticket') }}">Crear el primero</a>
+              {% endif %}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: editar ticket -->
+<div class="modal fade tk-modal" id="tkEdit" tabindex="-1" aria-labelledby="tkEditTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="tkEditForm" method="post" action="">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="tkEditTitle">Editar ticket</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body" style="color:inherit">
+        <div class="tk-edit-client">
+          <strong id="tkEditCliente"></strong>
+          <small id="tkEditFecha"></small>
+        </div>
+
+        <div class="tk-field-row" style="margin-top:0">
+          <div class="tk-field">
+            <label for="tkEditTipo">Tipo</label>
+            <input id="tkEditTipo" name="tipo" list="dlTipos" required autocomplete="off">
+          </div>
+          <div class="tk-field">
+            <label for="tkEditPrioridad">Señal</label>
+            <input id="tkEditPrioridad" name="prioridad" list="dlSenales" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="tk-field-row">
+          <div class="tk-field">
+            <label for="tkEditTecnico">Técnico</label>
+            <input id="tkEditTecnico" name="tecnico" list="dlTecnicos" autocomplete="off">
+          </div>
+          <div class="tk-field">
+            <label for="tkEditEstado">Estado</label>
+            <select id="tkEditEstado" name="estado">
+              {% for val, label in etiquetas.items() %}
+                <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <datalist id="dlTipos">{% for x in tipos %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="dlSenales">{% for x in senales %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="dlTecnicos">{% for x in tecnicos %}<option value="{{ x }}">{% endfor %}</datalist>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="tk-btn tk-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="tk-btn">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal de confirmación (único, se reutiliza para todas las acciones) -->
+<div class="modal fade tk-modal" id="tkConfirm" tabindex="-1" aria-labelledby="tkConfirmTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="tkConfirmTitle"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body" id="tkConfirmBody"></div>
+      <div class="modal-footer border-0">
+        <button type="button" class="tk-btn tk-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="tk-btn" id="tkConfirmOk"></button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(() => {
+  // ===== Filtros: pestañas de estado + búsqueda =====
+  const tabs   = document.querySelectorAll('.tk-tab');
+  const input  = document.getElementById('filtroTexto');
+  const rows   = document.querySelectorAll('#tablaTickets tbody tr[data-estado]');
+  const empty  = document.getElementById('tkSinResultados');
+  const result = document.getElementById('tkResult');
+  let filtro = '';
+
+  const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+  function aplicar(){
+    const q = norm(input.value);
+    let visibles = 0;
+    rows.forEach(tr => {
+      const est = tr.dataset.estado;
+      const okEstado = !filtro
+        || (filtro === 'abiertos' ? (est === 'pendiente' || est === 'en_progreso') : est === filtro);
+      const okTexto = !q || norm(tr.dataset.search).includes(q);
+      const show = okEstado && okTexto;
+      tr.hidden = !show;
+      if (show) visibles++;
+    });
+    if (rows.length){
+      empty.hidden = visibles > 0;
+      result.textContent = (q || filtro) ? `${visibles} resultado${visibles === 1 ? '' : 's'}` : '';
+    }
+  }
+
+  tabs.forEach(tab => tab.addEventListener('click', () => {
+    tabs.forEach(t => t.setAttribute('aria-selected', 'false'));
+    tab.setAttribute('aria-selected', 'true');
+    filtro = tab.dataset.filter;
+    aplicar();
+  }));
+  input.addEventListener('input', aplicar);
+
+  // ===== Modal de confirmación para Resolver / Eliminar / Eliminar resueltos =====
+  const modalEl = document.getElementById('tkConfirm');
+  const modal   = new bootstrap.Modal(modalEl);
+  const okBtn   = document.getElementById('tkConfirmOk');
+  let formPendiente = null;
+
+  document.querySelectorAll('form.js-confirm').forEach(form => {
+    form.addEventListener('submit', e => {
+      if (form.dataset.confirmed === '1') return; // ya confirmado: dejar enviar
+      e.preventDefault();
+      formPendiente = form;
+      document.getElementById('tkConfirmTitle').textContent = form.dataset.title;
+      document.getElementById('tkConfirmBody').textContent  = form.dataset.body;
+      okBtn.textContent = form.dataset.confirm;
+      okBtn.classList.toggle('tk-btn-danger', form.dataset.variant === 'danger');
+      okBtn.disabled = false;
+      modal.show();
+    });
+  });
+
+  okBtn.addEventListener('click', () => {
+    if (!formPendiente) return;
+    okBtn.disabled = true;
+    formPendiente.dataset.confirmed = '1';
+    formPendiente.requestSubmit ? formPendiente.requestSubmit() : formPendiente.submit();
+  });
+  modalEl.addEventListener('shown.bs.modal', () => okBtn.focus());
+  modalEl.addEventListener('hidden.bs.modal', () => { formPendiente = null; });
+
+  // ===== Editar ticket =====
+  const editEl   = document.getElementById('tkEdit');
+  const editModal = new bootstrap.Modal(editEl);
+  const editForm = document.getElementById('tkEditForm');
+  document.querySelectorAll('.js-edit').forEach(btn => btn.addEventListener('click', () => {
+    const d = btn.dataset;
+    editForm.action = d.action;
+    document.getElementById('tkEditCliente').textContent = d.cliente;
+    document.getElementById('tkEditFecha').textContent   = d.fecha ? 'Creado el ' + d.fecha : '';
+    document.getElementById('tkEditTipo').value      = d.tipo;
+    document.getElementById('tkEditPrioridad').value = d.prioridad;
+    document.getElementById('tkEditTecnico').value   = d.tecnico;
+    document.getElementById('tkEditEstado').value    = d.estado;
+    editForm.querySelector('[type=submit]').disabled = false;
+    editModal.show();
+  }));
+  editEl.addEventListener('shown.bs.modal', () => document.getElementById('tkEditTipo').focus());
+  editForm.addEventListener('submit', e => {
+    if (!editForm.checkValidity()) return;
+    editForm.querySelector('[type=submit]').disabled = true;
+  });
+})();
+</script>
+{% endblock %}

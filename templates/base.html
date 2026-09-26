@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>SPYnet - {% block title %}{% endblock %}</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+  <!-- Font Awesome + Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+  <!-- Tipografía del sistema -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Socket.IO client -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <style>
+    :root{
+      --sb-width:248px;
+      --sb-bg:#0284C7;              /* azul celeste */
+      --sb-bg-2:#0369A1;            /* un tono más profundo abajo */
+      --sb-text:rgba(255,255,255,.85);
+      --sb-text-strong:#FFFFFF;
+      --sb-muted:rgba(255,255,255,.68);
+      --sb-hover:rgba(255,255,255,.12);
+      --sb-active:rgba(255,255,255,.20);
+      --sb-line:rgba(255,255,255,.18);
+      --ink:#0F1B2D;
+      --ink-soft:#4A5668;
+      --ink-faint:#7A8699;
+      --paper:#F5F7FA;
+      --line:#D9E0E8;
+      --accent:#1F5FD1;
+      --topbar-h:60px;
+    }
+
+    body{
+      font-family:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+      background:var(--paper);
+      color:var(--ink);
+      -webkit-font-smoothing:antialiased;
+    }
+
+    /* ================= SIDEBAR ================= */
+    .sidebar{
+      position:fixed; inset:0 auto 0 0; z-index:1040;
+      width:var(--sb-width);
+      background:linear-gradient(180deg, var(--sb-bg) 0%, var(--sb-bg-2) 100%);
+      color:var(--sb-text);
+      display:flex; flex-direction:column;
+      transition:transform .2s ease;
+    }
+
+    .sb-brand{
+      display:flex; align-items:center; gap:10px;
+      height:var(--topbar-h); padding:0 20px;
+      color:var(--sb-text-strong); text-decoration:none;
+      border-bottom:1px solid var(--sb-line);
+      flex-shrink:0;
+    }
+    .sb-brand:hover{ color:var(--sb-text-strong); }
+    .sb-brand img{ width:30px; height:30px; border-radius:50%; object-fit:cover; background:#fff; }
+    .sb-brand span{ font-weight:600; font-size:17px; }
+
+    .sb-branch{
+      margin:16px 12px 8px; padding:10px 12px;
+      border:1px solid var(--sb-line); border-radius:8px;
+      display:flex; align-items:center; gap:10px;
+      font-size:13px;
+    }
+    .sb-branch i{ color:var(--sb-text); font-size:14px; }
+    .sb-branch-info{ flex:1; min-width:0; line-height:1.3; }
+    .sb-branch-info small{ display:block; color:var(--sb-text); font-size:12px; }
+    .sb-branch-info strong{
+      display:block; color:var(--sb-text-strong); font-weight:500;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .sb-branch{ background:rgba(255,255,255,.08); }
+    .sb-branch-info small{ color:var(--sb-muted) !important; }
+    .sb-branch a{
+      color:#fff; font-size:12px; font-weight:600; text-decoration:underline;
+      text-underline-offset:3px; text-decoration-color:rgba(255,255,255,.5);
+    }
+    .sb-branch a:hover{ color:#fff; text-decoration:underline; }
+
+    .sb-nav{
+      flex:1; overflow-y:auto;
+      padding:8px 12px 16px;
+    }
+    .sb-section{
+      font-size:12px; color:var(--sb-muted);
+      padding:16px 10px 6px;
+    }
+    .sb-nav ul{ list-style:none; margin:0; padding:0; }
+
+    .sb-link{
+      display:flex; align-items:center; gap:12px;
+      width:100%;
+      padding:9px 10px; margin:1px 0;
+      border:0; border-radius:6px;
+      background:none;
+      color:var(--sb-text); font-size:14px; font-weight:500;
+      text-decoration:none; text-align:left;
+      position:relative;
+    }
+    .sb-link i.sb-ico{ width:18px; text-align:center; font-size:15px; flex-shrink:0; }
+    .sb-link:hover{ background:var(--sb-hover); color:var(--sb-text-strong); }
+    .sb-link:focus-visible{ outline:2px solid #fff; outline-offset:0; }
+    .sb-link.active{
+      background:var(--sb-active); color:var(--sb-text-strong); font-weight:600;
+    }
+    .sb-link.active::before{
+      content:""; position:absolute; left:-12px; top:8px; bottom:8px;
+      width:3px; border-radius:0 3px 3px 0; background:#fff;
+    }
+    .sb-link .sb-caret{
+      margin-left:auto; font-size:11px;
+      transition:transform .15s;
+    }
+    .sb-link[aria-expanded="true"] .sb-caret{ transform:rotate(180deg); }
+
+    .sb-sub{ margin:2px 0 6px 19px !important; padding-left:10px !important; border-left:1px solid var(--sb-line); }
+    .sb-sub .sb-link{ font-size:13.5px; padding:6px 10px; font-weight:400; color:var(--sb-text); }
+    .sb-sub .sb-link.active::before{ display:none; }
+    .sb-sub .sb-link.active{ background:none; color:var(--sb-text-strong); font-weight:500; }
+
+    /* Usuario al pie */
+    .sb-user{
+      border-top:1px solid var(--sb-line);
+      padding:12px;
+      flex-shrink:0;
+    }
+    .sb-user-btn{
+      display:flex; align-items:center; gap:10px;
+      width:100%; padding:8px; border:0; border-radius:8px;
+      background:none; color:var(--sb-text-strong); text-align:left;
+    }
+    .sb-user-btn:hover{ background:var(--sb-hover); }
+    .sb-user-btn::after{ display:none; } /* sin flecha de Bootstrap */
+    .sb-user-btn img{ width:34px; height:34px; border-radius:50%; object-fit:cover; flex-shrink:0; border:2px solid rgba(255,255,255,.6); }
+    .sb-user-info{ flex:1; min-width:0; line-height:1.3; }
+    .sb-user-info strong{ display:block; font-size:14px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sb-user-info small{ display:block; font-size:12px; color:var(--sb-muted); }
+    .sb-user-btn .fa-ellipsis-vertical{ color:var(--sb-text); }
+
+    .sb-user .dropdown-menu{ min-width:260px; font-size:14px; }
+    .avatar-lg{ width:56px; height:56px; border-radius:50%; object-fit:cover; }
+
+    /* ================= TOPBAR ================= */
+    .topbar{
+      position:sticky; top:0; z-index:1030;
+      height:var(--topbar-h);
+      background:#fff; border-bottom:1px solid var(--line);
+      display:flex; align-items:center; gap:12px;
+      padding:0 24px;
+    }
+    .topbar-title{
+      font-size:15px; font-weight:600; color:var(--ink);
+      margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .topbar-actions{ margin-left:auto; display:flex; align-items:center; gap:4px; }
+    .tb-btn{
+      width:38px; height:38px; border-radius:8px;
+      display:inline-grid; place-items:center;
+      border:0; background:none; color:var(--ink-soft);
+      position:relative;
+    }
+    .tb-btn:hover{ background:var(--paper); color:var(--ink); }
+    .tb-btn::after{ display:none; }
+    .tb-btn .badge{ position:absolute; top:4px; right:2px; font-size:10px; }
+    .tb-menu{ display:none; }
+
+    /* Notificaciones */
+    #notifList li + li { border-top: 1px solid #f1f3f5; }
+    #notifList li { font-size: .95rem; }
+    .notif-dropdown { min-width: 320px; max-height: 60vh; overflow: auto; }
+
+    /* ================= CONTENIDO ================= */
+    .app-main{ min-height:100vh; display:flex; flex-direction:column; }
+    body:has(.sidebar) .app-main{ margin-left:var(--sb-width); }
+    /* Páginas que anulan el bloque navbar (login, elegir sucursal): sin topbar */
+    body:not(:has(.sidebar)) .topbar{ display:none; }
+
+    .page-container{ padding:24px; flex:1; }
+    .flash-container{ padding:16px 24px 0; }
+    .flash-container:empty{ display:none; }
+
+    .fab-add{
+      position:fixed; right:18px; bottom:18px;
+      width:56px; height:56px; display:none;
+      align-items:center; justify-content:center; border-radius:50%; z-index:1030;
+    }
+
+    .sb-backdrop{
+      position:fixed; inset:0; z-index:1035;
+      background:rgba(15,27,45,.45);
+      display:none;
+    }
+
+    /* ================= MÓVIL ================= */
+    @media (max-width: 991.98px){
+      .sidebar{ transform:translateX(-100%); }
+      body.sb-open .sidebar{ transform:none; box-shadow:0 0 40px rgba(0,0,0,.3); }
+      body.sb-open .sb-backdrop{ display:block; }
+      body:has(.sidebar) .app-main{ margin-left:0; }
+      .tb-menu{ display:inline-grid; margin-left:-8px; }
+      .topbar{ padding:0 16px; }
+      .page-container{ padding:16px; }
+      .flash-container{ padding:12px 16px 0; }
+      .fab-add{ display:flex; }
+    }
+    @media (prefers-reduced-motion: reduce){
+      .sidebar, .sb-caret{ transition:none; }
+    }
+  </style>
+
+  {% block extra_head %}{% endblock %}
+</head>
+<body data-sonido="{{ 1 if session.get('notif_sonido', 1) else 0 }}" data-gmaps-key="{{ google_maps_key }}" data-ubicacion-api="{{ url_for('api_ubicacion_desde_enlace') }}" data-notif-api="{{ notif_api }}">
+
+{% macro nav_link(endpoint, icon, label) -%}
+  {% set ep = request.endpoint or '' %}
+  <li>
+    <a class="sb-link {{ 'active' if ep == endpoint }}" href="{{ url_for(endpoint) }}"
+       {% if ep == endpoint %}aria-current="page"{% endif %}>
+      <i class="{{ icon }} sb-ico" aria-hidden="true"></i>{{ label }}
+    </a>
+  </li>
+{%- endmacro %}
+
+{% macro nav_group(gid, icon, label, eps, items) -%}
+  {% set ep = request.endpoint or '' %}
+  {% set actual = request.full_path.rstrip('?') %}
+  {% set abierto = ep in eps %}
+  <li>
+    <button class="sb-link {{ 'active' if abierto }}" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sb-{{ gid }}"
+            aria-expanded="{{ 'true' if abierto else 'false' }}" aria-controls="sb-{{ gid }}">
+      <i class="{{ icon }} sb-ico" aria-hidden="true"></i>{{ label }}
+      <i class="fa-solid fa-chevron-down sb-caret" aria-hidden="true"></i>
+    </button>
+    <ul class="collapse sb-sub {{ 'show' if abierto }}" id="sb-{{ gid }}" data-bs-parent="#sbNav">
+      {% for it in items %}
+        {% set act = actual in (it.m or [it.u]) %}
+        <li>
+          <a class="sb-link {{ 'active' if act }}" href="{{ it.u }}" {% if act %}aria-current="page"{% endif %}>{{ it.l }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  </li>
+{%- endmacro %}
+
+{% block navbar %}
+{% set ep = request.endpoint or '' %}
+{% if session.get('usuario') %}
+  {% set avatar_url = session.get('foto_url') or url_for('static', filename='img/users/default.png') %}
+  {% set nombre_user = session.get('nombre') or 'Usuario' %}
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
+    <a class="sb-brand" href="{{ url_for('menu') }}">
+      <img src="{{ url_for('static', filename='img/logo.png') }}" alt="">
+      <span>SPYnet</span>
+    </a>
+
+    <div class="sb-branch">
+      <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+      <div class="sb-branch-info">
+        <small>Sucursal</small>
+        <strong>{{ g.sucursal_nombre or 'Sin seleccionar' }}</strong>
+      </div>
+      <a href="{{ url_for('seleccionar_sucursal') }}">Cambiar</a>
+    </div>
+
+    <nav class="sb-nav" id="sbNav">
+      <ul>
+        {{ nav_link('menu', 'fa-solid fa-house', 'Inicio') }}
+      </ul>
+
+      <div class="sb-section">Operación</div>
+      <ul>
+        {{ nav_group('tickets', 'fa-solid fa-ticket', 'Tickets', ['tickets', 'nuevo_ticket'], [
+             dict(l='Todos', u=url_for('tickets')),
+             dict(l='Nuevo ticket', u=url_for('nuevo_ticket')),
+           ]) }}
+        {{ nav_group('inst', 'fa-solid fa-plug', 'Instalaciones', ['instalaciones', 'instalaciones_nueva'], [
+             dict(l='Lista de instalaciones', u=url_for('instalaciones', vista='todas')),
+             dict(l='Pendientes', u=url_for('instalaciones'), m=[url_for('instalaciones'), url_for('instalaciones', vista='pendientes')]),
+             dict(l='Para hoy', u=url_for('instalaciones', vista='hoy')),
+             dict(l='Esta semana', u=url_for('instalaciones', vista='semana')),
+             dict(l='Realizadas', u=url_for('instalaciones', vista='realizadas')),
+             dict(l='Nueva instalación', u=url_for('instalaciones_nueva')),
+           ]) }}
+        {{ nav_group('ot', 'fa-regular fa-file-lines', 'Órdenes de trabajo', ['ordenes_trabajo', 'tickets_ot'], [
+             dict(l='Abiertas', u=url_for('ordenes_trabajo'), m=[url_for('ordenes_trabajo'), url_for('ordenes_trabajo', vista='abiertas')]),
+             dict(l='Para hoy', u=url_for('ordenes_trabajo', vista='hoy')),
+             dict(l='Todas', u=url_for('ordenes_trabajo', vista='todas')),
+           ]) }}
+        {{ nav_group('agenda', 'fa-regular fa-calendar-check', 'Agenda', ['agenda'], [
+             dict(l='Hoy', u=url_for('agenda'), m=[url_for('agenda'), url_for('agenda', dia=nav.hoy)]),
+             dict(l='Mañana', u=url_for('agenda', dia=nav.manana)),
+             dict(l='Esta semana', u=url_for('agenda', desde=nav.lunes, hasta=nav.domingo)),
+           ]) }}
+        {{ nav_group('mapa', 'fa-solid fa-map-location-dot', 'Mapa', ['mapa'], [
+             dict(l='Tickets y técnicos', u=url_for('mapa')),
+             dict(l='Reporte PDF de hoy', u=url_for('mapa_export_pdf')),
+           ]) }}
+      </ul>
+
+      <div class="sb-section">Gestión</div>
+      <ul>
+        {{ nav_group('clientes', 'fa-solid fa-users', 'Clientes', ['clientes', 'clientes_nuevo', 'clientes_editar', 'clientes_detalle'], [
+             dict(l='Todos', u=url_for('clientes')),
+             dict(l='Exonerados', u=url_for('clientes', exonerado=1)),
+             dict(l='Nuevo cliente', u=url_for('clientes_nuevo')),
+           ]) }}
+        {{ nav_group('equipos', 'fa-solid fa-server', 'Equipos', ['equipos'], [
+             dict(l='Inventario', u=url_for('equipos')),
+             dict(l='Uso de hoy (PDF)', u=url_for('equipos_descargar_hoy_pdf')),
+             dict(l='Movimientos (CSV)', u=url_for('equipos_movs_csv')),
+           ]) }}
+        {{ nav_group('usuarios', 'fa-solid fa-user-group', 'Usuarios', ['usuarios'], [
+             dict(l='Lista de usuarios', u=url_for('usuarios')),
+             dict(l='Agregar usuario', u=url_for('usuarios', nuevo=1)),
+           ]) }}
+        {{ nav_group('config', 'fa-solid fa-gear', 'Configuración', ['configuracion'], [
+             dict(l='Técnicos', u=url_for('configuracion'), m=[url_for('configuracion'), url_for('configuracion', tab='tecnicos')]),
+             dict(l='Empresa', u=url_for('configuracion', tab='empresa')),
+             dict(l='Mis preferencias', u=url_for('configuracion', tab='preferencias')),
+           ]) }}
+        {{ nav_group('suc', 'fa-solid fa-store', 'Sucursales', ['sucursales_list'], [
+             dict(l='Gestionar sucursales', u=url_for('sucursales_list')),
+             dict(l='Cambiar de sucursal', u=url_for('seleccionar_sucursal')),
+           ]) }}
+      </ul>
+
+      <div class="sb-section">Reportes</div>
+      <ul>
+        {{ nav_group('stats', 'fa-solid fa-chart-column', 'Estadísticas', ['estadisticas'], [
+             dict(l='Este mes', u=url_for('estadisticas'), m=[url_for('estadisticas'), url_for('estadisticas', mes=nav.mes)]),
+             dict(l='Mes anterior', u=url_for('estadisticas', mes=nav.mes_ant)),
+           ]) }}
+      </ul>
+    </nav>
+
+    <!-- Usuario -->
+    <div class="sb-user dropup">
+      <button class="sb-user-btn dropdown-toggle" type="button" id="userDropdown"
+              data-bs-toggle="dropdown" aria-expanded="false">
+        <img src="{{ avatar_url }}" alt="">
+        <span class="sb-user-info">
+          <strong>{{ nombre_user }}</strong>
+          <small>{{ (session.get('rol') or 'operador')|capitalize }}</small>
+        </span>
+        <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+      </button>
+      <ul class="dropdown-menu shadow" aria-labelledby="userDropdown">
+        <li class="px-3 py-3">
+          <div class="d-flex align-items-center gap-3">
+            <img src="{{ avatar_url }}" alt="" class="avatar-lg">
+            <div class="small">
+              <div class="fw-semibold" style="font-size:15px">{{ nombre_user }}</div>
+              <div class="text-muted">{{ session.get('email') or '' }}</div>
+              <div class="text-muted">{{ g.sucursal_nombre or '' }}</div>
+            </div>
+          </div>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+          <a class="dropdown-item d-flex align-items-center" href="{{ url_for('perfil') }}">
+            <i class="fa-regular fa-id-badge me-2 text-secondary"></i> Mi perfil
+          </a>
+        </li>
+        <li>
+          <a class="dropdown-item d-flex align-items-center" href="{{ url_for('configuracion') }}">
+            <i class="fa-solid fa-gear me-2 text-secondary"></i> Configuración
+          </a>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+          <button type="button" class="dropdown-item text-danger d-flex align-items-center"
+                  data-bs-toggle="modal" data-bs-target="#logoutModal">
+            <i class="fa-solid fa-right-from-bracket me-2"></i> Cerrar sesión
+          </button>
+        </li>
+      </ul>
+    </div>
+  </aside>
+  <div class="sb-backdrop" id="sbBackdrop"></div>
+
+  <!-- Modal cerrar sesión -->
+  <div class="modal fade" id="logoutModal" tabindex="-1" aria-labelledby="logoutModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" style="border-radius:12px">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-semibold" id="logoutModalLabel">¿Cerrar sesión?</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body pt-0 text-secondary">Vas a salir de tu cuenta en este dispositivo.</div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancelar</button>
+          <a class="btn btn-danger" href="{{ url_for('logout') }}">Cerrar sesión</a>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
+
+<div class="app-main">
+
+  {% if session.get('usuario') %}
+  <!-- ================= TOPBAR ================= -->
+  <header class="topbar">
+    <button class="tb-btn tb-menu" type="button" id="sbToggle" aria-controls="sidebar" aria-expanded="false" aria-label="Abrir menú">
+      <i class="fa-solid fa-bars"></i>
+    </button>
+
+    <h1 class="topbar-title">{{ self.title()|replace('— SPYnet', '')|replace('- SPYnet', '')|trim }}</h1>
+
+    <div class="topbar-actions">
+      {% if not session.get('notifs', 1) %}
+      <a class="tb-btn" href="{{ url_for('configuracion', tab='preferencias') }}"
+         title="Notificaciones desactivadas" aria-label="Notificaciones desactivadas: ir a Mis preferencias">
+        <i class="fa-regular fa-bell-slash"></i>
+      </a>
+      {% else %}
+      <!-- Campana de notificaciones -->
+      <div class="dropdown">
+        <button class="tb-btn" type="button" id="notifDropdown" data-bs-toggle="dropdown"
+                aria-expanded="false" title="Notificaciones" aria-label="Notificaciones">
+          <i class="fa-regular fa-bell"></i>
+          <span id="notifBadge" class="badge rounded-pill bg-danger d-none">0</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow notif-dropdown" aria-labelledby="notifDropdown">
+          <li class="dropdown-header fw-semibold text-dark">Notificaciones</li>
+          <ul id="notifList" class="list-unstyled mb-0 px-0"></ul>
+          <li><hr class="dropdown-divider"></li>
+          <li class="px-3 pb-2">
+            <button id="notifMarkRead" class="btn btn-sm btn-outline-secondary w-100">
+              Marcar como leído
+            </button>
+          </li>
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+  {% endif %}
+
+  <!-- Mensajes flash -->
+  <div class="flash-container">
+    {% with messages = get_flashed_messages(with_categories=True) %}
+      {% if messages %}
+        {% for category, msg in messages %}
+          {% set bs = 'secondary' %}
+          {% if category in ['success','error','warning','info','danger','primary'] %}
+            {% set bs = 'danger' if category=='error' else category %}
+          {% endif %}
+          <div class="alert alert-{{ bs }} alert-dismissible fade show" role="alert">
+            {{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  <!-- Contenido -->
+  <main class="container-fluid page-container">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+  <!-- FAB: Nuevo ticket (móviles) -->
+  {% if session.get('usuario') %}
+    <a href="{{ url_for('nuevo_ticket') }}" class="btn btn-primary fab-add shadow" title="Nuevo ticket">
+      <i class="fa-solid fa-plus"></i>
+    </a>
+  {% endif %}
+
+  <!-- Toasts -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
+    <div id="toastContainer"></div>
+  </div>
+
+  <!-- Sonido de nueva solicitud -->
+  <audio id="ping" preload="auto" src="/sonidos/new-ticket.mp3"></audio>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Selector de ubicación (Google Maps si hay clave, si no Leaflet).
+       Va incluido aquí mismo: no hace falta ningún archivo aparte. -->
+  <script>
+/*
+ * Selector de ubicación para SPYnet.
+ * - Si hay clave de Google Maps (GOOGLE_MAPS_API_KEY), usa Google Maps.
+ * - Si no, usa Leaflet (satélite de Esri + OpenStreetMap), como antes.
+ *
+ * Uso:
+ *   const mapa = await MapaSelector.crear(elemento, [lat, lng], zoom, pos => { ... });
+ *   mapa.centrar([lat, lng], 17);   // centra y mueve el marcador
+ *   mapa.pos();                     // [lat, lng] del marcador
+ *   mapa.refrescar();               // después de mostrar un modal
+ *   const res = await MapaSelector.geocodificar('Barrio Centro, Valenzuela');
+ *   // res: [{ lat, lon, display_name }]
+ */
+(function () {
+  const clave = () => (document.body.dataset.gmapsKey || '').trim();
+  let cargaGoogle = null;
+
+  function cargarGoogle() {
+    if (window.google && window.google.maps) return Promise.resolve();
+    if (cargaGoogle) return cargaGoogle;
+    cargaGoogle = new Promise((ok, error) => {
+      window.__spynetGmapsListo = () => ok();
+      const s = document.createElement('script');
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(clave()) +
+              '&language=es&region=PY&loading=async&callback=__spynetGmapsListo';
+      s.async = true;
+      s.onerror = () => { cargaGoogle = null; error(new Error('No se pudo cargar Google Maps')); };
+      document.head.appendChild(s);
+    });
+    return cargaGoogle;
+  }
+
+  async function crearGoogle(el, inicio, zoom, alMover) {
+    await cargarGoogle();
+    const g = google.maps;
+    const map = new g.Map(el, {
+      center: { lat: inicio[0], lng: inicio[1] }, zoom,
+      mapTypeId: 'hybrid',                     // satélite con calles y nombres
+      mapTypeControl: true,
+      mapTypeControlOptions: { mapTypeIds: ['roadmap', 'hybrid'] },
+      streetViewControl: false, fullscreenControl: false, gestureHandling: 'greedy'
+    });
+    const marker = new g.Marker({ position: map.getCenter(), map, draggable: true });
+    const avisar = () => alMover && alMover(pos());
+    const pos = () => { const p = marker.getPosition(); return [p.lat(), p.lng()]; };
+    marker.addListener('dragend', avisar);
+    map.addListener('click', e => { marker.setPosition(e.latLng); avisar(); });
+    return {
+      tipo: 'google',
+      centrar(p, z) { const ll = { lat: p[0], lng: p[1] }; map.setCenter(ll); if (z) map.setZoom(z); marker.setPosition(ll); avisar(); },
+      pos,
+      zoom: () => map.getZoom(),
+      refrescar() { g.event.trigger(map, 'resize'); }
+    };
+  }
+
+  function crearLeaflet(el, inicio, zoom, alMover) {
+    const map = L.map(el).setView(inicio, zoom);
+    const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+    const capa = (servicio, extra) => L.tileLayer(esri + servicio + '/MapServer/tile/{z}/{y}/{x}',
+                                                   Object.assign({ maxZoom: 19 }, extra || {}));
+    // "Satélite con calles": foto satelital + nombres de calles, rutas, barrios y ciudades (como el híbrido de Google)
+    const hibrido = L.layerGroup([
+      capa('World_Imagery', { attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics' }),
+      capa('Reference/World_Transportation'),
+      capa('Reference/World_Boundaries_and_Places')
+    ]);
+    const satelite = capa('World_Imagery', { attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics' });
+    const calles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                               { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+    hibrido.addTo(map);
+    L.control.layers({ 'Satélite con calles': hibrido, 'Satélite': satelite, 'Mapa de calles': calles },
+                     null, { position: 'topright' }).addTo(map);
+    const marker = L.marker(inicio, { draggable: true }).addTo(map);
+    const pos = () => { const p = marker.getLatLng(); return [p.lat, p.lng]; };
+    const avisar = () => alMover && alMover(pos());
+    marker.on('dragend', avisar);
+    map.on('click', e => { marker.setLatLng(e.latlng); avisar(); });
+    return {
+      tipo: 'leaflet',
+      centrar(p, z) { map.setView(p, z || map.getZoom()); marker.setLatLng(p); avisar(); },
+      pos,
+      zoom: () => map.getZoom(),
+      refrescar() { map.invalidateSize(); }
+    };
+  }
+
+  async function crear(el, inicio, zoom, alMover) {
+    if (clave()) {
+      try { return await crearGoogle(el, inicio, zoom, alMover); }
+      catch (e) { console.warn('Google Maps no disponible, se usa el mapa alternativo:', e); }
+    }
+    return crearLeaflet(el, inicio, zoom, alMover);
+  }
+
+  async function geocodificar(q) {
+    if (clave()) {
+      try {
+        await cargarGoogle();
+        const r = await new google.maps.Geocoder().geocode({ address: q, componentRestrictions: { country: 'PY' } });
+        return (r.results || []).map(x => ({
+          lat: x.geometry.location.lat(), lon: x.geometry.location.lng(), display_name: x.formatted_address
+        }));
+      } catch (e) {
+        if (e && e.code === 'ZERO_RESULTS') return [];
+        console.warn('Geocodificación de Google falló, se usa OpenStreetMap:', e);
+      }
+    }
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=py&q=' + encodeURIComponent(q);
+    const r = await fetch(url, { headers: { 'Accept': 'application/json', 'Accept-Language': 'es' } });
+    if (!r.ok) throw new Error('No se pudo buscar la dirección');
+    return r.json();
+  }
+
+  // ---- Ubicación pegada desde Google Maps: coordenadas o enlace ----
+  const PATRONES = [
+    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+    /[?&](?:q|query|ll|center|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i,
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /^\s*\(?\s*(-?\d{1,2}\.\d+)\s*[,;\s]\s*(-?\d{1,3}\.\d+)\s*\)?\s*$/   // "-25.5949, -56.8732"
+  ];
+  function extraer(txt) {
+    let t = String(txt || '');
+    try { t = decodeURIComponent(t); } catch (e) {}
+    for (const rx of PATRONES) {
+      const m = t.match(rx);
+      if (m) {
+        const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) return [lat, lng];
+      }
+    }
+    return null;
+  }
+  async function leerUbicacion(txt) {
+    const directo = extraer(txt);
+    if (directo) return directo;
+    const t = String(txt || '').trim();
+    // Enlaces cortos de "Compartir" (maps.app.goo.gl): se abren en el servidor
+    if (/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl|g\.co)\//i.test(t)) {
+      const api = document.body.dataset.ubicacionApi;
+      const r = await fetch(api + '?url=' + encodeURIComponent(t), { headers: { 'Accept': 'application/json' } });
+      if (r.ok) { const j = await r.json(); return [j.lat, j.lng]; }
+    }
+    return null;
+  }
+  // Vista previa de Google Maps (sin clave) para un punto
+  const vistaGoogle = (lat, lng) => `https://maps.google.com/maps?q=${lat},${lng}&t=k&z=18&hl=es&output=embed`;
+  const enParaguay = (lat, lng) => lat <= -19 && lat >= -28 && lng <= -54 && lng >= -63;
+
+  window.MapaSelector = { crear, geocodificar, leerUbicacion, vistaGoogle, enParaguay, usaGoogle: () => !!clave() };
+})();
+  </script>
+
+  <!-- Sidebar en móvil -->
+  <script>
+  (() => {
+    const toggle   = document.getElementById('sbToggle');
+    const backdrop = document.getElementById('sbBackdrop');
+    const sidebar  = document.getElementById('sidebar');
+    if (!toggle || !sidebar) return;
+
+    const setOpen = (open) => {
+      document.body.classList.toggle('sb-open', open);
+      toggle.setAttribute('aria-expanded', String(open));
+    };
+    toggle.addEventListener('click', () => setOpen(!document.body.classList.contains('sb-open')));
+    backdrop?.addEventListener('click', () => setOpen(false));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') setOpen(false); });
+    sidebar.querySelectorAll('a.sb-link').forEach(a => a.addEventListener('click', () => setOpen(false)));
+  })();
+  </script>
+
+  {% if session.get('usuario') and session.get('notifs', 1) %}
+  <script>
+  (() => {
+    // ========= Config =========
+    const API_BASE = document.body.dataset.notifApi || 'http://localhost:4000'; // se define con NOTIF_API_URL en .env
+    const SUCURSAL = {{ (g.sucursal_nombre or '""')|tojson }};
+    const POLL_MS  = 8000;
+
+    // ========= DOM =========
+    const notifList   = document.getElementById('notifList');
+    const notifBadge  = document.getElementById('notifBadge');
+    const toastBox    = document.getElementById('toastContainer');
+    const btnMarkRead = document.getElementById('notifMarkRead');
+    const pingEl      = document.getElementById('ping');
+
+    // ========= Estado =========
+    let lastId = 0;
+    let unreadCount = 0;
+    const rendered = new Map(); // id -> <li>
+
+    // ========= Persistencia (por sucursal) =========
+    const LS_KEY = `notifState:${SUCURSAL || 'global'}`;
+    function saveState() {
+      try {
+        const state = {
+          lastId,
+          unreadCount,
+          listHTML: notifList?.innerHTML || ''
+        };
+        localStorage.setItem(LS_KEY, JSON.stringify(state));
+      } catch {}
+    }
+    function restoreState() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        lastId = Number(state.lastId || 0);
+        setBadge(Number(state.unreadCount || 0));
+        if (notifList && typeof state.listHTML === 'string') {
+          notifList.innerHTML = state.listHTML;
+          notifList.querySelectorAll('li[data-id]').forEach(li => {
+            const id = Number(li.dataset.id);
+            if (id) rendered.set(id, li);
+          });
+        }
+      } catch {}
+    }
+
+    // ========= Utils =========
+    const esc = (s) => String(s || '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+    const ding = () => {
+      if (document.body.dataset.sonido !== '1') return;   // sonido desactivado en Mis preferencias
+      if (pingEl) { try { pingEl.currentTime = 0; pingEl.play(); } catch {} return; }
+      try {
+        const ctx = new (window.AudioContext||window.webkitAudioContext)();
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = 880;
+        o.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.0001, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+        o.start(); o.stop(ctx.currentTime + 0.36);
+      } catch {}
+    };
+    const setBadge = (n) => {
+      unreadCount = Math.max(0, n);
+      if (!notifBadge) return;
+      if (unreadCount > 0) {
+        notifBadge.classList.remove('d-none');
+        notifBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+      } else {
+        notifBadge.classList.add('d-none');
+      }
+      saveState();
+    };
+
+    const upsertNotifItem = (n) => {
+      if (!notifList || !n || rendered.has(n.id)) return;
+      const li = document.createElement('li');
+      li.className = "px-3 py-2";
+      li.dataset.id = n.id;
+      li.innerHTML = `
+        <div class="small text-muted">${esc(n.created_at || n.hora || '')}</div>
+        <div class="fw-semibold">${esc(n.opcion || n.titulo || 'Notificación')}</div>
+        <div class="text-wrap">${esc(n.telefono ? ('Tel: '+n.telefono) : (n.cuerpo || ''))}</div>
+        <div class="small text-muted">${esc(n.sucursal || '')} · #${n.id}</div>
+      `;
+      notifList.prepend(li);
+      rendered.set(n.id, li);
+      lastId = Math.max(lastId, n.id || 0);
+      saveState();
+    };
+
+    const showToast = (n) => {
+      if (!toastBox) return;
+      const el = document.createElement('div');
+      el.className = "toast show";
+      el.setAttribute('role', 'alert');
+      el.innerHTML = `
+        <div class="toast-header">
+          <i class="fas fa-bell me-2"></i>
+          <strong class="me-auto">${esc(n.opcion || n.titulo || 'Notificación')}</strong>
+          <small class="text-muted">${esc(n.created_at || n.hora || '')}</small>
+          <button type="button" class="btn-close ms-2" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body">${esc(n.telefono ? ('Tel: '+n.telefono) : (n.cuerpo || ''))}</div>
+      `;
+      toastBox.appendChild(el);
+      setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 6000);
+    };
+
+    // ========= Carga inicial desde API (solo no leídas) =========
+    async function loadInitial() {
+      try {
+        const q = new URLSearchParams();
+        if (SUCURSAL) q.set('sucursal', SUCURSAL);
+        q.set('unreadOnly', '1');
+        q.set('limit', '50');
+        const res = await fetch(`${API_BASE}/api/notificaciones?${q.toString()}`);
+        const json = await res.json();
+        const arr = Array.isArray(json?.data) ? json.data : [];
+        arr.sort((a,b) => (a.id||0) - (b.id||0));
+        arr.forEach(upsertNotifItem);
+        setBadge(arr.length);
+        if (arr.length) lastId = arr[arr.length-1].id || lastId;
+      } catch {}
+    }
+
+    // ========= Polling de respaldo =========
+    async function pollUnread() {
+      try {
+        const q = new URLSearchParams();
+        if (SUCURSAL) q.set('sucursal', SUCURSAL);
+        q.set('unreadOnly', '1');
+        q.set('limit', '20');
+        const res = await fetch(`${API_BASE}/api/notificaciones?${q.toString()}`);
+        const json = await res.json();
+        const arr = Array.isArray(json?.data) ? json.data : [];
+        const nuevos = arr.filter(n => !rendered.has(n.id));
+        if (nuevos.length) {
+          nuevos.sort((a,b) => (a.id||0) - (b.id||0));
+          nuevos.forEach(n => { upsertNotifItem(n); showToast(n); ding(); });
+        }
+        setBadge(arr.length);
+      } catch {}
+    }
+
+    // ========= Socket.IO =========
+    try {
+      const socket = io(API_BASE, {
+        transports: ['websocket'],
+        query: SUCURSAL ? { sucursal: SUCURSAL } : {}
+      });
+      socket.on('connect', () => console.log('Socket conectado', API_BASE, 'sucursal:', SUCURSAL || '(todas)'));
+      socket.on('nueva_solicitud', (n) => {
+        upsertNotifItem(n);
+        ding();
+        showToast(n);
+        pollUnread();
+      });
+    } catch (e) { console.warn('Socket.IO no disponible:', e); }
+
+    // ========= Marcar como leído =========
+    async function markAllAsRead() {
+      const ids = Array.from(rendered.keys());
+      if (!ids.length) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/notificaciones/read`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids })
+        });
+        const json = await res.json();
+        if (json?.ok) {
+          setBadge(0);
+          // Para limpiar el historial visual, descomenta:
+          // notifList.innerHTML = ''; rendered.clear(); saveState();
+        }
+      } catch {}
+    }
+    btnMarkRead?.addEventListener('click', markAllAsRead);
+
+    // ========= Arranque =========
+    restoreState();
+    loadInitial();
+    pollUnread();
+    setInterval(pollUnread, POLL_MS);
+    window.addEventListener('beforeunload', saveState);
+  })();
+  </script>
+  {% endif %}
+
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

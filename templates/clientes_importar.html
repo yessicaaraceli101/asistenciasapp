@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Importar clientes{% endblock %}
+{% block content %}
+<h3 class="mb-3">Importar clientes (CSV)</h3>
+<p class="text-muted">Encabezados esperados: <code>id, nombre, referencia, barrio, teléfono, situación, exonerado, tipo valor, vencimiento</code>. Acepta separador coma o punto y coma.</p>
+<form method="post" enctype="multipart/form-data">
+  <input type="file" name="csv" accept=".csv" class="form-control mb-3" required>
+  <button class="btn btn-primary">Importar</button>
+  <a class="btn btn-secondary ms-2" href="{{ url_for('clientes') }}">Volver</a>
+</form>
+{% endblock %}

@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'edit' %}Editar cliente{% else %}Nuevo cliente{% endif %}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .cf{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1; --danger:#C2362F;
+    max-width:880px; margin:0 auto; padding:8px 0 40px; color:var(--ink);
+  }
+  .cf-back{ display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--ink-soft); text-decoration:none; margin-bottom:10px; }
+  .cf-back:hover{ color:var(--accent); }
+  .cf-head{ margin-bottom:20px; }
+  .cf-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .cf-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
+
+  .cf-section{ background:var(--surface); border:1px solid var(--line); border-radius:10px; margin-bottom:16px; }
+  .cf-section-head{ padding:16px 20px 0; }
+  .cf-section-head h2{ font-size:16px; font-weight:600; margin:0; }
+  .cf-grid{ padding:16px 20px 20px; display:grid; grid-template-columns:repeat(6, 1fr); gap:16px; }
+  .s2{ grid-column:span 2; } .s3{ grid-column:span 3; } .s4{ grid-column:span 4; } .s6{ grid-column:span 6; }
+
+  .cf-field label{ display:block; font-size:14px; font-weight:500; margin-bottom:6px; }
+  .cf-field label .req{ color:var(--danger); margin-left:2px; }
+  .cf-field label .opt{ color:var(--ink-faint); font-weight:400; font-size:13px; }
+  .cf-input{
+    width:100%; height:42px; padding:0 12px;
+    font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .cf-input::placeholder{ color:#9AA5B4; }
+  .cf-input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .cf-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
+
+  .cf-group{ display:flex; }
+  .cf-group .cf-input{ border-top-right-radius:0; border-bottom-right-radius:0; }
+  .cf-group button{
+    flex-shrink:0; height:42px; padding:0 12px;
+    border:1px solid var(--line); border-left:0; border-radius:0 8px 8px 0;
+    background:#F9FAFC; color:var(--ink-soft); font-size:13px; font-weight:500; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .cf-group button:hover{ background:#EEF2F6; color:var(--ink); }
+
+  .cf-check{
+    display:flex; align-items:center; gap:10px; height:42px;
+    font-size:14px; cursor:pointer;
+  }
+  .cf-check input{ width:18px; height:18px; accent-color:var(--accent); cursor:pointer; margin:0; }
+
+  .cf-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    height:42px; padding:0 18px; border-radius:8px;
+    font-size:14px; font-weight:500; text-decoration:none; cursor:pointer;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+  }
+  .cf-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .cf-btn:disabled{ opacity:.7; cursor:progress; }
+  .cf-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
+  .cf-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+  .cf-actions{ display:flex; justify-content:flex-end; gap:8px; }
+
+  @media (max-width:720px){
+    .cf-grid{ grid-template-columns:1fr; }
+    .s2, .s3, .s4, .s6{ grid-column:auto; }
+    .cf-actions{ flex-direction:column-reverse; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{# Helper: valor de una columna o '' (nunca "None") #}
+{% macro v(campo) -%}{{ (cliente[campo] if cliente and cliente[campo] is not none else '')|default('', true) }}{%- endmacro %}
+
+{# Tipo y valor: columnas separadas si existen; si no, se leen de tipo_valor #}
+{% set ns = namespace(tipo=v('tipo')|trim, valor=v('valor')|trim) %}
+{% set tv = v('tipo_valor')|trim %}
+{% if tv %}
+  {% for p in tv.replace(':', ' ').split() %}
+    {% if p[0].isdigit() %}
+      {% if not ns.valor %}{% set ns.valor = p %}{% endif %}
+    {% elif loop.first and not ns.tipo %}
+      {% set ns.tipo = p %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% set tipo_val = ns.tipo or 'cliente' %}
+{% set valor_val = ns.valor %}
+
+<div class="cf">
+  <a class="cf-back" href="{{ url_for('clientes_detalle', cid=cliente['id']) if mode == 'edit' else url_for('clientes') }}">
+    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+    {{ 'Volver al cliente' if mode == 'edit' else 'Volver a clientes' }}
+  </a>
+
+  <div class="cf-head">
+    <h1>{% if mode == 'edit' %}Editar cliente{% else %}Nuevo cliente{% endif %}</h1>
+    <p>{% if mode == 'edit' %}{{ v('nombre') }}{% else %}Completa los datos del cliente. Solo el nombre es obligatorio.{% endif %}</p>
+  </div>
+
+  <form method="post" id="clienteForm" novalidate>
+
+    <!-- Identificación -->
+    <section class="cf-section">
+      <div class="cf-section-head"><h2>Identificación</h2></div>
+      <div class="cf-grid">
+        <div class="cf-field s4">
+          <label for="nombre">Nombre y apellido<span class="req" aria-hidden="true">*</span></label>
+          <input class="cf-input" id="nombre" name="nombre" required autocomplete="off" value="{{ v('nombre') }}">
+        </div>
+        <div class="cf-field s2">
+          <label for="external_id">ID externo <span class="opt">(opcional)</span></label>
+          <input class="cf-input" id="external_id" name="external_id" autocomplete="off" value="{{ v('external_id') }}">
+        </div>
+
+        <div class="cf-field s2">
+          <label for="cedula">Cédula (CI)</label>
+          <input class="cf-input" id="cedula" name="cedula" inputmode="numeric" autocomplete="off"
+                 placeholder="Ej.: 4.123.456" value="{{ v('cedula') }}">
+        </div>
+        <div class="cf-field s4">
+          <label for="pppoe">Usuario PPPoE</label>
+          <input class="cf-input" id="pppoe" name="pppoe" autocomplete="off" spellcheck="false"
+                 autocapitalize="none" placeholder="Ej.: vaida456" value="{{ v('pppoe') }}">
+        </div>
+      </div>
+    </section>
+
+    <!-- Contacto y ubicación -->
+    <section class="cf-section">
+      <div class="cf-section-head"><h2>Contacto y ubicación</h2></div>
+      <div class="cf-grid">
+        <div class="cf-field s2">
+          <label for="telefono">Teléfono</label>
+          <input class="cf-input" id="telefono" name="telefono" type="tel" autocomplete="off"
+                 placeholder="09xx xxx xxx" value="{{ v('telefono') }}">
+        </div>
+        <div class="cf-field s4">
+          <label for="barrio">Barrio</label>
+          <input class="cf-input" id="barrio" name="barrio" autocomplete="off" value="{{ v('barrio') }}">
+        </div>
+        <div class="cf-field s3">
+          <label for="direccion">Dirección</label>
+          <input class="cf-input" id="direccion" name="direccion" autocomplete="off"
+                 placeholder="Calle y número" value="{{ v('direccion') }}">
+        </div>
+        <div class="cf-field s3">
+          <label for="referencia">Referencia</label>
+          <input class="cf-input" id="referencia" name="referencia" autocomplete="off"
+                 placeholder="Ej.: frente a la plaza" value="{{ v('referencia') }}">
+        </div>
+      </div>
+    </section>
+
+    <!-- Servicio -->
+    <section class="cf-section">
+      <div class="cf-section-head"><h2>Servicio</h2></div>
+      <div class="cf-grid">
+        <div class="cf-field s2">
+          <label for="situacion">Situación</label>
+          <input class="cf-input" id="situacion" name="situacion" list="dlSituacion" autocomplete="off"
+                 placeholder="Activo" value="{{ v('situacion') }}">
+          <datalist id="dlSituacion">
+            <option value="activo"><option value="en mora"><option value="suspendido"><option value="cancelado">
+          </datalist>
+        </div>
+        <div class="cf-field s2">
+          <label for="tipo">Tipo</label>
+          <input class="cf-input" id="tipo" name="tipo" list="dlTipo" autocomplete="off" value="{{ tipo_val }}">
+          <datalist id="dlTipo"><option value="cliente"><option value="empresa"><option value="institución"></datalist>
+        </div>
+        <div class="cf-field s2">
+          <label for="valor">Plan (Gs.)</label>
+          <input class="cf-input" id="valor" name="valor" inputmode="numeric" autocomplete="off"
+                 placeholder="Ej.: 130.000" value="{{ valor_val }}">
+        </div>
+        <div class="cf-field s2">
+          <label for="vencimiento">Vencimiento</label>
+          <input class="cf-input" id="vencimiento" name="vencimiento" autocomplete="off"
+                 placeholder="Día del mes o fecha" value="{{ v('vencimiento') }}">
+          <div class="cf-hint">Ej.: 5 (vence el día 5 de cada mes)</div>
+        </div>
+        <div class="cf-field s4">
+          <label>&nbsp;</label>
+          <label class="cf-check" for="exonerado">
+            <input type="checkbox" id="exonerado" name="exonerado"
+                   {% if cliente and cliente['exonerado'] in (1, '1', True) %}checked{% endif %}>
+            Exonerado del pago
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Instalación, contrato y vivienda -->
+    <section class="cf-section">
+      <div class="cf-section-head"><h2>Equipo, contrato y vivienda</h2></div>
+      <div class="cf-grid">
+        <div class="cf-field s2">
+          <label for="onu_serie">N.º de serie de la ONU</label>
+          <input class="cf-input" id="onu_serie" name="onu_serie" autocomplete="off" spellcheck="false"
+                 placeholder="Ej.: HWTC1A2B3C4D" value="{{ v('onu_serie') }}">
+        </div>
+        <div class="cf-field s2">
+          <label for="contrato_tipo">Duración del servicio</label>
+          <select class="cf-input" id="contrato_tipo" name="contrato_tipo">
+            <option value="indefinido" {{ 'selected' if v('contrato_tipo') != 'temporal' }}>Indefinido</option>
+            <option value="temporal" {{ 'selected' if v('contrato_tipo') == 'temporal' }}>Por tiempo determinado</option>
+          </select>
+        </div>
+        <div class="cf-field s2" id="fMeses">
+          <label for="contrato_meses">Meses de servicio</label>
+          <input class="cf-input" id="contrato_meses" name="contrato_meses" type="number" min="1" max="120" value="{{ v('contrato_meses') }}" placeholder="Ej.: 6">
+        </div>
+        <div class="cf-field s2">
+          <label for="vivienda">La casa es</label>
+          <select class="cf-input" id="vivienda" name="vivienda">
+            <option value="" {{ 'selected' if not v('vivienda') }}>Sin dato</option>
+            <option value="propia" {{ 'selected' if v('vivienda') == 'propia' }}>Propia</option>
+            <option value="alquilada" {{ 'selected' if v('vivienda') == 'alquilada' }}>Alquilada</option>
+          </select>
+        </div>
+        <div class="cf-field s4 js-dueno"><label>&nbsp;</label><div class="cf-hint" style="margin:0;padding-top:10px">Datos del dueño: para coordinar el retiro de equipos si el inquilino cancela.</div></div>
+        <div class="cf-field s2 js-dueno">
+          <label for="dueno_nombre">Dueño de la casa</label>
+          <input class="cf-input" id="dueno_nombre" name="dueno_nombre" autocomplete="off" value="{{ v('dueno_nombre') }}" placeholder="Nombre y apellido">
+        </div>
+        <div class="cf-field s2 js-dueno">
+          <label for="dueno_telefono">Teléfono del dueño</label>
+          <input class="cf-input" id="dueno_telefono" name="dueno_telefono" type="tel" autocomplete="off" value="{{ v('dueno_telefono') }}">
+        </div>
+        <div class="cf-field s2 js-dueno">
+          <label for="dueno_ci">CI del dueño</label>
+          <input class="cf-input" id="dueno_ci" name="dueno_ci" inputmode="numeric" autocomplete="off" value="{{ v('dueno_ci') }}">
+        </div>
+      </div>
+    </section>
+
+    <div class="cf-actions">
+      <a class="cf-btn cf-btn-ghost" href="{{ url_for('clientes_detalle', cid=cliente['id']) if mode == 'edit' else url_for('clientes') }}">Cancelar</a>
+      <button class="cf-btn" type="submit" id="btnGuardar">
+        <i class="fa-solid fa-check" aria-hidden="true"></i>
+        {{ 'Guardar cambios' if mode == 'edit' else 'Crear cliente' }}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(() => {
+  const form = document.getElementById('clienteForm');
+  const nombre = document.getElementById('nombre');
+
+  form.addEventListener('submit', e => {
+    if (!nombre.value.trim()){
+      e.preventDefault();
+      nombre.focus();
+      nombre.style.borderColor = '#C2362F';
+      return;
+    }
+    const btn = document.getElementById('btnGuardar');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Guardando…';
+  });
+  nombre.addEventListener('input', () => nombre.style.borderColor = '');
+
+  // Mostrar meses solo si el servicio es por tiempo, y datos del dueño solo si es alquilada
+  const ct = document.getElementById('contrato_tipo'), viv = document.getElementById('vivienda');
+  const sync = () => {
+    document.getElementById('fMeses').hidden = ct.value !== 'temporal';
+    document.querySelectorAll('.js-dueno').forEach(el => el.hidden = viv.value !== 'alquilada');
+  };
+  ct.addEventListener('change', sync); viv.addEventListener('change', sync); sync();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,461 @@
+{% extends "base.html" %}
+{% block title %}Configuración{% endblock %}
+
+{% block extra_head %}
+<style>
+  .cfg, .cfg-modal{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1; --danger:#C2362F;
+    color:var(--ink);
+  }
+  .cfg{ max-width:1000px; margin:0 auto; padding:8px 0 40px; }
+  .cfg-head{ margin-bottom:20px; }
+  .cfg-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .cfg-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
+
+  .cfg-tabs{ display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:20px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+  .cfg-tab{
+    display:inline-flex; align-items:center; gap:8px; padding:12px 12px 10px; margin-bottom:-1px;
+    border-bottom:2px solid transparent; font-size:14px; font-weight:500; color:var(--ink-soft);
+    text-decoration:none; white-space:nowrap;
+  }
+  .cfg-tab:hover{ color:var(--ink); }
+  .cfg-tab.active{ color:var(--accent); border-bottom-color:var(--accent); }
+
+  .cfg-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; }
+  .cfg-card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:16px 20px; border-bottom:1px solid var(--line-soft); }
+  .cfg-card-head h2{ font-size:16px; font-weight:600; margin:0 0 2px; }
+  .cfg-card-head p{ margin:0; font-size:13px; color:var(--ink-faint); }
+  .cfg-body{ padding:20px; }
+
+  .cfg-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    height:40px; padding:0 16px; border-radius:8px; font-size:14px; font-weight:500;
+    text-decoration:none; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+  }
+  .cfg-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .cfg-btn:disabled{ opacity:.7; cursor:progress; }
+  .cfg-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
+  .cfg-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+
+  /* Tabla de técnicos */
+  .cfg-table{ width:100%; border-collapse:collapse; font-size:14px; }
+  .cfg-table th{ text-align:left; font-size:13px; font-weight:500; color:var(--ink-soft); background:#F9FAFC; padding:11px 16px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .cfg-table td{ padding:12px 16px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
+  .cfg-table tr:last-child td{ border-bottom:0; }
+  .cfg-table tr.inactivo td:not(:last-child){ color:var(--ink-faint); }
+  .cfg-sub{ display:block; font-size:12.5px; color:var(--ink-faint); }
+  .cfg-warn{ color:#8A5A00; font-size:13px; }
+  .cfg-status{ display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; border:1px solid transparent; font-size:12.5px; font-weight:500; }
+  .cfg-status::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .st-on { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
+  .st-off{ color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+  .cfg-actions{ display:flex; justify-content:flex-end; align-items:center; gap:2px; }
+  .cfg-icon{
+    width:32px; height:32px; border-radius:6px; display:inline-grid; place-items:center;
+    background:none; border:0; color:var(--ink-faint); text-decoration:none; cursor:pointer;
+  }
+  .cfg-icon:hover{ background:#EEF2F6; color:var(--ink); }
+  .cfg-icon.wa:hover{ background:#E8F7EE; color:#178A45; }
+  .cfg-icon.danger:hover{ background:#FDF1F0; color:var(--danger); }
+  .cfg-link{ background:none; border:0; padding:0 6px; font:inherit; font-size:13px; font-weight:500; color:var(--accent); cursor:pointer; }
+  .cfg-link:hover{ text-decoration:underline; text-underline-offset:3px; }
+  .cfg-empty{ padding:36px 16px; text-align:center; color:var(--ink-soft); }
+
+  /* Usuarios */
+  .cfg-search{ position:relative; max-width:420px; }
+  .cfg-search i{ position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--ink-faint); pointer-events:none; }
+  .cfg-search .cfg-input{ padding-left:36px; height:38px; }
+  .usr-cell{ display:flex; align-items:center; gap:10px; }
+  .usr-av{ width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex-shrink:0; }
+  .usr-ini{ display:inline-grid; place-items:center; background:#E0F2FE; border-color:#BAE6FD; color:#0369A1; font-weight:600; font-size:14px; }
+  .usr-cell strong{ font-weight:600; }
+  .usr-tu{ font-size:11.5px; font-weight:600; color:#0369A1; background:#E0F2FE; border-radius:4px; padding:1px 6px; margin-left:4px; }
+  .usr-rol{ display:inline-block; font-size:12.5px; font-weight:500; padding:3px 10px; border-radius:999px; border:1px solid transparent; white-space:nowrap; }
+  .rol-admin{ color:#6D28D9; background:#F3EEFF; border-color:#DDD0FB; }
+  .rol-operador{ color:#0369A1; background:#EAF6FD; border-color:#C4E4F7; }
+  .rol-tecnico{ color:#8A5A00; background:#FFF7E6; border-color:#F5E0B3; }
+
+  /* Formularios */
+  .cfg-grid{ display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; }
+  .cfg-grid .full{ grid-column:1 / -1; }
+  .cfg-field label{ display:block; font-size:14px; font-weight:500; margin-bottom:6px; color:var(--ink); }
+  .cfg-field label .opt{ color:var(--ink-faint); font-weight:400; font-size:13px; }
+  .cfg-input, .cfg-field select, .cfg-field textarea{
+    width:100%; height:42px; padding:0 12px; font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .cfg-field textarea{ height:auto; min-height:80px; padding:10px 12px; resize:vertical; line-height:1.5; }
+  .cfg-input::placeholder, .cfg-field textarea::placeholder{ color:#9AA5B4; }
+  .cfg-input:focus, .cfg-field select:focus, .cfg-field textarea:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .cfg-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
+  .cfg-prev-label{ font-size:12.5px; color:var(--ink-faint); margin-bottom:6px; }
+  .cfg-prev{
+    display:flex; align-items:center; gap:12px; padding:14px 16px;
+    border:1px dashed #B7C2D0; border-radius:8px; background:#F9FAFC;
+  }
+  .cfg-prev img{ width:40px; height:40px; border-radius:50%; object-fit:cover; }
+  .cfg-prev strong{ display:block; font-size:16px; }
+  .cfg-prev span{ display:block; font-size:12.5px; color:var(--ink-soft); }
+  .cfg-prev-ot{ margin-left:auto; text-align:right; }
+  .cfg-prev-ot strong{ font-size:18px; letter-spacing:.5px; }
+  .cfg-foot{ display:flex; justify-content:flex-end; gap:8px; padding:16px 20px; border-top:1px solid var(--line-soft); }
+
+  /* Interruptores */
+  .cfg-switch{ display:flex; align-items:flex-start; gap:14px; padding:16px 0; border-top:1px solid var(--line-soft); cursor:pointer; }
+  .cfg-switch:first-child{ border-top:0; padding-top:0; }
+  .cfg-switch input{ position:absolute; opacity:0; pointer-events:none; }
+  .cfg-switch .track{
+    flex-shrink:0; width:40px; height:22px; border-radius:999px; background:#CBD3DD; position:relative; margin-top:2px;
+    transition:background-color .15s;
+  }
+  .cfg-switch .track::after{
+    content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .15s;
+  }
+  .cfg-switch input:checked + .track{ background:var(--accent); }
+  .cfg-switch input:checked + .track::after{ transform:translateX(18px); }
+  .cfg-switch input:focus-visible + .track{ outline:2px solid var(--accent); outline-offset:2px; }
+  .cfg-switch input:disabled + .track{ opacity:.45; }
+  .cfg-switch strong{ display:block; font-size:14px; font-weight:500; }
+  .cfg-switch span.txt{ font-size:13px; color:var(--ink-faint); }
+  .cfg-switch.is-disabled{ cursor:not-allowed; opacity:.6; }
+
+  .cfg-modal .modal-content{ border:1px solid var(--line); border-radius:12px; }
+  .cfg-modal .modal-title{ font-weight:600; font-size:18px; }
+  .cfg-modal .modal-body .cfg-field + .cfg-field{ margin-top:14px; }
+
+  @media (max-width:720px){
+    .cfg-grid{ grid-template-columns:1fr; }
+    .cfg-table .col-hide{ display:none; }
+    .cfg-foot{ flex-direction:column-reverse; }
+  }
+  @media (prefers-reduced-motion: reduce){ .cfg-switch .track, .cfg-switch .track::after{ transition:none; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cfg">
+  <div class="cfg-head">
+    <h1>Configuración</h1>
+    <p>Técnicos, datos de la empresa y tus preferencias personales.</p>
+  </div>
+
+  <nav class="cfg-tabs" aria-label="Secciones de configuración">
+    {% for key, label, icon in [('tecnicos','Técnicos','fa-helmet-safety'), ('empresa','Datos para la OT','fa-building'), ('preferencias','Mis preferencias','fa-sliders')] %}
+      <a class="cfg-tab {{ 'active' if tab == key }}" href="{{ url_for('configuracion', tab=key) }}" {% if tab == key %}aria-current="page"{% endif %}>
+        <i class="fa-solid {{ icon }}" aria-hidden="true"></i> {{ label }}
+      </a>
+    {% endfor %}
+  </nav>
+
+
+  {# ======================= TÉCNICOS ======================= #}
+  {% if tab == 'tecnicos' %}
+    {% set sin_tel = tecnicos|selectattr('wa', 'equalto', '')|selectattr('activo', 'ne', 0)|list|length %}
+    <section class="cfg-card">
+      <div class="cfg-card-head">
+        <div>
+          <h2>Técnicos de {{ g.sucursal_nombre }}</h2>
+          <p>Cada sucursal tiene sus propios técnicos. Para ver los de la otra, cambia de sucursal en la barra lateral.</p>
+        </div>
+        <button type="button" class="cfg-btn js-tec" data-id="" data-nombre="" data-telefono="" data-sucursal="{{ g.sucursal_id }}">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> Agregar técnico
+        </button>
+      </div>
+
+      {% if tecnicos %}
+        {% if sin_tel %}
+          <div style="padding:12px 20px 0" class="cfg-warn">
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            {{ sin_tel }} técnico{{ 's' if sin_tel != 1 }} activo{{ 's' if sin_tel != 1 }} sin teléfono: sus órdenes no se pueden enviar directo por WhatsApp.
+          </div>
+        {% endif %}
+        <div style="overflow-x:auto">
+          <table class="cfg-table">
+            <thead>
+              <tr><th>Nombre</th><th>Teléfono</th><th>Estado</th><th><span class="visually-hidden">Acciones</span></th></tr>
+            </thead>
+            <tbody>
+              {% for t in tecnicos %}
+                {% set activo = t.activo != 0 %}
+                <tr class="{{ '' if activo else 'inactivo' }}">
+                  <td>
+                    <strong style="font-weight:600">{{ t.nombre }}</strong>
+                    {% if not t.sucursal_id %}<span class="cfg-sub cfg-warn">Sin sucursal asignada: edítalo para asignarla</span>{% endif %}
+                  </td>
+                  <td>
+                    {% if t.telefono %}{{ t.telefono }}
+                    {% else %}<span class="cfg-warn">Sin teléfono</span>{% endif %}
+                  </td>
+                  <td><span class="cfg-status {{ 'st-on' if activo else 'st-off' }}">{{ 'Activo' if activo else 'Inactivo' }}</span></td>
+                  <td>
+                    <div class="cfg-actions">
+                      {% if t.wa %}
+                        <a class="cfg-icon wa" href="https://wa.me/{{ t.wa }}" target="_blank" rel="noopener" title="Probar WhatsApp" aria-label="Abrir WhatsApp de {{ t.nombre }}">
+                          <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
+                        </a>
+                      {% endif %}
+                      <button type="button" class="cfg-icon js-tec" title="Editar" aria-label="Editar {{ t.nombre }}"
+                              data-id="{{ t.id }}" data-nombre="{{ t.nombre }}" data-telefono="{{ t.telefono or '' }}" data-sucursal="{{ t.sucursal_id or g.sucursal_id }}">
+                        <i class="fa-regular fa-pen-to-square" aria-hidden="true"></i>
+                      </button>
+                      <form method="post" action="{{ url_for('config_tecnico_estado', tid=t.id) }}">
+                        <button type="submit" class="cfg-link">{{ 'Desactivar' if activo else 'Activar' }}</button>
+                      </form>
+                      <button type="button" class="cfg-icon danger js-del" title="Eliminar" aria-label="Eliminar {{ t.nombre }}"
+                              data-action="{{ url_for('config_tecnico_eliminar', tid=t.id) }}"
+                              data-nombre="{{ t.nombre }}" data-sucursal="{{ t.sucursal_nombre or '' }}" data-abiertos="{{ t.abiertos }}">
+                        <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="cfg-hint" style="padding:12px 20px 16px">
+          Los técnicos inactivos no aparecen para asignar trabajos, pero se conserva su historial.
+        </div>
+      {% else %}
+        <div class="cfg-empty">Todavía no hay técnicos cargados en {{ g.sucursal_nombre }}.</div>
+      {% endif %}
+    </section>
+
+    <!-- Modal agregar/editar técnico -->
+    <div class="modal fade cfg-modal" id="mTec" tabindex="-1" aria-labelledby="mTecTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" action="{{ url_for('config_tecnico_guardar') }}" id="fTec">
+          <div class="modal-header border-0">
+            <h5 class="modal-title" id="mTecTitle">Agregar técnico</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body pt-0">
+            <input type="hidden" name="id" id="tecId">
+            <div class="cfg-field">
+              <label for="tecNombre">Nombre y apellido</label>
+              <input class="cfg-input" id="tecNombre" name="nombre" required autocomplete="off">
+            </div>
+            <div class="cfg-field">
+              <label for="tecTel">Teléfono (WhatsApp)</label>
+              <input class="cfg-input" id="tecTel" name="telefono" type="tel" autocomplete="off" placeholder="0981 123 456">
+              <div class="cfg-hint">Se convierte solo al formato de WhatsApp (595…).</div>
+            </div>
+            <div class="cfg-field">
+              <label for="tecSuc">Sucursal</label>
+              <select id="tecSuc" name="sucursal_id">
+                {% for s in sucursales %}<option value="{{ s['id'] }}">{{ s['nombre'] }}</option>{% endfor %}
+              </select>
+              <div class="cfg-hint">Cambia la sucursal solo si el técnico se cargó en la equivocada.</div>
+            </div>
+          </div>
+          <div class="modal-footer border-0">
+            <button type="button" class="cfg-btn cfg-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="cfg-btn">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal eliminar técnico -->
+    <div class="modal fade cfg-modal" id="mDel" tabindex="-1" aria-labelledby="mDelTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" action="" id="fDel">
+          <div class="modal-header border-0">
+            <h5 class="modal-title" id="mDelTitle">¿Eliminar técnico?</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body pt-0" style="color:var(--ink-soft)">
+            <p class="mb-2">Vas a eliminar a <strong id="delNombre" style="color:var(--ink)"></strong><span id="delSuc"></span>. Esta acción no se puede deshacer.</p>
+            <p class="mb-2" id="delAbiertos" hidden style="color:#8A5A00">
+              <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+              Tiene <strong id="delN"></strong> abiertos asignados: quedarán sin técnico y habrá que reasignarlos.
+            </p>
+            <p class="mb-0" style="font-size:13px">Sus tickets anteriores conservan su nombre. Si solo dejó de trabajar temporalmente, conviene <strong>desactivarlo</strong>.</p>
+          </div>
+          <div class="modal-footer border-0">
+            <button type="button" class="cfg-btn cfg-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="cfg-btn" style="background:#C2362F;border-color:#C2362F">Eliminar técnico</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {# ======================= EMPRESA ======================= #}
+  {% if tab == 'empresa' %}
+    <form class="cfg-card" method="post">
+      <input type="hidden" name="seccion" value="empresa">
+      <div class="cfg-card-head">
+        <div>
+          <h2>Datos que se imprimen en la orden de trabajo</h2>
+          <p>Se cargan una sola vez. Así el cliente ve en la OT a qué empresa pertenece el técnico, su RUC y a dónde llamar.</p>
+        </div>
+      </div>
+      <div class="cfg-body" style="padding-bottom:0">
+        <div class="cfg-prev-label">Vista previa del encabezado de la OT</div>
+        <div class="cfg-prev" id="cfgPrev" aria-live="polite" data-suc="{{ g.sucursal_nombre }}">
+          <img src="{{ url_for('static', filename='img/logo.png') }}" alt="">
+          <div>
+            <strong id="pvNombre"></strong>
+            <span id="pvLinea1"></span>
+            <span id="pvLinea2"></span>
+          </div>
+          <div class="cfg-prev-ot"><span>Orden de trabajo</span><strong>OT-000123</strong></div>
+        </div>
+      </div>
+      <div class="cfg-body cfg-grid">
+        <div class="cfg-field">
+          <label for="nombre_comercial">Nombre comercial</label>
+          <input class="cfg-input" id="nombre_comercial" name="nombre_comercial" value="{{ empresa.nombre_comercial }}" placeholder="SPYnet">
+        </div>
+        <div class="cfg-field">
+          <label for="razon_social">Razón social</label>
+          <input class="cfg-input" id="razon_social" name="razon_social" value="{{ empresa.razon_social }}" placeholder="Ej.: SPYnet S.A.">
+        </div>
+        <div class="cfg-field">
+          <label for="ruc">RUC</label>
+          <input class="cfg-input" id="ruc" name="ruc" value="{{ empresa.ruc }}" placeholder="Ej.: 80012345-6">
+        </div>
+        <div class="cfg-field">
+          <label for="telefono">Teléfono de atención</label>
+          <input class="cfg-input" id="telefono" name="telefono" type="tel" value="{{ empresa.telefono }}" placeholder="0981 000 000">
+        </div>
+        <div class="cfg-field">
+          <label for="email">Email <span class="opt">(opcional)</span></label>
+          <input class="cfg-input" id="email" name="email" type="email" value="{{ empresa.email }}">
+        </div>
+        <div class="cfg-field">
+          <label for="direccion">Dirección de la oficina central</label>
+          <input class="cfg-input" id="direccion" name="direccion" value="{{ empresa.direccion }}">
+        </div>
+        <div class="cfg-field full">
+          <label for="pie_ot">Texto al pie de la orden de trabajo <span class="opt">(opcional)</span></label>
+          <textarea id="pie_ot" name="pie_ot" placeholder="Ej.: Ante cualquier consulta comunicarse al 0981 000 000. Los equipos entregados son propiedad de la empresa.">{{ empresa.pie_ot }}</textarea>
+        </div>
+      </div>
+      <div class="cfg-foot">
+        <button type="submit" class="cfg-btn"><i class="fa-solid fa-check" aria-hidden="true"></i> Guardar datos</button>
+      </div>
+    </form>
+  {% endif %}
+
+  {# ======================= PREFERENCIAS ======================= #}
+  {% if tab == 'preferencias' %}
+    <form class="cfg-card" method="post" id="fPref">
+      <input type="hidden" name="seccion" value="preferencias">
+      <div class="cfg-card-head">
+        <div>
+          <h2>Mis preferencias</h2>
+          <p>Solo afectan a tu usuario ({{ session.get('nombre') or session.get('usuario') }}).</p>
+        </div>
+      </div>
+      <div class="cfg-body">
+        <label class="cfg-switch" for="prefNotifs">
+          <input type="checkbox" id="prefNotifs" name="notifs" {{ 'checked' if user.notifs != 0 }}>
+          <span class="track" aria-hidden="true"></span>
+          <span>
+            <strong>Notificaciones de nuevas solicitudes</strong>
+            <span class="txt">Muestra la campana con avisos y un mensaje emergente cuando llega una solicitud.</span>
+          </span>
+        </label>
+        <label class="cfg-switch" for="prefSonido" id="lblSonido">
+          <input type="checkbox" id="prefSonido" name="notif_sonido" {{ 'checked' if user.notif_sonido != 0 }}>
+          <span class="track" aria-hidden="true"></span>
+          <span>
+            <strong>Sonido de aviso</strong>
+            <span class="txt">Reproduce un sonido con cada notificación nueva.</span>
+          </span>
+        </label>
+
+        <div class="cfg-field" style="padding-top:16px;border-top:1px solid var(--line-soft);max-width:360px">
+          <label for="prefSuc">Sucursal al iniciar sesión</label>
+          <select id="prefSuc" name="sucursal_pred">
+            <option value="">Preguntar cada vez</option>
+            {% for s in sucursales %}
+              <option value="{{ s['id'] }}" {{ 'selected' if user.sucursal_pred == s['id'] }}>Entrar directo a {{ s['nombre'] }}</option>
+            {% endfor %}
+          </select>
+          <div class="cfg-hint">Siempre puedes cambiar de sucursal desde la barra lateral.</div>
+        </div>
+      </div>
+      <div class="cfg-foot">
+        <button type="submit" class="cfg-btn"><i class="fa-solid fa-check" aria-hidden="true"></i> Guardar preferencias</button>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(() => {
+  // ----- Técnicos: modal para agregar / editar -----
+  const mEl = document.getElementById('mTec');
+  if (mEl){
+    const modal = new bootstrap.Modal(mEl);
+    const form = document.getElementById('fTec');
+    document.querySelectorAll('.js-tec').forEach(btn => btn.addEventListener('click', () => {
+      const d = btn.dataset;
+      document.getElementById('mTecTitle').textContent = d.id ? 'Editar técnico' : 'Agregar técnico';
+      document.getElementById('tecId').value = d.id;
+      document.getElementById('tecNombre').value = d.nombre;
+      document.getElementById('tecTel').value = d.telefono;
+      if (d.sucursal) document.getElementById('tecSuc').value = d.sucursal;
+      form.querySelector('[type=submit]').disabled = false;
+      modal.show();
+    }));
+    mEl.addEventListener('shown.bs.modal', () => document.getElementById('tecNombre').focus());
+    form.addEventListener('submit', e => {
+      if (!form.checkValidity()){ e.preventDefault(); form.reportValidity(); return; }
+      form.querySelector('[type=submit]').disabled = true;
+    });
+  }
+
+  // ----- Técnicos: confirmar eliminación -----
+  const dEl = document.getElementById('mDel');
+  if (dEl){
+    const modal = new bootstrap.Modal(dEl);
+    const form = document.getElementById('fDel');
+    document.querySelectorAll('.js-del').forEach(btn => btn.addEventListener('click', () => {
+      const d = btn.dataset, n = parseInt(d.abiertos || '0', 10);
+      form.action = d.action;
+      document.getElementById('delNombre').textContent = d.nombre;
+      document.getElementById('delSuc').textContent = d.sucursal ? ` (${d.sucursal})` : '';
+      document.getElementById('delAbiertos').hidden = !n;
+      document.getElementById('delN').textContent = `${n} ticket${n === 1 ? '' : 's'}`;
+      form.querySelector('[type=submit]').disabled = false;
+      modal.show();
+    }));
+    form.addEventListener('submit', () => form.querySelector('[type=submit]').disabled = true);
+  }
+
+  // ----- Empresa: vista previa en vivo -----
+  const pvNombre = document.getElementById('pvNombre');
+  if (pvNombre){
+    const v = id => (document.getElementById(id).value || '').trim();
+    const pintar = () => {
+      pvNombre.textContent = v('nombre_comercial') || 'SPYnet';
+      const l1 = [v('razon_social'), v('ruc') && 'RUC ' + v('ruc')].filter(Boolean).join(' · ');
+      const l2 = ['Sucursal ' + document.getElementById('cfgPrev').dataset.suc, v('direccion'), v('telefono') && 'Tel. ' + v('telefono')].filter(Boolean).join(' · ');
+      document.getElementById('pvLinea1').textContent = l1;
+      document.getElementById('pvLinea2').textContent = l2;
+    };
+    ['nombre_comercial','razon_social','ruc','telefono','direccion'].forEach(id => document.getElementById(id).addEventListener('input', pintar));
+    pintar();
+  }
+
+  // ----- Preferencias: el sonido depende de las notificaciones -----
+  const notifs = document.getElementById('prefNotifs');
+  if (notifs){
+    const sonido = document.getElementById('prefSonido');
+    const lbl = document.getElementById('lblSonido');
+    const sync = () => { sonido.disabled = !notifs.checked; lbl.classList.toggle('is-disabled', !notifs.checked); };
+    notifs.addEventListener('change', sync); sync();
+  }
+})();
+</script>
+{% endblock %}

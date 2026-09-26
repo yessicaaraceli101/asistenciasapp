@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Mi perfil{% endblock %}
+
+{% block extra_head %}
+<style>
+  .pf{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1; --danger:#C2362F;
+    max-width:1000px; margin:0 auto; padding:8px 0 40px; color:var(--ink);
+  }
+  .pf-head{ margin-bottom:20px; }
+  .pf-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .pf-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
+
+  .pf-grid{ display:grid; grid-template-columns:320px 1fr; gap:16px; align-items:start; }
+  .pf-col{ display:flex; flex-direction:column; gap:16px; }
+  .pf-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; }
+  .pf-card-head{ padding:16px 20px 0; }
+  .pf-card-head h2{ font-size:16px; font-weight:600; margin:0; }
+  .pf-card-head p{ font-size:13px; color:var(--ink-faint); margin:2px 0 0; }
+  .pf-body{ padding:16px 20px 20px; }
+
+  /* Foto */
+  .pf-avatar{ padding:24px 20px 20px; text-align:center; }
+  .pf-foto{ position:relative; width:120px; height:120px; margin:0 auto 12px; }
+  .pf-foto img, .pf-foto .ini{
+    width:120px; height:120px; border-radius:50%; object-fit:cover;
+    border:1px solid var(--line); background:#fff;
+  }
+  .pf-foto .ini{ display:grid; place-items:center; background:#E0F2FE; color:#0369A1; font-size:44px; font-weight:600; border-color:#BAE6FD; }
+  .pf-foto label{
+    position:absolute; right:2px; bottom:2px; width:36px; height:36px; border-radius:50%;
+    display:grid; place-items:center; cursor:pointer;
+    background:var(--accent); color:#fff; border:3px solid #fff;
+  }
+  .pf-foto label:hover{ background:var(--accent-hover); }
+  .pf-foto input{ position:absolute; opacity:0; pointer-events:none; width:1px; height:1px; }
+  .pf-name{ font-size:17px; font-weight:600; }
+  .pf-meta{ font-size:13px; color:var(--ink-soft); margin-top:2px; }
+  .pf-tag{ display:inline-block; margin-top:8px; font-size:12px; font-weight:500; color:#0369A1; background:#E0F2FE; border-radius:999px; padding:2px 10px; }
+  .pf-avatar-actions{ display:none; gap:8px; justify-content:center; margin-top:14px; }
+  .pf-avatar-actions.show{ display:flex; }
+  .pf-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:8px; }
+
+  /* Campos */
+  .pf-fields{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .pf-fields .full{ grid-column:1 / -1; }
+  .pf-field label{ display:block; font-size:14px; font-weight:500; margin-bottom:6px; }
+  .pf-field label .opt{ color:var(--ink-faint); font-weight:400; font-size:13px; }
+  .pf-input, .pf-field select{
+    width:100%; height:42px; padding:0 12px; font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .pf-input::placeholder{ color:#9AA5B4; }
+  .pf-input:focus, .pf-field select:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .pf-input[readonly]{ background:#F7F9FC; color:var(--ink-soft); }
+  .pf-field.invalid .pf-input{ border-color:var(--danger); }
+  .pf-error{ display:none; font-size:13px; color:var(--danger); margin-top:6px; }
+  .pf-field.invalid .pf-error{ display:block; }
+
+  .pf-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    height:40px; padding:0 16px; border-radius:8px; font-size:14px; font-weight:500;
+    text-decoration:none; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+  }
+  .pf-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .pf-btn:disabled{ opacity:.7; cursor:progress; }
+  .pf-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
+  .pf-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+  .pf-foot{ display:flex; justify-content:flex-end; gap:8px; padding:16px 20px; border-top:1px solid var(--line-soft); }
+
+  .pf-pass{ position:relative; }
+  .pf-pass .pf-input{ padding-right:44px; }
+  .pf-eye{
+    position:absolute; right:4px; top:50%; transform:translateY(-50%);
+    width:36px; height:36px; border:0; background:none; border-radius:6px; color:var(--ink-faint); cursor:pointer;
+  }
+  .pf-eye:hover{ background:#F1F4F7; color:var(--ink); }
+
+  .pf-half{ max-width:calc(50% - 8px); }
+  @media (max-width:860px){
+    .pf-half{ max-width:none; }
+    .pf-grid{ grid-template-columns:1fr; }
+    .pf-fields{ grid-template-columns:1fr; }
+    .pf-foot{ flex-direction:column-reverse; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set foto = session.get('foto_url') %}
+{% set roles = {'admin':'Administrador', 'tecnico':'Técnico', 'operador':'Operador'} %}
+
+<div class="pf">
+  <div class="pf-head">
+    <h1>Mi perfil</h1>
+    <p>Tus datos personales, tu foto y tu contraseña.</p>
+  </div>
+
+  <div class="pf-grid">
+
+    <!-- ========== Columna izquierda ========== -->
+    <div class="pf-col">
+
+      <!-- Foto -->
+      <form class="pf-card pf-avatar" method="post" action="{{ url_for('perfil_avatar') }}" enctype="multipart/form-data" id="fFoto">
+        <div class="pf-foto">
+          {% if foto %}
+            <img src="{{ foto }}" alt="Tu foto de perfil" id="imgFoto">
+          {% else %}
+            <img src="" alt="Tu foto de perfil" id="imgFoto" hidden>
+            <span class="ini" id="iniFoto" aria-hidden="true">{{ (user['nombre'] or session.get('usuario') or '?')[:1]|upper }}</span>
+          {% endif %}
+          <label for="avatar" title="Cambiar foto" aria-label="Cambiar foto"><i class="fa-solid fa-camera" aria-hidden="true"></i></label>
+          <input type="file" id="avatar" name="avatar" accept=".jpg,.jpeg,.png,.gif">
+        </div>
+        <div class="pf-name">{{ user['nombre'] or session.get('usuario') }}</div>
+        <div class="pf-meta">@{{ user['usuario'] }} · {{ g.sucursal_nombre }}</div>
+        <span class="pf-tag">{{ roles.get(user['rol'] or 'operador', (user['rol'] or 'operador')|capitalize) }}</span>
+
+        <div class="pf-avatar-actions" id="fotoAcciones">
+          <button type="button" class="pf-btn pf-btn-ghost" id="fotoCancelar">Cancelar</button>
+          <button type="submit" class="pf-btn">Guardar foto</button>
+        </div>
+        <div class="pf-hint" id="fotoHint">Toca la cámara para cambiar tu foto (JPG, PNG o GIF).</div>
+      </form>
+
+    </div>
+
+    <!-- ========== Columna derecha ========== -->
+    <div class="pf-col">
+
+      <!-- Datos personales -->
+      <form class="pf-card" method="post" action="{{ url_for('perfil') }}" id="fDatos" novalidate>
+        <div class="pf-card-head"><h2>Datos personales</h2></div>
+        <div class="pf-body pf-fields">
+          <div class="pf-field" id="fNombre">
+            <label for="nombre">Nombre y apellido</label>
+            <input class="pf-input" id="nombre" name="nombre" value="{{ user['nombre'] or '' }}" autocomplete="name">
+            <div class="pf-error">Escribe tu nombre.</div>
+          </div>
+          <div class="pf-field">
+            <label for="usuario">Usuario</label>
+            <input class="pf-input" id="usuario" value="{{ user['usuario'] }}" readonly>
+          </div>
+          <div class="pf-field">
+            <label for="email">Email <span class="opt">(opcional)</span></label>
+            <input class="pf-input" id="email" name="email" type="email" value="{{ user['email'] or '' }}" autocomplete="email">
+          </div>
+          <div class="pf-field">
+            <label for="telefono">Teléfono</label>
+            <input class="pf-input" id="telefono" name="telefono" type="tel" value="{{ user['telefono'] or '' }}" autocomplete="tel" placeholder="09xx xxx xxx">
+          </div>
+
+          {% if session.get('rol') == 'tecnico' %}
+            <div class="pf-field">
+              <label for="area">Zona de trabajo</label>
+              <input class="pf-input" id="area" name="area" value="{{ user['area'] or '' }}" placeholder="Ej.: Centro, Pirareta">
+            </div>
+            <div class="pf-field">
+              <label for="turno">Horario</label>
+              <input class="pf-input" id="turno" name="turno" value="{{ user['turno'] or '' }}" placeholder="Ej.: 08:00 a 17:00">
+            </div>
+          {% else %}
+            <div class="pf-field">
+              <label for="area">Área</label>
+              <input class="pf-input" id="area" name="area" value="{{ user['area'] or '' }}" placeholder="Ej.: Atención al cliente">
+            </div>
+            <div class="pf-field">
+              <label for="turno">Turno</label>
+              <input class="pf-input" id="turno" name="turno" value="{{ user['turno'] or '' }}" placeholder="Ej.: Mañana">
+            </div>
+          {% endif %}
+
+          {% if session.get('rol') == 'admin' %}
+            <div class="pf-field">
+              <label for="rol">Rol</label>
+              <select id="rol" name="rol">
+                {% for val, label in roles.items() %}
+                  <option value="{{ val }}" {{ 'selected' if user['rol'] == val }}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          {% endif %}
+        </div>
+        <div class="pf-foot">
+          <a href="{{ url_for('menu') }}" class="pf-btn pf-btn-ghost">Cancelar</a>
+          <button type="submit" class="pf-btn" id="btnDatos"><i class="fa-solid fa-check" aria-hidden="true"></i> Guardar cambios</button>
+        </div>
+      </form>
+
+      <!-- Contraseña -->
+      <form class="pf-card" method="post" action="{{ url_for('perfil_password') }}" id="fPass" novalidate>
+        <div class="pf-card-head">
+          <h2>Cambiar contraseña</h2>
+          <p>Mínimo 6 caracteres.</p>
+        </div>
+        <div class="pf-body pf-fields">
+          <div class="pf-field full pf-half" id="fActual">
+            <label for="actual">Contraseña actual</label>
+            <div class="pf-pass">
+              <input class="pf-input" type="password" id="actual" name="actual" autocomplete="current-password">
+              <button type="button" class="pf-eye" data-for="actual" aria-label="Mostrar contraseña"><i class="fa-regular fa-eye-slash"></i></button>
+            </div>
+            <div class="pf-error">Escribe tu contraseña actual.</div>
+          </div>
+          <div class="pf-field" id="fNueva">
+            <label for="nueva">Contraseña nueva</label>
+            <div class="pf-pass">
+              <input class="pf-input" type="password" id="nueva" name="nueva" autocomplete="new-password" minlength="6">
+              <button type="button" class="pf-eye" data-for="nueva" aria-label="Mostrar contraseña"><i class="fa-regular fa-eye-slash"></i></button>
+            </div>
+            <div class="pf-error">Debe tener al menos 6 caracteres.</div>
+          </div>
+          <div class="pf-field" id="fRepetir">
+            <label for="repetir">Repetir la nueva</label>
+            <div class="pf-pass">
+              <input class="pf-input" type="password" id="repetir" name="repetir" autocomplete="new-password">
+              <button type="button" class="pf-eye" data-for="repetir" aria-label="Mostrar contraseña"><i class="fa-regular fa-eye-slash"></i></button>
+            </div>
+            <div class="pf-error">Las contraseñas no coinciden.</div>
+          </div>
+        </div>
+        <div class="pf-foot">
+          <button type="submit" class="pf-btn"><i class="fa-solid fa-lock" aria-hidden="true"></i> Cambiar contraseña</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+
+  // ----- Foto: vista previa antes de guardar -----
+  const input = $('avatar'), img = $('imgFoto'), ini = $('iniFoto');
+  const acciones = $('fotoAcciones'), hint = $('fotoHint');
+  const original = img.getAttribute('src');
+  input.addEventListener('change', () => {
+    const f = input.files[0];
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024){ hint.textContent = 'La imagen pesa más de 5 MB. Elige una más liviana.'; input.value = ''; return; }
+    img.src = URL.createObjectURL(f);
+    img.hidden = false;
+    if (ini) ini.hidden = true;
+    acciones.classList.add('show');
+    hint.textContent = 'Así se va a ver. Toca "Guardar foto" para confirmar.';
+  });
+  $('fotoCancelar').addEventListener('click', () => {
+    input.value = '';
+    if (original){ img.src = original; } else { img.hidden = true; if (ini) ini.hidden = false; }
+    acciones.classList.remove('show');
+    hint.textContent = 'Toca la cámara para cambiar tu foto (JPG, PNG o GIF).';
+  });
+  $('fFoto').addEventListener('submit', e => { if (!input.files.length) e.preventDefault(); });
+
+  // ----- Datos personales -----
+  $('fDatos').addEventListener('submit', e => {
+    const ok = $('nombre').value.trim();
+    $('fNombre').classList.toggle('invalid', !ok);
+    if (!ok){ e.preventDefault(); $('nombre').focus(); return; }
+    $('btnDatos').disabled = true;
+  });
+  $('nombre').addEventListener('input', () => $('fNombre').classList.remove('invalid'));
+
+  // ----- Contraseña -----
+  document.querySelectorAll('.pf-eye').forEach(b => b.addEventListener('click', () => {
+    const f = $(b.dataset.for), ver = f.type === 'password';
+    f.type = ver ? 'text' : 'password';
+    b.innerHTML = `<i class="fa-regular ${ver ? 'fa-eye' : 'fa-eye-slash'}"></i>`;
+    b.setAttribute('aria-label', ver ? 'Ocultar contraseña' : 'Mostrar contraseña');
+  }));
+  $('fPass').addEventListener('submit', e => {
+    const a = $('actual').value, n = $('nueva').value, r = $('repetir').value;
+    const checks = [['fActual', !!a], ['fNueva', n.length >= 6], ['fRepetir', n && n === r]];
+    let primero = null;
+    checks.forEach(([id, ok]) => { $(id).classList.toggle('invalid', !ok); if (!ok && !primero) primero = $(id).querySelector('input'); });
+    if (primero){ e.preventDefault(); primero.focus(); }
+  });
+  ['actual','nueva','repetir'].forEach(id => $(id).addEventListener('input', e => e.target.closest('.pf-field').classList.remove('invalid')));
+})();
+</script>
+{% endblock %}

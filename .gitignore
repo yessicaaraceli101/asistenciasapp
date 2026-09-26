@@ -1,0 +1,13 @@
+node_modules/
+api/
+botsapucai/
+botvalenzuela/
+venv/
+__pycache__/
+*.pyc
+.env
+backups/
+audios/
+.wwebjs_auth/
+.wwebjs_cache/
+asistencias.db

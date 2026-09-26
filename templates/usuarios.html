@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+
+{% block extra_head %}
+<style>
+  .cfg, .cfg-modal{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1; --danger:#C2362F;
+    color:var(--ink);
+  }
+  .cfg{ max-width:1000px; margin:0 auto; padding:8px 0 40px; }
+  .cfg-head{ margin-bottom:20px; }
+  .cfg-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .cfg-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
+
+  .cfg-tabs{ display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:20px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+  .cfg-tab{
+    display:inline-flex; align-items:center; gap:8px; padding:12px 12px 10px; margin-bottom:-1px;
+    border-bottom:2px solid transparent; font-size:14px; font-weight:500; color:var(--ink-soft);
+    text-decoration:none; white-space:nowrap;
+  }
+  .cfg-tab:hover{ color:var(--ink); }
+  .cfg-tab.active{ color:var(--accent); border-bottom-color:var(--accent); }
+
+  .cfg-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; }
+  .cfg-card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:16px 20px; border-bottom:1px solid var(--line-soft); }
+  .cfg-card-head h2{ font-size:16px; font-weight:600; margin:0 0 2px; }
+  .cfg-card-head p{ margin:0; font-size:13px; color:var(--ink-faint); }
+  .cfg-body{ padding:20px; }
+
+  .cfg-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    height:40px; padding:0 16px; border-radius:8px; font-size:14px; font-weight:500;
+    text-decoration:none; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+  }
+  .cfg-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .cfg-btn:disabled{ opacity:.7; cursor:progress; }
+  .cfg-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
+  .cfg-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+
+  /* Tabla de técnicos */
+  .cfg-table{ width:100%; border-collapse:collapse; font-size:14px; }
+  .cfg-table th{ text-align:left; font-size:13px; font-weight:500; color:var(--ink-soft); background:#F9FAFC; padding:11px 16px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .cfg-table td{ padding:12px 16px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
+  .cfg-table tr:last-child td{ border-bottom:0; }
+  .cfg-table tr.inactivo td:not(:last-child){ color:var(--ink-faint); }
+  .cfg-sub{ display:block; font-size:12.5px; color:var(--ink-faint); }
+  .cfg-warn{ color:#8A5A00; font-size:13px; }
+  .cfg-status{ display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; border:1px solid transparent; font-size:12.5px; font-weight:500; }
+  .cfg-status::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .st-on { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
+  .st-off{ color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+  .cfg-actions{ display:flex; justify-content:flex-end; align-items:center; gap:2px; }
+  .cfg-icon{
+    width:32px; height:32px; border-radius:6px; display:inline-grid; place-items:center;
+    background:none; border:0; color:var(--ink-faint); text-decoration:none; cursor:pointer;
+  }
+  .cfg-icon:hover{ background:#EEF2F6; color:var(--ink); }
+  .cfg-icon.wa:hover{ background:#E8F7EE; color:#178A45; }
+  .cfg-icon.danger:hover{ background:#FDF1F0; color:var(--danger); }
+  .cfg-link{ background:none; border:0; padding:0 6px; font:inherit; font-size:13px; font-weight:500; color:var(--accent); cursor:pointer; }
+  .cfg-link:hover{ text-decoration:underline; text-underline-offset:3px; }
+  .cfg-empty{ padding:36px 16px; text-align:center; color:var(--ink-soft); }
+
+  /* Usuarios */
+  .cfg-search{ position:relative; max-width:420px; }
+  .cfg-search i{ position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--ink-faint); pointer-events:none; }
+  .cfg-search .cfg-input{ padding-left:36px; height:38px; }
+  .usr-cell{ display:flex; align-items:center; gap:10px; }
+  .usr-av{ width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex-shrink:0; }
+  .usr-ini{ display:inline-grid; place-items:center; background:#E0F2FE; border-color:#BAE6FD; color:#0369A1; font-weight:600; font-size:14px; }
+  .usr-cell strong{ font-weight:600; }
+  .usr-tu{ font-size:11.5px; font-weight:600; color:#0369A1; background:#E0F2FE; border-radius:4px; padding:1px 6px; margin-left:4px; }
+  .usr-rol{ display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--ink); white-space:nowrap; }
+  .usr-rol i{ font-size:13px; color:var(--ink-faint); width:14px; text-align:center; }
+  .usr-aviso{
+    margin:12px 20px 0; padding:10px 14px; border-radius:8px; font-size:13.5px;
+    background:#FFF7E6; border:1px solid #F5E0B3; color:#8A5A00;
+  }
+
+  /* Formularios */
+  .cfg-grid{ display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; }
+  .cfg-grid .full{ grid-column:1 / -1; }
+  .cfg-field label{ display:block; font-size:14px; font-weight:500; margin-bottom:6px; color:var(--ink); }
+  .cfg-field label .opt{ color:var(--ink-faint); font-weight:400; font-size:13px; }
+  .cfg-input, .cfg-field select, .cfg-field textarea{
+    width:100%; height:42px; padding:0 12px; font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .cfg-field textarea{ height:auto; min-height:80px; padding:10px 12px; resize:vertical; line-height:1.5; }
+  .cfg-input::placeholder, .cfg-field textarea::placeholder{ color:#9AA5B4; }
+  .cfg-input:focus, .cfg-field select:focus, .cfg-field textarea:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .cfg-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
+  .cfg-prev-label{ font-size:12.5px; color:var(--ink-faint); margin-bottom:6px; }
+  .cfg-prev{
+    display:flex; align-items:center; gap:12px; padding:14px 16px;
+    border:1px dashed #B7C2D0; border-radius:8px; background:#F9FAFC;
+  }
+  .cfg-prev img{ width:40px; height:40px; border-radius:50%; object-fit:cover; }
+  .cfg-prev strong{ display:block; font-size:16px; }
+  .cfg-prev span{ display:block; font-size:12.5px; color:var(--ink-soft); }
+  .cfg-prev-ot{ margin-left:auto; text-align:right; }
+  .cfg-prev-ot strong{ font-size:18px; letter-spacing:.5px; }
+  .cfg-foot{ display:flex; justify-content:flex-end; gap:8px; padding:16px 20px; border-top:1px solid var(--line-soft); }
+
+  /* Interruptores */
+  .cfg-switch{ display:flex; align-items:flex-start; gap:14px; padding:16px 0; border-top:1px solid var(--line-soft); cursor:pointer; }
+  .cfg-switch:first-child{ border-top:0; padding-top:0; }
+  .cfg-switch input{ position:absolute; opacity:0; pointer-events:none; }
+  .cfg-switch .track{
+    flex-shrink:0; width:40px; height:22px; border-radius:999px; background:#CBD3DD; position:relative; margin-top:2px;
+    transition:background-color .15s;
+  }
+  .cfg-switch .track::after{
+    content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .15s;
+  }
+  .cfg-switch input:checked + .track{ background:var(--accent); }
+  .cfg-switch input:checked + .track::after{ transform:translateX(18px); }
+  .cfg-switch input:focus-visible + .track{ outline:2px solid var(--accent); outline-offset:2px; }
+  .cfg-switch input:disabled + .track{ opacity:.45; }
+  .cfg-switch strong{ display:block; font-size:14px; font-weight:500; }
+  .cfg-switch span.txt{ font-size:13px; color:var(--ink-faint); }
+  .cfg-switch.is-disabled{ cursor:not-allowed; opacity:.6; }
+
+  .cfg-modal .modal-content{ border:1px solid var(--line); border-radius:12px; }
+  .cfg-modal .modal-title{ font-weight:600; font-size:18px; }
+  .cfg-modal .modal-body .cfg-field + .cfg-field{ margin-top:14px; }
+
+  @media (max-width:720px){
+    .cfg-grid{ grid-template-columns:1fr; }
+    .cfg-table .col-hide{ display:none; }
+    .cfg-foot{ flex-direction:column-reverse; }
+  }
+  @media (prefers-reduced-motion: reduce){ .cfg-switch .track, .cfg-switch .track::after{ transition:none; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cfg">
+  <div class="cfg-head">
+    <h1>Usuarios</h1>
+    <p>Quién tiene acceso al sistema, con qué rol y en qué sucursal.</p>
+  </div>
+
+  {# ======================= USUARIOS ======================= #}
+    {% set roles = {'admin':'Administrador', 'operador':'Operador', 'tecnico':'Técnico'} %}
+    <section class="cfg-card">
+      <div class="cfg-card-head">
+        <div>
+          <h2>{{ usuarios|length }} usuario{{ 's' if usuarios|length != 1 }}</h2>
+          <p>Personas que pueden iniciar sesión en SPYnet, con los datos que cargan en su perfil.</p>
+        </div>
+        {% if es_admin %}
+          <button type="button" class="cfg-btn js-usr" data-id="" data-sucursal="{{ g.sucursal_id }}" data-rol="operador">
+            <i class="fa-solid fa-user-plus" aria-hidden="true"></i> Agregar usuario
+          </button>
+        {% endif %}
+      </div>
+
+      {% if sin_admin %}
+        <div class="usr-aviso" role="status">
+          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          No hay ningún administrador activo. Mientras tanto, cualquier usuario puede gestionar usuarios:
+          edita a la persona responsable y asígnale el rol <strong>Administrador</strong>.
+        </div>
+      {% endif %}
+      {% if not es_admin %}
+        <div style="padding:12px 20px 0" class="cfg-hint">
+          <i class="fa-solid fa-lock" aria-hidden="true"></i>
+          Solo los administradores pueden agregar, editar o desactivar usuarios.
+        </div>
+      {% endif %}
+
+      <div style="padding:12px 20px 0">
+        <div class="cfg-search">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input type="search" id="usrFiltro" class="cfg-input" placeholder="Buscar por nombre, usuario, email o teléfono" autocomplete="off" aria-label="Buscar usuarios">
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;margin-top:12px">
+        <table class="cfg-table" id="usrTabla">
+          <thead>
+            <tr>
+              <th>Usuario</th><th class="col-hide">Contacto</th><th class="col-hide">Área / turno</th>
+              <th>Rol</th><th class="col-hide">Sucursal</th><th>Estado</th>
+              {% if es_admin %}<th><span class="visually-hidden">Acciones</span></th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in usuarios %}
+              {% set activo = u.activo != 0 %}
+              {% set yo = u.id == session.get('usuario_id') %}
+              <tr class="{{ '' if activo else 'inactivo' }}"
+                  data-search="{{ [u.nombre, u.usuario, u.email, u.telefono]|select|join(' ')|lower }}">
+                <td>
+                  <div class="usr-cell">
+                    {% if u.foto %}<img class="usr-av" src="{{ u.foto }}" alt="">
+                    {% else %}<span class="usr-av usr-ini" aria-hidden="true">{{ (u.nombre or u.usuario or '?')[:1]|upper }}</span>{% endif %}
+                    <div>
+                      <strong>{{ u.nombre or u.usuario }}</strong>{% if yo %} <span class="usr-tu">Tú</span>{% endif %}
+                      <span class="cfg-sub">@{{ u.usuario }}</span>
+                    </div>
+                  </div>
+                </td>
+                <td class="col-hide">
+                  {{ u.email or '' }}{% if not u.email and not u.telefono %}<span class="cfg-sub">—</span>{% endif %}
+                  {% if u.telefono %}<span class="cfg-sub">{{ u.telefono }}</span>{% endif %}
+                </td>
+                <td class="col-hide">
+                  {{ u.area or '—' }}{% if u.turno %}<span class="cfg-sub">{{ u.turno }}</span>{% endif %}
+                </td>
+                <td><span class="usr-rol">
+                  <i class="fa-solid {{ {'admin':'fa-user-shield', 'tecnico':'fa-helmet-safety'}.get(u.rol, 'fa-headset') }}" aria-hidden="true"></i>
+                  {{ roles.get(u.rol or 'operador', (u.rol or '')|capitalize) }}</span></td>
+                <td class="col-hide">{{ u.sucursal_nombre or '—' }}</td>
+                <td><span class="cfg-status {{ 'st-on' if activo else 'st-off' }}">{{ 'Activo' if activo else 'Desactivado' }}</span></td>
+                {% if es_admin %}
+                  <td>
+                    <div class="cfg-actions">
+                      <button type="button" class="cfg-icon js-usr" title="Editar" aria-label="Editar {{ u.usuario }}"
+                              data-id="{{ u.id }}" data-nombre="{{ u.nombre or '' }}" data-usuario="{{ u.usuario }}"
+                              data-email="{{ u.email or '' }}" data-telefono="{{ u.telefono or '' }}"
+                              data-area="{{ u.area or '' }}" data-turno="{{ u.turno or '' }}"
+                              data-rol="{{ u.rol or 'operador' }}" data-sucursal="{{ u.sucursal_id or '' }}">
+                        <i class="fa-regular fa-pen-to-square" aria-hidden="true"></i>
+                      </button>
+                      {% if not yo %}
+                        <form method="post" action="{{ url_for('config_usuario_estado', uid=u.id) }}">
+                          <button type="submit" class="cfg-link">{{ 'Desactivar' if activo else 'Activar' }}</button>
+                        </form>
+                        <button type="button" class="cfg-icon danger js-usr-del" title="Eliminar" aria-label="Eliminar {{ u.usuario }}"
+                                data-action="{{ url_for('config_usuario_eliminar', uid=u.id) }}" data-nombre="{{ u.nombre or u.usuario }}">
+                          <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+                        </button>
+                      {% endif %}
+                    </div>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+            <tr id="usrVacio" hidden><td colspan="7" class="cfg-empty">Ningún usuario coincide con la búsqueda.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cfg-hint" style="padding:12px 20px 16px">
+      </div>
+    </section>
+
+    {% if es_admin %}
+    <!-- Modal agregar / editar usuario -->
+    <div class="modal fade cfg-modal" id="mUsr" tabindex="-1" aria-labelledby="mUsrTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <form class="modal-content" method="post" action="{{ url_for('config_usuario_guardar') }}" id="fUsr" novalidate>
+          <div class="modal-header border-0">
+            <h5 class="modal-title" id="mUsrTitle">Agregar usuario</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body pt-0">
+            <input type="hidden" name="id" id="usrId">
+            <div class="cfg-grid">
+              <div class="cfg-field"><label for="usrNombre">Nombre y apellido</label><input class="cfg-input" id="usrNombre" name="nombre" required autocomplete="off"></div>
+              <div class="cfg-field"><label for="usrUsuario">Usuario (para iniciar sesión)</label><input class="cfg-input" id="usrUsuario" name="usuario" required autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+              <div class="cfg-field"><label for="usrEmail">Email <span class="opt">(opcional)</span></label><input class="cfg-input" id="usrEmail" name="email" type="email" autocomplete="off"></div>
+              <div class="cfg-field"><label for="usrTel">Teléfono</label><input class="cfg-input" id="usrTel" name="telefono" type="tel" autocomplete="off"></div>
+              <div class="cfg-field"><label for="usrArea">Área</label><input class="cfg-input" id="usrArea" name="area" autocomplete="off" placeholder="Ej.: Atención al cliente"></div>
+              <div class="cfg-field"><label for="usrTurno">Turno</label><input class="cfg-input" id="usrTurno" name="turno" autocomplete="off" placeholder="Ej.: Mañana"></div>
+              <div class="cfg-field">
+                <label for="usrRol">Rol</label>
+                <select id="usrRol" name="rol">
+                  <option value="operador">Operador</option>
+                  <option value="tecnico">Técnico</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </div>
+              <div class="cfg-field">
+                <label for="usrSuc">Sucursal</label>
+                <select id="usrSuc" name="sucursal_id">
+                  {% for s in sucursales %}<option value="{{ s['id'] }}">{{ s['nombre'] }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="cfg-field full">
+                <label for="usrClave" id="usrClaveLbl">Contraseña</label>
+                <input class="cfg-input" id="usrClave" name="contrasena" type="password" autocomplete="new-password" style="max-width:calc(50% - 8px)">
+                <div class="cfg-hint" id="usrClaveHint">Mínimo 6 caracteres. El usuario puede cambiarla después desde Mi perfil.</div>
+              </div>
+            </div>
+            <div class="cfg-hint" id="usrError" style="color:#C2362F" hidden></div>
+          </div>
+          <div class="modal-footer border-0">
+            <button type="button" class="cfg-btn cfg-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="cfg-btn">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal eliminar usuario -->
+    <div class="modal fade cfg-modal" id="mUsrDel" tabindex="-1" aria-labelledby="mUsrDelTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" action="" id="fUsrDel">
+          <div class="modal-header border-0">
+            <h5 class="modal-title" id="mUsrDelTitle">¿Eliminar usuario?</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body pt-0" style="color:var(--ink-soft)">
+            Vas a eliminar a <strong id="usrDelNombre" style="color:var(--ink)"></strong>. Ya no podrá iniciar sesión y esta acción no se puede deshacer.
+            <p class="mb-0 mt-2" style="font-size:13px">Si solo deja de trabajar por un tiempo, conviene <strong>desactivarlo</strong>.</p>
+          </div>
+          <div class="modal-footer border-0">
+            <button type="button" class="cfg-btn cfg-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="cfg-btn" style="background:#C2362F;border-color:#C2362F">Eliminar usuario</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(() => {
+  // ----- Usuarios -----
+  const uFiltro = document.getElementById('usrFiltro');
+  if (uFiltro){
+    const filas = document.querySelectorAll('#usrTabla tbody tr[data-search]');
+    const norm = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    uFiltro.addEventListener('input', () => {
+      const q = norm(uFiltro.value.trim()); let n = 0;
+      filas.forEach(tr => { const ok = !q || norm(tr.dataset.search).includes(q); tr.hidden = !ok; if (ok) n++; });
+      document.getElementById('usrVacio').hidden = n > 0;
+    });
+  }
+  const uEl = document.getElementById('mUsr');
+  if (uEl){
+    const modal = new bootstrap.Modal(uEl), form = document.getElementById('fUsr');
+    const campos = { usrNombre:'nombre', usrUsuario:'usuario', usrEmail:'email', usrTel:'telefono', usrArea:'area', usrTurno:'turno' };
+    let editando = false;
+    document.querySelectorAll('.js-usr').forEach(btn => btn.addEventListener('click', () => {
+      const d = btn.dataset; editando = !!d.id;
+      document.getElementById('mUsrTitle').textContent = editando ? 'Editar usuario' : 'Agregar usuario';
+      document.getElementById('usrId').value = d.id || '';
+      Object.entries(campos).forEach(([id, k]) => document.getElementById(id).value = d[k] || '');
+      document.getElementById('usrRol').value = d.rol || 'operador';
+      if (d.sucursal) document.getElementById('usrSuc').value = d.sucursal;
+      document.getElementById('usrClave').value = '';
+      document.getElementById('usrClaveLbl').textContent = editando ? 'Nueva contraseña (opcional)' : 'Contraseña';
+      document.getElementById('usrClaveHint').textContent = editando
+        ? 'Déjala vacía para no cambiarla. Úsala si el usuario olvidó su contraseña.'
+        : 'Mínimo 6 caracteres. El usuario puede cambiarla después desde Mi perfil.';
+      document.getElementById('usrError').hidden = true;
+      form.querySelector('[type=submit]').disabled = false;
+      modal.show();
+    }));
+    uEl.addEventListener('shown.bs.modal', () => document.getElementById('usrNombre').focus());
+    form.addEventListener('submit', e => {
+      const err = document.getElementById('usrError');
+      const nombre = document.getElementById('usrNombre').value.trim();
+      const usuario = document.getElementById('usrUsuario').value.trim();
+      const clave = document.getElementById('usrClave').value;
+      let msg = '';
+      if (!nombre || !usuario) msg = 'Completa el nombre y el usuario.';
+      else if (!editando && clave.length < 6) msg = 'La contraseña debe tener al menos 6 caracteres.';
+      else if (editando && clave && clave.length < 6) msg = 'La nueva contraseña debe tener al menos 6 caracteres.';
+      if (msg){ e.preventDefault(); err.textContent = msg; err.hidden = false; return; }
+      form.querySelector('[type=submit]').disabled = true;
+    });
+  }
+  const udEl = document.getElementById('mUsrDel');
+  if (udEl){
+    const modal = new bootstrap.Modal(udEl), form = document.getElementById('fUsrDel');
+    document.querySelectorAll('.js-usr-del').forEach(btn => btn.addEventListener('click', () => {
+      form.action = btn.dataset.action;
+      document.getElementById('usrDelNombre').textContent = btn.dataset.nombre;
+      form.querySelector('[type=submit]').disabled = false;
+      modal.show();
+    }));
+    form.addEventListener('submit', () => form.querySelector('[type=submit]').disabled = true);
+  }
+
+
+  // /usuarios?nuevo=1 abre directamente el formulario de alta
+  if (new URLSearchParams(location.search).get('nuevo') === '1'){
+    const b = document.querySelector('.js-usr[data-id=""]');
+    if (b) b.click();
+  }
+})();
+</script>
+{% endblock %}

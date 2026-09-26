@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Cliente{% endblock %}
+
+{% block extra_head %}
+<style>
+  .cd{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1;
+    max-width:1100px; margin:0 auto; padding:8px 0 40px; color:var(--ink);
+  }
+  .cd-back{ display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--ink-soft); text-decoration:none; margin-bottom:10px; }
+  .cd-back:hover{ color:var(--accent); }
+
+  .cd-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+  .cd-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 6px; }
+  .cd-meta{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:14px; color:var(--ink-soft); }
+  .cd-actions{ display:flex; gap:8px; }
+
+  .cd-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    height:40px; padding:0 16px; border-radius:8px;
+    font-size:14px; font-weight:500; text-decoration:none; white-space:nowrap;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+  }
+  .cd-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .cd-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
+  .cd-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+
+  .cd-status{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:3px 10px; border-radius:999px; border:1px solid transparent;
+    font-size:12.5px; font-weight:500; white-space:nowrap;
+  }
+  .cd-status::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .st-ok  { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
+  .st-warn{ color:#8A5A00; background:#FFF7E6; border-color:#F5E0B3; }
+  .st-off { color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+
+  .cd-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  .cd-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; }
+  .cd-card-head{ padding:16px 20px 0; display:flex; justify-content:space-between; align-items:baseline; }
+  .cd-card-head h2{ font-size:16px; font-weight:600; margin:0; }
+  .cd-card-head a{ font-size:13px; font-weight:500; color:var(--accent); text-decoration:none; }
+
+  .cd-dl{ display:grid; grid-template-columns:repeat(2, 1fr); margin:0; padding:8px 8px 12px; }
+  .cd-dl > div{ padding:10px 12px; }
+  .cd-dl .full{ grid-column:1 / -1; }
+  .cd-dl dt{ font-size:12.5px; font-weight:400; color:var(--ink-faint); margin-bottom:2px; }
+  .cd-dl dd{ margin:0; font-size:14px; font-weight:500; word-break:break-word; }
+  .cd-dl dd.empty{ color:var(--ink-faint); font-weight:400; }
+  .cd-dl dd a{ color:var(--accent); text-decoration:none; }
+  .cd-copy{
+    background:none; border:0; padding:0 0 0 6px; color:var(--ink-faint); cursor:pointer; font-size:12px;
+  }
+  .cd-copy:hover{ color:var(--accent); }
+
+  .cd-tickets{ list-style:none; margin:0; padding:8px 0; }
+  .cd-tickets li{ padding:12px 20px; border-top:1px solid var(--line-soft); }
+  .cd-tickets li:first-child{ border-top:0; }
+  .cd-t-top{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .cd-t-top strong{ font-size:14px; font-weight:600; }
+  .cd-t-meta{ font-size:12.5px; color:var(--ink-faint); margin-top:2px; }
+  .cd-t-desc{
+    font-size:13.5px; color:var(--ink-soft); margin-top:6px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .t-pendiente  { color:#8A5A00; background:#FFF7E6; border-color:#F5E0B3; }
+  .t-en_progreso{ color:#0369A1; background:#EAF6FD; border-color:#C4E4F7; }
+  .t-resuelto   { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
+  .t-cancelado  { color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+  .cd-empty{ padding:28px 20px; text-align:center; color:var(--ink-soft); font-size:14px; }
+
+  @media (max-width:860px){
+    .cd-grid{ grid-template-columns:1fr; }
+    .cd-actions{ width:100%; }
+    .cd-actions > *{ flex:1; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% macro campo(k) -%}{{ (c[k] if c[k] is not none else '')|default('', true)|string|trim }}{%- endmacro %}
+{% set nombre = (campo('nombre') ~ ' ' ~ campo('apellido'))|trim %}
+{% set sit = campo('situacion')|lower %}
+
+{# Plan: valor -> plan -> número dentro de tipo_valor #}
+{% set ns = namespace(plan=campo('valor') or campo('plan')) %}
+{% if not ns.plan %}
+  {% for p in campo('tipo_valor').replace(':', ' ').split() if p[0].isdigit() %}{% if loop.first %}{% set ns.plan = p %}{% endif %}{% endfor %}
+{% endif %}
+{% set venc = campo('vencimiento') %}
+{% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Resuelto', 'cancelado':'Cancelado'} %}
+
+<div class="cd">
+  <a class="cd-back" href="{{ url_for('clientes') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver a clientes</a>
+
+  <div class="cd-head">
+    <div>
+      <h1>{{ nombre }}</h1>
+      <div class="cd-meta">
+        {% if campo('situacion') %}
+          <span class="cd-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspend' in sit or 'deud' in sit %}st-warn{% else %}st-off{% endif %}">{{ campo('situacion')|capitalize }}</span>
+        {% elif c['activo'] == 1 %}
+          <span class="cd-status st-ok">Activo</span>
+        {% else %}
+          <span class="cd-status st-off">Inactivo</span>
+        {% endif %}
+        {% if c['exonerado'] in (1, '1') %}<span class="cd-status st-warn">Exonerado</span>{% endif %}
+        {% if campo('external_id') %}<span>ID externo #{{ campo('external_id') }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="cd-actions">
+      <a class="cd-btn cd-btn-ghost" href="{{ url_for('clientes_editar', cid=c['id']) }}">
+        <i class="fa-regular fa-pen-to-square" aria-hidden="true"></i> Editar
+      </a>
+      <a class="cd-btn" href="{{ url_for('nuevo_ticket', cliente_id=c['id']) }}">
+        <i class="fa-solid fa-plus" aria-hidden="true"></i> Nuevo ticket
+      </a>
+    </div>
+  </div>
+
+  <div class="cd-grid">
+
+    <div>
+      <section class="cd-card" style="margin-bottom:16px">
+        <div class="cd-card-head"><h2>Datos del cliente</h2></div>
+        <dl class="cd-dl">
+          <div><dt>Cédula (CI)</dt><dd class="{{ 'empty' if not campo('cedula') }}">{{ campo('cedula') or '—' }}</dd></div>
+          <div>
+            <dt>Usuario PPPoE</dt>
+            <dd class="{{ 'empty' if not campo('pppoe') }}">
+              {{ campo('pppoe') or '—' }}
+              {% if campo('pppoe') %}<button type="button" class="cd-copy js-copy" data-copy="{{ campo('pppoe') }}" title="Copiar" aria-label="Copiar usuario PPPoE"><i class="fa-regular fa-copy"></i></button>{% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Teléfono</dt>
+            <dd class="{{ 'empty' if not campo('telefono') }}">
+              {% if campo('telefono') %}<a href="tel:{{ campo('telefono') }}">{{ campo('telefono') }}</a>{% else %}—{% endif %}
+            </dd>
+          </div>
+          <div><dt>Email</dt><dd class="{{ 'empty' if not campo('email') }}">{{ campo('email') or '—' }}</dd></div>
+        </dl>
+      </section>
+
+      <section class="cd-card">
+        <div class="cd-card-head"><h2>Ubicación y servicio</h2></div>
+        <dl class="cd-dl">
+          <div><dt>Barrio</dt><dd class="{{ 'empty' if not campo('barrio') }}">{{ campo('barrio') or '—' }}</dd></div>
+          <div><dt>Dirección</dt><dd class="{{ 'empty' if not campo('direccion') }}">{{ campo('direccion') or '—' }}</dd></div>
+          <div class="full"><dt>Referencia</dt><dd class="{{ 'empty' if not campo('referencia') }}">{{ campo('referencia') or '—' }}</dd></div>
+          <div><dt>Plan</dt><dd class="{{ 'empty' if not ns.plan }}">{% if ns.plan %}{{ ns.plan }} Gs.{% else %}—{% endif %}</dd></div>
+          <div>
+            <dt>Vencimiento</dt>
+            <dd class="{{ 'empty' if not venc }}">
+              {% if venc and venc.isdigit() and venc|int <= 31 %}Día {{ venc }} de cada mes{% else %}{{ venc or '—' }}{% endif %}
+            </dd>
+          </div>
+          <div><dt>N.º de serie ONU</dt><dd class="{{ 'empty' if not campo('onu_serie') }}">{{ campo('onu_serie') or '—' }}</dd></div>
+          <div>
+            <dt>Duración del servicio</dt>
+            <dd class="{{ 'empty' if not campo('contrato_tipo') }}">
+              {% if campo('contrato_tipo') == 'temporal' %}{{ campo('contrato_meses') }} meses{% elif campo('contrato_tipo') %}Indefinido{% else %}—{% endif %}
+            </dd>
+          </div>
+          <div><dt>Vivienda</dt><dd class="{{ 'empty' if not campo('vivienda') }}">{{ campo('vivienda')|capitalize or '—' }}</dd></div>
+          {% if campo('vivienda') == 'alquilada' %}
+            <div>
+              <dt>Dueño de la casa</dt>
+              <dd>{{ campo('dueno_nombre') or '—' }}
+                <span style="display:block;font-weight:400;font-size:13px;color:var(--ink-soft)">
+                  {% if campo('dueno_telefono') %}<a href="tel:{{ campo('dueno_telefono') }}">{{ campo('dueno_telefono') }}</a>{% endif %}
+                  {% if campo('dueno_ci') %} · CI {{ campo('dueno_ci') }}{% endif %}
+                </span>
+              </dd>
+            </div>
+          {% endif %}
+          {% if campo('lat') and campo('lng') %}
+            <div class="full">
+              <dt>Ubicación en el mapa</dt>
+              <dd><a href="https://www.google.com/maps?q={{ campo('lat') }},{{ campo('lng') }}" target="_blank" rel="noopener">
+                {{ campo('lat') }}, {{ campo('lng') }} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:11px"></i>
+              </a></dd>
+            </div>
+          {% endif %}
+        </dl>
+      </section>
+    </div>
+
+    <section class="cd-card">
+      <div class="cd-card-head">
+        <h2>Últimos tickets</h2>
+        {% if tickets %}<a href="{{ url_for('tickets') }}">Ver todos</a>{% endif %}
+      </div>
+      {% if tickets %}
+        <ul class="cd-tickets">
+          {% for t in tickets %}
+            {% set est = (t['estado'] or 'pendiente')|lower %}
+            <li>
+              <div class="cd-t-top">
+                <strong>{{ t['tipo'] or 'Ticket' }}</strong>
+                <span class="cd-status t-{{ est if est in etiquetas else 'pendiente' }}">{{ etiquetas.get(est, 'Pendiente') }}</span>
+              </div>
+              <div class="cd-t-meta">
+                {{ (t['fecha'] or '')|string|truncate(16, true, '') }}
+                {% if t['tecnico'] %} · {{ t['tecnico'] }}{% endif %}
+                {% if t['prioridad'] %} · Señal {{ t['prioridad']|lower }}{% endif %}
+              </div>
+              {% if t['problema'] %}<div class="cd-t-desc">{{ t['problema'] }}</div>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="cd-empty">
+          Este cliente no tiene tickets.<br>
+          <a href="{{ url_for('nuevo_ticket', cliente_id=c['id']) }}">Crear un ticket</a>
+        </div>
+      {% endif %}
+    </section>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.querySelectorAll('.js-copy').forEach(btn => btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copy);
+      btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+      setTimeout(() => btn.innerHTML = '<i class="fa-regular fa-copy"></i>', 1500);
+    } catch {}
+  }));
+</script>
+{% endblock %}

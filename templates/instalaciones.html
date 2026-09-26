@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+{% block title %}Instalaciones{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ins, .ins-modal{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1; --ok:#177A56;
+    color:var(--ink);
+  }
+  .ins{ max-width:1200px; margin:0 auto; padding:8px 0 40px; }
+
+  .ins-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+  .ins-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .ins-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
+
+  .ins-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    height:40px; padding:0 16px; border-radius:8px;
+    font-size:14px; font-weight:500; text-decoration:none; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+  }
+  .ins-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .ins-btn:disabled{ opacity:.7; cursor:progress; }
+  .ins-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
+  .ins-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+  .ins-btn-ok{ background:var(--ok); border-color:var(--ok); }
+  .ins-btn-ok:hover{ background:#12613F; border-color:#12613F; }
+
+  /* Indicadores */
+  .ins-kpis{
+    display:grid; grid-template-columns:repeat(4, 1fr);
+    background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    margin-bottom:20px; overflow:hidden;
+  }
+  .ins-kpi{ padding:16px 20px; display:flex; flex-direction:column; gap:6px; }
+  .ins-kpi + .ins-kpi{ border-left:1px solid var(--line-soft); }
+  .ins-kpi span{ font-size:13px; color:var(--ink-soft); }
+  .ins-kpi strong{ font-size:28px; font-weight:600; line-height:1; font-variant-numeric:tabular-nums; }
+  .ins-kpi small{ font-size:12.5px; color:var(--ink-faint); }
+
+  .ins-alert{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    padding:10px 14px; margin-bottom:16px; border-radius:8px;
+    background:#FFF7E6; border:1px solid #F5E0B3; color:#8A5A00; font-size:14px;
+  }
+
+  .ins-panel{ background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .ins-tabs{ display:flex; gap:4px; overflow-x:auto; overflow-y:hidden; padding:0 12px; border-bottom:1px solid var(--line); }
+  .ins-tab{
+    display:inline-flex; align-items:center; gap:8px; padding:14px 10px 12px; margin-bottom:-1px;
+    border-bottom:2px solid transparent; font-size:14px; font-weight:500; color:var(--ink-soft);
+    text-decoration:none; white-space:nowrap;
+  }
+  .ins-tab:hover{ color:var(--ink); }
+  .ins-tab.active{ color:var(--accent); border-bottom-color:var(--accent); }
+  .ins-tab .count{ font-size:12px; color:var(--ink-soft); background:#EEF2F6; border-radius:999px; padding:1px 8px; }
+  .ins-tab.active .count{ background:#E0F2FE; color:var(--accent-hover); }
+
+  .ins-toolbar{ padding:12px; border-bottom:1px solid var(--line-soft); }
+  .ins-search{ position:relative; max-width:420px; }
+  .ins-search i{ position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--ink-faint); pointer-events:none; }
+  .ins-search input{
+    width:100%; height:38px; padding:0 12px 0 36px; font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .ins-search input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+
+  .ins-scroll{ overflow-x:auto; }
+  .ins-table{ width:100%; border-collapse:collapse; font-size:14px; }
+  .ins-table th{
+    text-align:left; font-size:13px; font-weight:500; color:var(--ink-soft);
+    background:#F9FAFC; padding:11px 16px; border-bottom:1px solid var(--line); white-space:nowrap;
+  }
+  .ins-table td{ padding:12px 16px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
+  .ins-table tbody tr:last-child td{ border-bottom:0; }
+  .ins-table tbody tr:hover{ background:#FAFBFD; }
+  .ins-table tr.is-today{ background:#F5FBFE; }
+
+  .ins-client strong{ display:block; font-weight:600; }
+  .ins-sub{ display:block; font-size:12.5px; color:var(--ink-faint); }
+  .ins-date{ white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .ins-date .today-tag{ font-size:11.5px; font-weight:600; color:var(--accent-hover); background:#E0F2FE; border-radius:4px; padding:1px 6px; margin-left:4px; }
+
+  .ins-link{
+    background:none; border:0; padding:0; font:inherit; font-size:13.5px;
+    color:var(--accent); font-weight:500; cursor:pointer; text-decoration:none; white-space:nowrap;
+  }
+  .ins-link:hover{ color:var(--accent-hover); text-decoration:underline; text-underline-offset:3px; }
+  .ins-muted{ color:var(--ink-faint); }
+
+  .ins-status{
+    display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px;
+    border:1px solid transparent; font-size:12.5px; font-weight:500; white-space:nowrap;
+  }
+  .ins-status::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .st-pendiente  { color:#8A5A00; background:#FFF7E6; border-color:#F5E0B3; }
+  .st-en_progreso{ color:#0369A1; background:#EAF6FD; border-color:#C4E4F7; }
+  .st-resuelto   { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
+  .st-cancelado  { color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+
+  .ins-actions{ display:flex; justify-content:flex-end; align-items:center; gap:4px; }
+  .ins-done{
+    display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 10px; border-radius:6px;
+    background:none; border:1px solid var(--line); font-size:13px; font-weight:500; color:var(--ink);
+    white-space:nowrap; cursor:pointer;
+  }
+  .ins-done i{ color:var(--ok); }
+  .ins-done:hover{ border-color:#9ED5BD; background:#EDF8F3; }
+  .ins-icon{
+    width:32px; height:32px; border-radius:6px; display:inline-grid; place-items:center;
+    background:none; border:0; color:var(--ink-faint); text-decoration:none; cursor:pointer;
+  }
+  .ins-icon:hover{ background:#EEF2F6; color:var(--ink); }
+  .ins-icon:focus-visible, .ins-done:focus-visible, .ins-link:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .ins-empty{ padding:40px 16px; text-align:center; color:var(--ink-soft); }
+  .ins-empty i{ display:block; font-size:26px; color:var(--ink-faint); margin-bottom:8px; }
+
+  /* Modales */
+  .ins-modal .modal-content{ border:1px solid var(--line); border-radius:12px; }
+  .ins-modal .modal-title{ font-weight:600; font-size:18px; }
+  .ins-modal .modal-body{ padding-top:0; color:var(--ink-soft); }
+  .ins-modal .modal-footer{ gap:8px; }
+  .ins-modal label{ display:block; font-size:14px; font-weight:500; color:var(--ink); margin:10px 0 6px; }
+  .ins-modal input, .ins-modal select{
+    width:100%; height:42px; padding:0 12px; font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .ins-modal input:focus, .ins-modal select:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+
+  @media (max-width:900px){
+    .ins-kpis{ grid-template-columns:1fr 1fr; }
+    .ins-kpi:nth-child(3){ border-left:0; }
+    .ins-kpi:nth-child(n+3){ border-top:1px solid var(--line-soft); }
+    .ins-table .col-hide{ display:none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Realizada', 'cancelado':'Cancelada'} %}
+
+<div class="ins">
+  <div class="ins-head">
+    <div>
+      <h1>Instalaciones</h1>
+      <p>Nuevas conexiones de la sucursal {{ g.sucursal_nombre }}: programación, técnico y estado.</p>
+    </div>
+    <a class="ins-btn" href="{{ url_for('instalaciones_nueva') }}">
+      <i class="fa-solid fa-plus" aria-hidden="true"></i> Nueva instalación
+    </a>
+  </div>
+
+  <section class="ins-kpis" aria-label="Resumen de instalaciones">
+    <div class="ins-kpi"><span>Pendientes</span><strong>{{ kpis.pendientes }}</strong><small>por hacer</small></div>
+    <div class="ins-kpi"><span>Para hoy</span><strong>{{ kpis.hoy }}</strong><small>programadas o creadas hoy</small></div>
+    <div class="ins-kpi"><span>Esta semana</span><strong>{{ kpis.semana }}</strong><small>{{ semana_txt }}</small></div>
+    <div class="ins-kpi"><span>Realizadas este mes</span><strong>{{ kpis.mes_realizadas }}</strong><small>marcadas como realizadas</small></div>
+  </section>
+
+  {% if kpis.sin_programar or kpis.sin_tecnico %}
+    <div class="ins-alert" role="status">
+      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      {% if kpis.sin_programar %}{{ kpis.sin_programar }} pendiente{{ 's' if kpis.sin_programar != 1 }} sin fecha de visita{% endif %}
+      {% if kpis.sin_programar and kpis.sin_tecnico %} · {% endif %}
+      {% if kpis.sin_tecnico %}{{ kpis.sin_tecnico }} sin técnico asignado{% endif %}
+    </div>
+  {% endif %}
+
+  <div class="ins-panel">
+    <nav class="ins-tabs" aria-label="Filtrar instalaciones">
+      {% for key, label in [('pendientes','Pendientes'), ('hoy','Hoy'), ('semana','Esta semana'), ('realizadas','Realizadas'), ('todas','Todas')] %}
+        <a class="ins-tab {{ 'active' if vista == key }}" href="{{ url_for('instalaciones', vista=key) }}" {% if vista == key %}aria-current="page"{% endif %}>
+          {{ label }} <span class="count">{{ cuentas[key] }}</span>
+        </a>
+      {% endfor %}
+    </nav>
+
+    <div class="ins-toolbar">
+      <div class="ins-search">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input type="search" id="insFiltro" placeholder="Buscar por cliente, barrio o técnico" autocomplete="off" aria-label="Buscar instalaciones">
+      </div>
+    </div>
+
+    <div class="ins-scroll">
+      <table class="ins-table" id="insTabla">
+        <thead>
+          <tr>
+            <th scope="col">Cliente</th>
+            <th scope="col">Visita</th>
+            <th scope="col" class="col-hide">Técnico</th>
+            <th scope="col">Estado</th>
+            <th scope="col"><span class="visually-hidden">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in instalaciones %}
+            {% set est = (i.estado or 'pendiente')|lower %}
+            {% set abierta = est in ('pendiente', 'en_progreso') %}
+            {% set visita = (i.visita or '')|string %}
+            <tr class="{{ 'is-today' if visita[:10] == hoy and abierta }}"
+                data-search="{{ [i.cliente, i.c_barrio, i.direccion, i.tecnico]|select|join(' ')|lower }}">
+              <td class="ins-client">
+                <strong>{{ i.cliente or '—' }}</strong>
+                <span class="ins-sub">
+                  {{ i.c_barrio or '' }}{% if i.c_barrio and (i.direccion or i.c_telefono) %} · {% endif %}{{ i.direccion or i.c_telefono or '' }}
+                </span>
+              </td>
+              <td class="ins-date">
+                {% if visita %}
+                  {{ visita[:10] }}{% if visita[:10] == hoy %}<span class="today-tag">Hoy</span>{% endif %}
+                  <span class="ins-sub">{{ visita[11:16] or 'Sin hora' }}</span>
+                {% elif abierta and tiene_programacion %}
+                  <button type="button" class="ins-link js-prog" data-action="{{ url_for('tickets_programar', tid=i.id) }}"
+                          data-cliente="{{ i.cliente }}" data-valor="">Programar</button>
+                {% else %}
+                  <span class="ins-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="col-hide">
+                {% if i.tecnico %}{{ i.tecnico }}
+                {% elif abierta and tiene_tecnico_id and tecnicos %}
+                  <button type="button" class="ins-link js-asig" data-action="{{ url_for('tickets_asignar', tid=i.id) }}"
+                          data-cliente="{{ i.cliente }}" data-tecnico="">Asignar</button>
+                {% else %}<span class="ins-muted">Sin asignar</span>{% endif %}
+              </td>
+              <td><span class="ins-status st-{{ est if est in etiquetas else 'pendiente' }}">{{ etiquetas.get(est, 'Pendiente') }}</span></td>
+              <td>
+                <div class="ins-actions">
+                  {% if abierta %}
+                    <button type="button" class="ins-done js-done" data-action="{{ url_for('tickets_cambiar_estado', tid=i.id) }}" data-cliente="{{ i.cliente }}">
+                      <i class="fa-regular fa-circle-check" aria-hidden="true"></i> Realizada
+                    </button>
+                    {% if tiene_programacion %}
+                      <button type="button" class="ins-icon js-prog" title="Programar visita" aria-label="Programar visita de {{ i.cliente }}"
+                              data-action="{{ url_for('tickets_programar', tid=i.id) }}" data-cliente="{{ i.cliente }}"
+                              data-valor="{{ visita[:16]|replace(' ', 'T') }}">
+                        <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                      </button>
+                    {% endif %}
+                    {% if tiene_tecnico_id and tecnicos %}
+                      <button type="button" class="ins-icon js-asig" title="Asignar técnico" aria-label="Asignar técnico a {{ i.cliente }}"
+                              data-action="{{ url_for('tickets_asignar', tid=i.id) }}" data-cliente="{{ i.cliente }}"
+                              data-tecnico="{{ i.tecnico_id or '' }}">
+                        <i class="fa-regular fa-user" aria-hidden="true"></i>
+                      </button>
+                    {% endif %}
+                  {% endif %}
+                  <a class="ins-icon" href="{{ url_for('tickets_ot', tid=i.id) }}" title="Orden de trabajo" aria-label="Orden de trabajo de {{ i.cliente }}">
+                    <i class="fa-regular fa-file-lines" aria-hidden="true"></i>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          <tr id="insVacio" {% if instalaciones %}hidden{% endif %}>
+            <td colspan="5" class="ins-empty">
+              <i class="fa-solid fa-plug" aria-hidden="true"></i>
+              {% if instalaciones %}Ninguna instalación coincide con la búsqueda.
+              {% elif vista == 'pendientes' %}No hay instalaciones pendientes.
+              {% elif vista == 'hoy' %}No hay instalaciones para hoy.
+              {% elif vista == 'semana' %}No hay instalaciones esta semana.
+              {% elif vista == 'realizadas' %}Todavía no hay instalaciones realizadas.
+              {% else %}Todavía no hay instalaciones. <a href="{{ url_for('instalaciones_nueva') }}">Registrar la primera</a>{% endif %}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: marcar como realizada -->
+<div class="modal fade ins-modal" id="mDone" tabindex="-1" aria-labelledby="mDoneTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="">
+      <div class="modal-header border-0"><h5 class="modal-title" id="mDoneTitle">¿Instalación realizada?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+      <div class="modal-body">La instalación de <strong class="js-nombre"></strong> pasará a estado realizada.</div>
+      <input type="hidden" name="estado" value="resuelto">
+      <div class="modal-footer border-0">
+        <button type="button" class="ins-btn ins-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="ins-btn ins-btn-ok">Marcar como realizada</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: programar visita -->
+<div class="modal fade ins-modal" id="mProg" tabindex="-1" aria-labelledby="mProgTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="">
+      <div class="modal-header border-0"><h5 class="modal-title" id="mProgTitle">Programar visita</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+      <div class="modal-body">
+        Instalación de <strong class="js-nombre"></strong>.
+        <label for="progFecha">Fecha y hora</label>
+        <input type="datetime-local" id="progFecha" name="programada_local" required>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="ins-btn ins-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="ins-btn">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: asignar técnico -->
+<div class="modal fade ins-modal" id="mAsig" tabindex="-1" aria-labelledby="mAsigTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="">
+      <div class="modal-header border-0"><h5 class="modal-title" id="mAsigTitle">Asignar técnico</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+      <div class="modal-body">
+        Instalación de <strong class="js-nombre"></strong>.
+        <label for="asigTec">Técnico</label>
+        <select id="asigTec" name="tecnico_id">
+          <option value="">Sin asignar</option>
+          {% for t in tecnicos %}<option value="{{ t['id'] }}">{{ t['nombre'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="ins-btn ins-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="ins-btn">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(() => {
+  // Búsqueda
+  const input = document.getElementById('insFiltro');
+  const rows = document.querySelectorAll('#insTabla tbody tr[data-search]');
+  const vacio = document.getElementById('insVacio');
+  const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  input.addEventListener('input', () => {
+    if (!rows.length) return;
+    const q = norm(input.value); let n = 0;
+    rows.forEach(tr => { const ok = !q || norm(tr.dataset.search).includes(q); tr.hidden = !ok; if (ok) n++; });
+    vacio.hidden = n > 0;
+  });
+
+  // Modales: completan el formulario con los datos del botón
+  function conectar(selector, modalId, preparar){
+    const el = document.getElementById(modalId);
+    const modal = new bootstrap.Modal(el);
+    const form = el.querySelector('form');
+    document.querySelectorAll(selector).forEach(btn => btn.addEventListener('click', () => {
+      form.action = btn.dataset.action;
+      el.querySelector('.js-nombre').textContent = btn.dataset.cliente || 'este cliente';
+      form.querySelector('[type=submit]').disabled = false;
+      if (preparar) preparar(form, btn);
+      modal.show();
+    }));
+    form.addEventListener('submit', e => {
+      if (!form.checkValidity()) return;
+      form.querySelector('[type=submit]').disabled = true;
+    });
+    return el;
+  }
+
+  conectar('.js-done', 'mDone');
+
+  const progEl = conectar('.js-prog', 'mProg', (form, btn) => {
+    const f = form.querySelector('#progFecha');
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    f.min = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T00:00`;
+    f.value = btn.dataset.valor || '';
+  });
+  progEl.addEventListener('shown.bs.modal', () => document.getElementById('progFecha').focus());
+
+  conectar('.js-asig', 'mAsig', (form, btn) => {
+    form.querySelector('#asigTec').value = btn.dataset.tecnico || '';
+  });
+})();
+</script>
+{% endblock %}

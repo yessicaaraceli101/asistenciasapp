@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+{% block title %}Estadísticas{% endblock %}
+
+{% block extra_head %}
+<style>
+  .st{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --accent:#0284C7; --accent-hover:#0369A1;
+    --c-asist:#0284C7; --c-inst:#F59E0B;
+    max-width:1200px; margin:0 auto; padding:8px 0 40px; color:var(--ink);
+  }
+  .st-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+  .st-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .st-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
+
+  .st-month{ display:flex; align-items:center; gap:6px; }
+  .st-month a, .st-month span.disabled{
+    width:36px; height:38px; display:inline-grid; place-items:center; border-radius:8px;
+    border:1px solid var(--line); background:var(--surface); color:var(--ink); text-decoration:none;
+  }
+  .st-month a:hover{ background:#F7F9FC; border-color:#B7C2D0; }
+  .st-month span.disabled{ color:#C3CBD6; }
+  .st-month input{
+    height:38px; padding:0 10px; font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff;
+  }
+  .st-month input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .st-month .today{ width:auto; padding:0 12px; font-size:14px; font-weight:500; }
+
+  .st-label{ font-size:15px; font-weight:600; margin:0 0 12px; }
+  .st-legend{ display:inline-flex; gap:14px; font-size:13px; color:var(--ink-soft); font-weight:400; margin-left:12px; }
+  .st-legend span::before{ content:""; display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+  .st-legend .a::before{ background:var(--c-asist); }
+  .st-legend .i::before{ background:var(--c-inst); }
+
+  /* Tarjetas de período */
+  .st-periods{ display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:28px; }
+  .st-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; }
+  .st-period{ padding:16px 18px; }
+  .st-period h3{ font-size:14px; font-weight:600; margin:0; }
+  .st-period .rango{ font-size:12.5px; color:var(--ink-faint); }
+  .st-period .nums{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+  .st-period .n{ font-size:28px; font-weight:600; line-height:1; font-variant-numeric:tabular-nums; }
+  .st-period .l{ display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); margin-top:6px; }
+  .st-period .l::before{ content:""; width:8px; height:8px; border-radius:2px; }
+  .st-period .l.a::before{ background:var(--c-asist); }
+  .st-period .l.i::before{ background:var(--c-inst); }
+  .st-period.is-month{ border-color:#9BD3F0; background:#F5FBFE; }
+
+  /* Gráfico */
+  .st-chart{ padding:18px 20px 16px; margin-bottom:28px; }
+  .st-chart-box{ position:relative; height:280px; }
+  .st-split{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft); }
+  .st-split div{ font-size:14px; }
+  .st-split strong{ display:block; font-size:13px; font-weight:500; color:var(--ink-soft); margin-bottom:2px; }
+
+  /* Estados y clientes */
+  .st-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:28px; }
+  .st-box{ padding:18px 20px; }
+  .st-bar{ display:flex; height:10px; border-radius:999px; overflow:hidden; background:#EEF2F6; margin:4px 0 16px; }
+  .st-bar span{ display:block; height:100%; }
+  .st-list{ list-style:none; margin:0; padding:0; }
+  .st-list li{ display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--line-soft); font-size:14px; }
+  .st-list li:first-child{ border-top:0; }
+  .st-list .dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .st-list .v{ margin-left:auto; font-weight:600; font-variant-numeric:tabular-nums; }
+  .st-list .p{ width:48px; text-align:right; color:var(--ink-faint); font-size:13px; font-variant-numeric:tabular-nums; }
+  .st-total{ font-size:13px; color:var(--ink-faint); margin-top:8px; }
+
+  /* Técnicos */
+  .st-table{ width:100%; border-collapse:collapse; font-size:14px; }
+  .st-table th{ text-align:left; font-size:13px; font-weight:500; color:var(--ink-soft); background:#F9FAFC; padding:11px 16px; border-bottom:1px solid var(--line); }
+  .st-table td{ padding:11px 16px; border-bottom:1px solid var(--line-soft); font-variant-numeric:tabular-nums; }
+  .st-table tr:last-child td{ border-bottom:0; }
+  .st-table .r{ text-align:right; }
+  .st-empty{ padding:28px 16px; text-align:center; color:var(--ink-soft); font-size:14px; }
+
+  /* Detalle por técnico */
+  .st-note{ margin:-6px 0 0; font-size:13px; color:var(--ink-faint); }
+  .st-toggle{ display:inline-flex; align-items:center; gap:10px; background:none; border:0; padding:0; font:inherit; font-weight:500; color:var(--ink); cursor:pointer; }
+  .st-toggle i{ font-size:11px; color:var(--ink-faint); transition:transform .15s; width:10px; }
+  .st-toggle[aria-expanded="true"] i{ transform:rotate(90deg); color:var(--accent); }
+  .st-toggle:hover{ color:var(--accent); }
+  .st-tec:hover{ background:#FAFBFD; }
+  .st-det > td{ padding:0 16px 14px 36px !important; background:#FAFBFD; }
+  .st-sub{ width:100%; border-collapse:collapse; font-size:13.5px; background:#fff; border:1px solid var(--line-soft); border-radius:8px; }
+  .st-sub th{ text-align:left; font-size:12.5px; font-weight:500; color:var(--ink-faint); padding:8px 12px; border-bottom:1px solid var(--line-soft); background:#fff; }
+  .st-sub td{ padding:8px 12px; border-bottom:1px solid var(--line-soft); font-variant-numeric:normal; vertical-align:top; }
+  .st-sub tr:last-child td{ border-bottom:0; }
+  .st-sub a{ color:var(--ink); font-weight:500; text-decoration:none; }
+  .st-sub a:hover{ color:var(--accent); text-decoration:underline; text-underline-offset:3px; }
+  .st-sub .nw{ white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .st-hora{ color:var(--ink-faint); margin-left:4px; }
+  .st-map{ margin-left:6px; color:var(--accent) !important; }
+  .st-est{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; white-space:nowrap; }
+  .st-est::before{ content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .e-pendiente{ color:#8A5A00; } .e-en_progreso{ color:#0369A1; } .e-resuelto{ color:#177A56; } .e-cancelado{ color:#5B6778; }
+  .st-del{ width:30px; height:30px; border-radius:6px; display:inline-grid; place-items:center; background:none; border:0; color:var(--ink-faint); cursor:pointer; }
+  .st-del:hover{ background:#FDF1F0; color:#C2362F; }
+  .st-del:focus-visible{ outline:2px solid #0284C7; outline-offset:1px; }
+  .st-sub td.r{ text-align:right; vertical-align:middle; padding:4px 8px; }
+  .st-mbtn{ display:inline-flex; align-items:center; height:40px; padding:0 16px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; }
+  .st-mbtn-ghost{ background:#fff; border:1px solid #D9E0E8; color:#0F1B2D; }
+  .st-mbtn-ghost:hover{ background:#F7F9FC; }
+  .st-mbtn-danger{ background:#C2362F; border:1px solid #C2362F; color:#fff; }
+  .st-mbtn-danger:hover{ background:#A42C26; }
+  .st-mbtn:disabled{ opacity:.7; }
+  @media (prefers-reduced-motion: reduce){ .st-toggle i{ transition:none; } }
+
+  @media (max-width:980px){
+    .st-periods{ grid-template-columns:1fr 1fr; }
+    .st-row{ grid-template-columns:1fr; }
+  }
+  @media (max-width:520px){
+    .st-periods{ grid-template-columns:1fr; }
+    .st-legend{ display:flex; margin:6px 0 0; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set total_est = estados.values()|sum %}
+{% set colores_est = {'pendiente':'#F59E0B', 'en_progreso':'#0284C7', 'resuelto':'#16A34A', 'cancelado':'#94A3B8'} %}
+{% set nombres_est = {'pendiente':'Pendientes', 'en_progreso':'En progreso', 'resuelto':'Resueltos', 'cancelado':'Cancelados'} %}
+
+<div class="st">
+
+  <div class="st-head">
+    <div>
+      <h1>Estadísticas</h1>
+      <p>Tickets de la sucursal {{ g.sucursal_nombre }}: asistencias técnicas e instalaciones.</p>
+    </div>
+    <form class="st-month" method="get" aria-label="Elegir mes">
+      <a href="{{ url_for('estadisticas', mes=prev_mes) }}" title="Mes anterior" aria-label="Mes anterior"><i class="fa-solid fa-chevron-left"></i></a>
+      <input type="month" name="mes" value="{{ mes_valor }}" onchange="this.form.submit()" aria-label="Mes">
+      {% if hay_siguiente %}
+        <a href="{{ url_for('estadisticas', mes=next_mes) }}" title="Mes siguiente" aria-label="Mes siguiente"><i class="fa-solid fa-chevron-right"></i></a>
+      {% else %}
+        <span class="disabled" aria-hidden="true"><i class="fa-solid fa-chevron-right"></i></span>
+      {% endif %}
+      {% if not es_mes_actual %}<a class="today" href="{{ url_for('estadisticas') }}">Mes actual</a>{% endif %}
+    </form>
+  </div>
+
+  <!-- Períodos -->
+  <h2 class="st-label">
+    Tickets registrados
+    <span class="st-legend"><span class="a">Asistencias</span><span class="i">Instalaciones</span></span>
+  </h2>
+  <div class="st-periods">
+    {% for p in periodos %}
+      <section class="st-card st-period {{ 'is-month' if p.clave == 'mes' }}">
+        <h3>{{ p.titulo }}</h3>
+        <span class="rango">{{ p.rango }}</span>
+        <div class="nums">
+          <div><div class="n">{{ p.asist }}</div><div class="l a">Asistencias</div></div>
+          <div><div class="n">{{ p.inst }}</div><div class="l i">Instalaciones</div></div>
+        </div>
+      </section>
+    {% endfor %}
+  </div>
+
+  <!-- Gráfico diario -->
+  <section class="st-card st-chart">
+    <h2 class="st-label">Tickets por día en {{ mes_nombre }}</h2>
+    <div class="st-chart-box">
+      <canvas id="stChart" aria-label="Gráfico de tickets por día"
+              data-dias='{{ dias|tojson }}' data-asist='{{ serie_asist|tojson }}' data-inst='{{ serie_inst|tojson }}'></canvas>
+    </div>
+    <div class="st-split">
+      <div><strong>De lunes a viernes</strong>{{ habiles.asist }} asistencias · {{ habiles.inst }} instalaciones</div>
+      <div><strong>Fines de semana</strong>{{ finde.asist }} asistencias · {{ finde.inst }} instalaciones</div>
+    </div>
+  </section>
+
+  <div class="st-row">
+    <!-- Estado de los tickets del mes -->
+    <section class="st-card st-box">
+      <h2 class="st-label">Estado de los tickets del mes</h2>
+      <div class="st-bar" aria-hidden="true">
+        {% for k, n in estados.items() if n %}<span style="width:{{ (n / total_est * 100)|round(1) }}%;background:{{ colores_est[k] }}"></span>{% endfor %}
+      </div>
+      <ul class="st-list">
+        {% for k, n in estados.items() %}
+          <li>
+            <span class="dot" style="background:{{ colores_est[k] }}"></span>{{ nombres_est[k] }}
+            <span class="v">{{ n }}</span>
+            <span class="p">{% if total_est %}{{ (n / total_est * 100)|round|int }}%{% else %}—{% endif %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <div class="st-total">{{ total_est }} ticket{{ 's' if total_est != 1 }} en {{ mes_nombre }}</div>
+    </section>
+
+    <!-- Clientes -->
+    <section class="st-card st-box">
+      <h2 class="st-label">Clientes de la sucursal</h2>
+      {% set ct = clientes.total %}
+      <div class="st-bar" aria-hidden="true">
+        {% if ct %}
+          <span style="width:{{ (clientes.activos / ct * 100)|round(1) }}%;background:#16A34A"></span>
+          <span style="width:{{ (clientes.otros / ct * 100)|round(1) }}%;background:#F59E0B"></span>
+          <span style="width:{{ (clientes.cancelados / ct * 100)|round(1) }}%;background:#94A3B8"></span>
+        {% endif %}
+      </div>
+      <ul class="st-list">
+        <li><span class="dot" style="background:#16A34A"></span>Activos<span class="v">{{ clientes.activos }}</span><span class="p">{% if ct %}{{ (clientes.activos / ct * 100)|round|int }}%{% else %}—{% endif %}</span></li>
+        <li><span class="dot" style="background:#F59E0B"></span>En mora, suspendidos o inactivos<span class="v">{{ clientes.otros }}</span><span class="p">{% if ct %}{{ (clientes.otros / ct * 100)|round|int }}%{% else %}—{% endif %}</span></li>
+        <li><span class="dot" style="background:#94A3B8"></span>Cancelados<span class="v">{{ clientes.cancelados }}</span><span class="p">{% if ct %}{{ (clientes.cancelados / ct * 100)|round|int }}%{% else %}—{% endif %}</span></li>
+      </ul>
+      <div class="st-total">{{ ct }} cliente{{ 's' if ct != 1 }} en total · según el campo "Situación"</div>
+    </section>
+  </div>
+
+  <!-- Por técnico -->
+  <section class="st-card">
+    <div style="padding:18px 20px 6px"><h2 class="st-label">Por técnico en {{ mes_nombre }}</h2><p class="st-note">Toca un técnico para ver cada trabajo: fecha y hora, cliente y ubicación.</p></div>
+    {% if por_tecnico %}
+      <div style="overflow-x:auto">
+        <table class="st-table">
+          <thead><tr><th>Técnico</th><th class="r">Asistencias</th><th class="r">Instalaciones</th><th class="r">Resueltos</th><th class="r">Total</th></tr></thead>
+          <tbody>
+            {% set etq = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Resuelto', 'cancelado':'Cancelado'} %}
+            {% set es_admin = session.get('rol') == 'admin' %}
+            {% for r in por_tecnico %}
+              <tr class="st-tec">
+                <td>
+                  <button type="button" class="st-toggle" aria-expanded="false" aria-controls="det{{ loop.index }}">
+                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>{{ r['tecnico'] }}
+                  </button>
+                </td>
+                <td class="r">{{ r['total'] - r['inst'] }}</td>
+                <td class="r">{{ r['inst'] }}</td>
+                <td class="r">{{ r['resueltos'] }}</td>
+                <td class="r"><strong>{{ r['total'] }}</strong></td>
+              </tr>
+              <tr class="st-det" id="det{{ loop.index }}" hidden>
+                <td colspan="5">
+                  <table class="st-sub">
+                    <thead><tr><th>Fecha y hora</th><th>Cliente</th><th>Ubicación</th><th>Trabajo</th><th>Estado</th>{% if es_admin %}<th><span class="visually-hidden">Acciones</span></th>{% endif %}</tr></thead>
+                    <tbody>
+                      {% for t in detalle.get(r['tecnico'], []) %}
+                        {% set e = (t.estado or 'pendiente')|lower %}
+                        <tr>
+                          <td class="nw">{{ t.cuando[:10] }} <span class="st-hora">{{ t.cuando[11:16] }}</span></td>
+                          <td><a href="{{ url_for('tickets_ot', tid=t.id) }}">{{ t.cliente or '—' }}</a></td>
+                          <td>
+                            {{ t.ubicacion or '—' }}
+                            {% if t.mapa %}<a class="st-map" href="{{ t.mapa }}" target="_blank" rel="noopener" title="Ver en Google Maps" aria-label="Ver ubicación de {{ t.cliente }} en Google Maps"><i class="fa-solid fa-location-dot" aria-hidden="true"></i></a>{% endif %}
+                          </td>
+                          <td>{{ t.tipo or '—' }}</td>
+                          <td><span class="st-est e-{{ e if e in etq else 'pendiente' }}">{{ etq.get(e, 'Pendiente') }}</span></td>
+                          {% if es_admin %}
+                            <td class="r">
+                              <button type="button" class="st-del js-del" title="Eliminar" aria-label="Eliminar trabajo de {{ t.cliente }}"
+                                      data-action="{{ url_for('tickets_borrar', tid=t.id) }}"
+                                      data-cliente="{{ t.cliente or 'cliente sin nombre' }}"
+                                      data-trabajo="{{ (t.tipo or 'trabajo')|lower }}" data-cuando="{{ t.cuando }}">
+                                <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+                              </button>
+                            </td>
+                          {% endif %}
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="st-empty">No hay tickets en {{ mes_nombre }}.</div>
+    {% endif %}
+  </section>
+</div>
+
+<!-- Modal: eliminar trabajo -->
+<div class="modal fade" id="mDelTrabajo" tabindex="-1" aria-labelledby="mDelTrabajoTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="" id="fDelTrabajo" style="border:1px solid #D9E0E8;border-radius:12px">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="mDelTrabajoTitle" style="font-weight:600;font-size:18px">¿Eliminar este trabajo?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body pt-0" style="color:#4A5668">
+        Vas a eliminar <span id="delTrabajo"></span> de <strong id="delCliente" style="color:#0F1B2D"></strong>
+        (<span id="delCuando"></span>). También desaparece de Tickets, Órdenes de trabajo y de estas estadísticas.
+        Esta acción no se puede deshacer.
+      </div>
+      <div class="modal-footer border-0" style="gap:8px">
+        <button type="button" class="st-mbtn st-mbtn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="st-mbtn st-mbtn-danger">Eliminar trabajo</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+(() => {
+  // Desplegar el detalle de cada técnico (y recordar cuáles estaban abiertos al recargar)
+  const CLAVE = 'stTecAbiertos';
+  let abiertos = [];
+  try { abiertos = JSON.parse(sessionStorage.getItem(CLAVE) || '[]'); } catch (e) {}
+  const guardar = () => { try { sessionStorage.setItem(CLAVE, JSON.stringify(abiertos)); } catch (e) {} };
+  const nombre = b => b.textContent.trim();
+  const poner = (b, abrir) => {
+    b.setAttribute('aria-expanded', String(abrir));
+    document.getElementById(b.getAttribute('aria-controls')).hidden = !abrir;
+  };
+  document.querySelectorAll('.st-toggle').forEach(b => {
+    if (abiertos.includes(nombre(b))) poner(b, true);
+    b.addEventListener('click', () => {
+      const abrir = b.getAttribute('aria-expanded') !== 'true';
+      poner(b, abrir);
+      abiertos = abiertos.filter(n => n !== nombre(b));
+      if (abrir) abiertos.push(nombre(b));
+      guardar();
+    });
+  });
+
+  // Eliminar un trabajo, con confirmación
+  const mEl = document.getElementById('mDelTrabajo');
+  if (mEl){
+    const modal = new bootstrap.Modal(mEl), form = document.getElementById('fDelTrabajo');
+    document.querySelectorAll('.js-del').forEach(btn => btn.addEventListener('click', () => {
+      const d = btn.dataset;
+      form.action = d.action;
+      document.getElementById('delTrabajo').textContent = 'la ' + d.trabajo;
+      document.getElementById('delCliente').textContent = d.cliente;
+      document.getElementById('delCuando').textContent = d.cuando;
+      form.querySelector('[type=submit]').disabled = false;
+      modal.show();
+    }));
+    form.addEventListener('submit', () => form.querySelector('[type=submit]').disabled = true);
+  }
+})();
+
+(() => {
+  const el = document.getElementById('stChart');
+  if (!el || !window.Chart) return;
+  const css = getComputedStyle(document.querySelector('.st'));
+  const cA = css.getPropertyValue('--c-asist').trim(), cI = css.getPropertyValue('--c-inst').trim();
+
+  new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: JSON.parse(el.dataset.dias),
+      datasets: [
+        { label: 'Asistencias',   data: JSON.parse(el.dataset.asist), backgroundColor: cA, borderRadius: 3, maxBarThickness: 22 },
+        { label: 'Instalaciones', data: JSON.parse(el.dataset.inst),  backgroundColor: cI, borderRadius: 3, maxBarThickness: 22 }
+      ]
+    },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { title: items => 'Día ' + items[0].label } }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { color: '#7A8699', font: { family: 'IBM Plex Sans' } } },
+        y: { stacked: true, beginAtZero: true, ticks: { precision: 0, color: '#7A8699', font: { family: 'IBM Plex Sans' } }, grid: { color: '#EEF2F6' } }
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}

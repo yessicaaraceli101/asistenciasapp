@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% block title %}Elegir sucursal{% endblock %}
+
+{# Si tu base.html tiene bloque navbar, esto la oculta en esta página #}
+{% block navbar %}{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  /* Si tu base.html NO tiene bloque navbar, esto la oculta solo aquí */
+  nav.navbar { display:none !important; }
+
+  :root{
+    --ink:#0F1B2D;
+    --ink-soft:#4A5668;
+    --ink-faint:#7A8699;
+    --paper:#F5F7FA;
+    --surface:#FFFFFF;
+    --line:#D9E0E8;
+    --line-soft:#E8EDF2;
+    --accent:#1F5FD1;
+    --accent-hover:#184DAE;
+    --row-hover:#F7F9FC;
+    --font:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  }
+
+  body{ background:var(--paper) !important; }
+
+  .suc-page{
+    font-family:var(--font);
+    color:var(--ink);
+    padding:48px 24px;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* Barra superior mínima */
+  .suc-top{
+    width:100%; max-width:640px; margin:0 auto 40px;
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+  }
+  .suc-brand{ display:flex; align-items:center; gap:10px; }
+  .suc-brand img{ width:32px; height:32px; border-radius:50%; object-fit:cover; }
+  .suc-brand span{ font-weight:600; font-size:16px; }
+
+  .suc-user{
+    display:flex; align-items:center; gap:8px;
+    font-size:14px; color:var(--ink-soft);
+  }
+  .suc-avatar{
+    width:34px; height:34px; border-radius:50%; object-fit:cover; flex-shrink:0;
+    border:1px solid var(--line); background:#fff;
+  }
+  .suc-avatar-ini{
+    display:inline-grid; place-items:center;
+    background:#E0F2FE; border-color:#BAE6FD; color:#0369A1;
+    font-size:14px; font-weight:600;
+  }
+  .suc-user span:not(.suc-avatar){ font-weight:500; color:var(--ink); }
+
+  /* Contenido */
+  .suc-main{ width:100%; max-width:640px; margin:0 auto; }
+
+  .suc-main h1{
+    font-size:26px; font-weight:600; letter-spacing:-.3px;
+    margin:0 0 6px;
+  }
+  .suc-lead{ color:var(--ink-soft); margin:0 0 24px; font-size:15px; }
+
+  /* Buscador (solo aparece con muchas sucursales) */
+  .suc-search{ position:relative; margin-bottom:12px; }
+  .suc-search i{
+    position:absolute; left:14px; top:50%; transform:translateY(-50%);
+    color:var(--ink-faint); font-size:16px; pointer-events:none;
+  }
+  .suc-search input{
+    width:100%; height:44px; padding:0 14px 0 40px;
+    font:inherit; font-size:15px; color:var(--ink);
+    background:var(--surface);
+    border:1px solid var(--line); border-radius:8px;
+  }
+  .suc-search input::placeholder{ color:var(--ink-faint); }
+  .suc-search input:focus{
+    outline:none; border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(31,95,209,.15);
+  }
+
+  /* Lista tipo tabla: un solo contenedor con filas divididas */
+  .suc-list{
+    list-style:none; margin:0; padding:0;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  .suc-list li + li{ border-top:1px solid var(--line-soft); }
+
+  .suc-row{
+    display:flex; align-items:center; gap:14px;
+    padding:16px 18px;
+    color:var(--ink); text-decoration:none;
+    transition:background-color .12s;
+  }
+  .suc-row:hover{ background:var(--row-hover); color:var(--ink); text-decoration:none; }
+  .suc-row:focus-visible{
+    outline:2px solid var(--accent); outline-offset:-2px;
+    background:var(--row-hover);
+  }
+
+  .suc-row .suc-ico{
+    font-size:20px; line-height:1;
+    color:var(--ink-faint);
+    flex-shrink:0;
+  }
+  .suc-row:hover .suc-ico{ color:var(--ink-soft); }
+
+  .suc-info{ flex:1; min-width:0; }
+  .suc-name{
+    display:block; font-weight:500; font-size:15px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .suc-sub{
+    display:block; font-size:13px; color:var(--ink-faint);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  .suc-go{
+    font-size:13px; font-weight:500; color:var(--accent);
+    display:flex; align-items:center; gap:6px;
+    opacity:0; transition:opacity .12s;
+  }
+  .suc-chev{ color:var(--ink-faint); font-size:14px; }
+  .suc-row:hover .suc-go,
+  .suc-row:focus-visible .suc-go{ opacity:1; }
+  .suc-row:hover .suc-chev,
+  .suc-row:focus-visible .suc-chev{ color:var(--accent); }
+
+  .suc-empty{
+    padding:32px 18px; text-align:center;
+    color:var(--ink-soft); font-size:14px;
+  }
+  .suc-empty i{ display:block; font-size:24px; color:var(--ink-faint); margin-bottom:8px; }
+
+  /* Fila debajo de la lista: contador + cerrar sesión */
+  .suc-actions{
+    margin-top:16px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+  }
+  .suc-count{ margin:0; font-size:13px; color:var(--ink-faint); }
+
+  .btn-logout{
+    display:inline-flex; align-items:center; gap:8px;
+    margin-left:auto;
+    background:var(--surface);
+    border:1px solid #F0C4C1; border-radius:8px;
+    padding:8px 14px;
+    font:inherit; font-size:14px; font-weight:500;
+    color:#C2362F;
+    cursor:pointer;
+    transition:background-color .12s, border-color .12s, color .12s;
+  }
+  .btn-logout i{ font-size:16px; }
+  .btn-logout:hover{ background:#C2362F; border-color:#C2362F; color:#fff; }
+  .btn-logout:focus-visible{ outline:2px solid #C2362F; outline-offset:2px; }
+
+  /* Modal con la misma línea visual */
+  #confirmLogout .modal-content{
+    font-family:var(--font); color:var(--ink);
+    border:1px solid var(--line); border-radius:12px;
+  }
+  #confirmLogout .modal-title{ font-weight:600; font-size:18px; }
+  #confirmLogout .modal-body{ color:var(--ink-soft); padding-top:0; }
+  #confirmLogout .btn{ font-weight:500; border-radius:8px; padding:8px 16px; }
+  #confirmLogout .btn-light{ border:1px solid var(--line); background:var(--surface); }
+
+  @media (max-width:560px){
+    .suc-page{ padding:24px 16px; }
+    .suc-top{ margin-bottom:28px; }
+    .suc-user span{ display:none; }
+    .suc-go span{ display:none; }
+    .suc-go{ opacity:1; }
+    .suc-actions{ flex-direction:column-reverse; align-items:stretch; }
+    .suc-count{ text-align:center; }
+    .btn-logout{ justify-content:center; margin-left:0; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .suc-row, .suc-go, .btn-logout{ transition:none; }
+  }
+</style>
+
+<div class="suc-page">
+
+  <header class="suc-top">
+    <div class="suc-brand">
+      <img src="{{ url_for('static', filename='img/logo.png') }}" alt="">
+      <span>SPYnet</span>
+    </div>
+    {% if session.get('usuario') %}
+      {% set nombre_user = session.get('nombre') or session.get('usuario') %}
+      <div class="suc-user">
+        {% if session.get('foto_url') %}
+          <img class="suc-avatar" src="{{ session.get('foto_url') }}" alt="">
+        {% else %}
+          <span class="suc-avatar suc-avatar-ini" aria-hidden="true">{{ (nombre_user or '?')[:1]|upper }}</span>
+        {% endif %}
+        <span>{{ nombre_user }}</span>
+      </div>
+    {% endif %}
+  </header>
+
+  <main class="suc-main">
+    <h1>Elegí la sucursal</h1>
+    <p class="suc-lead">Seleccioná con qué sucursal querés trabajar en esta sesión.</p>
+
+    {% if sucursales|length > 6 %}
+      <div class="suc-search">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input type="search" id="sucFiltro" placeholder="Buscar sucursal" autocomplete="off"
+               aria-label="Buscar sucursal" aria-controls="sucLista">
+      </div>
+    {% endif %}
+
+    <ul class="suc-list" id="sucLista">
+      {% for s in sucursales %}
+        <li data-nombre="{{ s.nombre|lower }}">
+          <a class="suc-row" href="{{ url_for('sucursales_set', sid=s.id) }}">
+            <i class="bi bi-building suc-ico" aria-hidden="true"></i>
+            <span class="suc-info">
+              <span class="suc-name">{{ s.nombre }}</span>
+              {% if s.direccion is defined and s.direccion %}
+                <span class="suc-sub">{{ s.direccion }}</span>
+              {% endif %}
+            </span>
+            <span class="suc-go"><span>Ingresar</span></span>
+            <i class="bi bi-chevron-right suc-chev" aria-hidden="true"></i>
+          </a>
+        </li>
+      {% else %}
+        <li class="suc-empty">
+          <i class="bi bi-building-slash" aria-hidden="true"></i>
+          No tenés sucursales asignadas. Pedile acceso a un administrador.
+        </li>
+      {% endfor %}
+      <li class="suc-empty" id="sucSinResultados" hidden>
+        Ninguna sucursal coincide con la búsqueda.
+      </li>
+    </ul>
+
+    <div class="suc-actions">
+      {% if sucursales|length > 1 %}
+        <p class="suc-count">{{ sucursales|length }} sucursales disponibles</p>
+      {% endif %}
+      <button type="button" class="btn-logout" data-bs-toggle="modal" data-bs-target="#confirmLogout">
+        <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+        Cerrar sesión
+      </button>
+    </div>
+  </main>
+</div>
+
+{# Modal de confirmación para cerrar sesión #}
+<div class="modal fade" id="confirmLogout" tabindex="-1" aria-labelledby="confirmLogoutLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="confirmLogoutLabel">¿Cerrar sesión?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        Vas a salir de tu cuenta en este dispositivo.
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+        <a class="btn btn-danger" href="{{ url_for('logout') }}">Cerrar sesión</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Filtro de sucursales (solo si existe el buscador)
+  (function(){
+    const input = document.getElementById('sucFiltro');
+    if (!input) return;
+    const items = document.querySelectorAll('#sucLista li[data-nombre]');
+    const vacio = document.getElementById('sucSinResultados');
+    const norm = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+    input.addEventListener('input', () => {
+      const q = norm(input.value.trim());
+      let visibles = 0;
+      items.forEach(li => {
+        const ok = norm(li.dataset.nombre).includes(q);
+        li.hidden = !ok;
+        if (ok) visibles++;
+      });
+      vacio.hidden = visibles > 0;
+    });
+
+    // Enter abre la primera sucursal visible
+    input.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      const primera = document.querySelector('#sucLista li[data-nombre]:not([hidden]) a');
+      if (primera){ e.preventDefault(); primera.click(); }
+    });
+  })();
+</script>
+{% endblock %}

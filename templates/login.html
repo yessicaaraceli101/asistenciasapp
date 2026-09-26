@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Iniciar sesión · SPYnet</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --ink:#0F1B2D;          /* texto principal / panel oscuro */
+      --ink-soft:#4A5668;     /* texto secundario */
+      --ink-faint:#7A8699;    /* placeholders, ayudas */
+      --paper:#F5F7FA;        /* fondo del lado del formulario */
+      --surface:#FFFFFF;
+      --line:#D9E0E8;
+      --accent:#1F5FD1;       /* azul de acción */
+      --accent-hover:#184DAE;
+      --signal:#1FB89A;       /* acento de "señal" (fibra) */
+      --danger:#C2362F;
+      --danger-bg:#FDF1F0;
+      --success:#177A56;
+      --success-bg:#EDF8F3;
+      --warning:#8A5A00;
+      --warning-bg:#FFF7E6;
+      --info-bg:#EEF3FC;
+
+      --radius-sm:8px;
+      --radius:10px;
+      --font:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    }
+
+    *,*::before,*::after{ box-sizing:border-box; }
+    html,body{ height:100%; margin:0; }
+    body{
+      font-family:var(--font);
+      font-size:15px; line-height:1.5;
+      color:var(--ink);
+      background:var(--paper);
+      -webkit-font-smoothing:antialiased;
+    }
+    a{ color:var(--accent); text-decoration:none; font-weight:500; }
+    a:hover{ text-decoration:underline; text-underline-offset:3px; }
+    :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+
+    /* ---------- Layout dividido ---------- */
+    .shell{
+      min-height:100%;
+      display:grid;
+      grid-template-columns: minmax(0,1.15fr) minmax(420px,1fr);
+    }
+
+    /* ---------- Panel de marca (izquierda) ---------- */
+    .brand-panel{
+      position:relative; overflow:hidden;
+      background:var(--ink); color:#fff;
+      display:flex; flex-direction:column; justify-content:space-between;
+      padding:40px 48px;
+    }
+    .brand-panel video{
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:cover;
+      filter:saturate(.85) brightness(.75);
+    }
+    .brand-panel::after{
+      content:""; position:absolute; inset:0;
+      background:
+        linear-gradient(180deg, rgba(15,27,45,.55) 0%, rgba(15,27,45,.15) 40%, rgba(15,27,45,.85) 100%);
+      pointer-events:none;
+    }
+    .brand-panel > *{ position:relative; z-index:1; }
+
+    .brand{
+      display:flex; align-items:center; gap:12px;
+    }
+    .brand img{
+      width:40px; height:40px; border-radius:50%;
+      object-fit:cover; background:#fff;
+    }
+    .brand span{ font-size:18px; font-weight:600; letter-spacing:.2px; }
+
+    .brand-copy{ max-width:440px; }
+    .brand-copy h2{
+      font-size:clamp(28px, 2.6vw, 38px);
+      line-height:1.15; font-weight:600; margin:0 0 14px;
+      letter-spacing:-.5px;
+    }
+    .brand-copy p{ margin:0; color:rgba(255,255,255,.78); font-size:16px; }
+    .status{
+      display:inline-flex; align-items:center; gap:8px;
+      margin-top:28px; font-size:13px; color:rgba(255,255,255,.7);
+    }
+    .status::before{
+      content:""; width:8px; height:8px; border-radius:50%;
+      background:var(--signal);
+      box-shadow:0 0 0 4px rgba(31,184,154,.2);
+    }
+
+    /* ---------- Panel del formulario (derecha) ---------- */
+    .form-panel{
+      display:flex; flex-direction:column;
+      padding:40px 56px;
+    }
+    .form-wrap{
+      width:100%; max-width:380px;
+      margin:auto 0; /* centra vertical, alineado a la izquierda */
+    }
+    .mobile-brand{ display:none; }
+
+    h1{
+      font-size:26px; font-weight:600; letter-spacing:-.3px;
+      margin:0 0 6px;
+    }
+    .lead{ color:var(--ink-soft); margin:0 0 28px; }
+
+    /* Campos */
+    .field{ margin-bottom:18px; }
+    .field label{
+      display:block; font-size:14px; font-weight:500;
+      margin-bottom:6px; color:var(--ink);
+    }
+    .input{
+      width:100%; height:46px;
+      padding:0 14px;
+      font:inherit; color:var(--ink);
+      background:var(--surface);
+      border:1px solid var(--line);
+      border-radius:var(--radius-sm);
+      transition:border-color .15s, box-shadow .15s;
+    }
+    .input::placeholder{ color:var(--ink-faint); }
+    .input:hover{ border-color:#BFC8D4; }
+    .input:focus{
+      outline:none; border-color:var(--accent);
+      box-shadow:0 0 0 3px rgba(31,95,209,.15);
+    }
+    .input[aria-invalid="true"]{ border-color:var(--danger); }
+    .input[aria-invalid="true"]:focus{ box-shadow:0 0 0 3px rgba(194,54,47,.15); }
+
+    .input-group{ position:relative; }
+    .input-group .input{ padding-right:48px; }
+    .toggle-pass{
+      position:absolute; top:50%; right:6px; transform:translateY(-50%);
+      width:36px; height:36px;
+      display:grid; place-items:center;
+      background:none; border:0; border-radius:6px;
+      color:var(--ink-faint); cursor:pointer;
+    }
+    .toggle-pass:hover{ color:var(--ink); background:var(--paper); }
+    .toggle-pass svg{ width:20px; height:20px; }
+    .toggle-pass .eye{ display:none; }
+    .toggle-pass[aria-pressed="true"] .eye-off{ display:none; }
+    .toggle-pass[aria-pressed="true"] .eye{ display:block; }
+
+    .field-error{
+      display:none; margin-top:6px;
+      font-size:13px; color:var(--danger);
+    }
+    .field-error.show{ display:block; }
+    .caps-hint{
+      display:none; margin-top:6px;
+      font-size:13px; color:var(--warning);
+    }
+    .caps-hint.show{ display:block; }
+
+    .row-between{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px; flex-wrap:wrap;
+      margin:4px 0 24px;
+      font-size:14px;
+    }
+    .check{
+      display:inline-flex; align-items:center; gap:8px;
+      cursor:pointer; color:var(--ink-soft);
+    }
+    .check input{
+      width:16px; height:16px; margin:0;
+      accent-color:var(--accent); cursor:pointer;
+    }
+
+    /* Botones */
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:10px;
+      width:100%; height:46px; padding:0 16px;
+      font:inherit; font-weight:600; font-size:15px;
+      border-radius:var(--radius-sm); cursor:pointer;
+      text-decoration:none !important;
+      transition:background-color .15s, border-color .15s;
+    }
+    .btn-primary{ background:var(--accent); color:#fff; border:1px solid var(--accent); }
+    .btn-primary:hover{ background:var(--accent-hover); border-color:var(--accent-hover); }
+    .btn-primary:disabled{ opacity:.75; cursor:progress; }
+    .btn-secondary{ background:var(--surface); color:var(--ink); border:1px solid var(--line); }
+    .btn-secondary:hover{ border-color:#BFC8D4; background:var(--paper); }
+
+    .spinner{
+      width:16px; height:16px; border-radius:50%;
+      border:2px solid rgba(255,255,255,.4); border-top-color:#fff;
+      animation:spin .7s linear infinite; display:none;
+    }
+    .btn.loading .spinner{ display:inline-block; }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+
+    /* Sesión activa */
+    .session-card{
+      border:1px solid var(--line); background:var(--surface);
+      border-radius:var(--radius); padding:16px; margin-bottom:24px;
+    }
+    .session-card p{ margin:0 0 12px; color:var(--ink-soft); font-size:14px; }
+    .session-card strong{ color:var(--ink); }
+    .session-actions{ display:grid; gap:8px; }
+
+    .divider{
+      display:flex; align-items:center; gap:12px;
+      color:var(--ink-faint); font-size:13px; margin:0 0 20px;
+    }
+    .divider::before,.divider::after{ content:""; flex:1; height:1px; background:var(--line); }
+
+    /* Alertas */
+    .alert{
+      display:flex; gap:10px; align-items:flex-start;
+      padding:12px 14px; margin-bottom:16px;
+      border-radius:var(--radius-sm);
+      font-size:14px; border:1px solid transparent;
+    }
+    .alert-danger { background:var(--danger-bg);  color:var(--danger);  border-color:#F3CFCC; }
+    .alert-success{ background:var(--success-bg); color:var(--success); border-color:#C9EBDC; }
+    .alert-warning{ background:var(--warning-bg); color:var(--warning); border-color:#F5E0B3; }
+    .alert-info,
+    .alert-primary,
+    .alert-secondary{ background:var(--info-bg); color:#1D4A9E; border-color:#D3E0F7; }
+
+    .signup{
+      margin-top:28px; padding-top:20px;
+      border-top:1px solid var(--line);
+      font-size:14px; color:var(--ink-soft);
+    }
+
+    .legal{
+      font-size:12.5px; color:var(--ink-faint);
+      display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 960px){
+      .shell{ grid-template-columns:1fr; }
+      .brand-panel{ display:none; }
+      .form-panel{ padding:32px 24px; min-height:100%; }
+      .form-wrap{ margin:auto; }
+      .mobile-brand{
+        display:flex; align-items:center; gap:10px; margin-bottom:32px;
+      }
+      .mobile-brand img{ width:36px; height:36px; border-radius:50%; object-fit:cover; }
+      .mobile-brand span{ font-weight:600; font-size:17px; }
+      .legal{ justify-content:center; text-align:center; }
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      .spinner{ animation-duration:1.5s; }
+      *{ transition:none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- Panel de marca con video -->
+    <aside class="brand-panel" aria-hidden="true">
+      <video id="bgVideo" autoplay muted loop playsinline preload="metadata"
+             poster="{{ url_for('static', filename='img/fibra_poster.jpg') }}">
+        <source src="{{ url_for('static', filename='121697-724719427_small.mp4') }}" type="video/mp4">
+      </video>
+
+      <div class="brand">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="">
+        <span>SPYnet</span>
+      </div>
+
+      <div class="brand-copy">
+        <h2>Tu red, tus sucursales y tus clientes en un solo lugar.</h2>
+        <p>Iniciá sesión para continuar con la gestión diaria.</p>
+      </div>
+    </aside>
+
+    <!-- Panel del formulario -->
+    <main class="form-panel">
+      <div class="form-wrap">
+
+        <div class="mobile-brand">
+          <img src="{{ url_for('static', filename='img/logo.png') }}" alt="">
+          <span>SPYnet</span>
+        </div>
+
+        <h1 id="loginTitle">Iniciar sesión</h1>
+        <p class="lead">Ingresa tus credenciales para acceder al sistema.</p>
+
+        {# Mensajes flash #}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for cat, msg in messages %}
+              {% set bs = 'info' %}
+              {% if cat in ['success','error','warning','info','danger','primary'] %}
+                {% set bs = 'danger' if cat == 'error' else cat %}
+              {% endif %}
+              <div class="alert alert-{{ bs }}" role="{{ 'alert' if bs == 'danger' else 'status' }}">{{ msg }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        {# Si el usuario ya tiene sesión, mostrar accesos rápidos #}
+        {% if session.get('usuario') %}
+          <div class="session-card">
+            <p>Ya iniciaste sesión como <strong>{{ session.get('nombre') or session.get('usuario') }}</strong>.</p>
+            <div class="session-actions">
+              <a class="btn btn-primary" href="{{ url_for('seleccionar_sucursal') }}">Elegir sucursal</a>
+              <a class="btn btn-secondary" href="{{ url_for('menu') }}">Ir al menú</a>
+            </div>
+          </div>
+          <div class="divider">o ingresa con otra cuenta</div>
+        {% endif %}
+
+        {# Formulario de acceso #}
+        <form id="loginForm" method="POST" action="{{ url_for('login') }}" novalidate aria-labelledby="loginTitle">
+          <div class="field">
+            <label for="usuario">Usuario</label>
+            <input
+              type="text" id="usuario" name="usuario" class="input"
+              required autocomplete="username" autocapitalize="none" spellcheck="false"
+              autofocus aria-describedby="usuarioError"
+              placeholder="Tu usuario"
+            />
+            <div class="field-error" id="usuarioError">Ingresa tu usuario.</div>
+          </div>
+
+          <div class="field">
+            <label for="contrasena">Contraseña</label>
+            <div class="input-group">
+              <input
+                type="password" id="contrasena" name="contrasena" class="input"
+                required autocomplete="current-password"
+                aria-describedby="contrasenaError capsHint"
+                placeholder="Tu contraseña"
+              />
+              <button type="button" class="toggle-pass" id="togglePassword"
+                      aria-controls="contrasena" aria-pressed="false" aria-label="Mostrar contraseña">
+                <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>
+                </svg>
+              </button>
+            </div>
+            <div class="field-error" id="contrasenaError">Ingresa tu contraseña.</div>
+            <div class="caps-hint" id="capsHint">Bloq Mayús está activado.</div>
+          </div>
+
+          <div class="row-between">
+            <label class="check" for="recordarme">
+              <input type="checkbox" id="recordarme" name="recordarme">
+              Recordarme
+            </label>
+            <a href="{{ url_for('forgot_password') }}">¿Olvidaste la contraseña?</a>
+          </div>
+
+          <button id="submitBtn" type="submit" class="btn btn-primary">
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="btn-label">Acceder</span>
+          </button>
+        </form>
+
+        <div class="signup">
+          ¿No tienes una cuenta? <a href="{{ url_for('register') }}">Registrarse</a>
+        </div>
+      </div>
+
+      <footer class="legal">
+        <span>© {{ now().year if now is defined else '' }} SPYnet</span>
+        <span>Acceso restringido a usuarios autorizados</span>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    // Mostrar / ocultar contraseña
+    const toggleBtn = document.getElementById('togglePassword');
+    const passInput = document.getElementById('contrasena');
+    toggleBtn.addEventListener('click', () => {
+      const show = passInput.type === 'password';
+      passInput.type = show ? 'text' : 'password';
+      toggleBtn.setAttribute('aria-pressed', String(show));
+      toggleBtn.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+      passInput.focus();
+    });
+
+    // Aviso de Bloq Mayús
+    const capsHint = document.getElementById('capsHint');
+    ['keydown','keyup'].forEach(evt =>
+      passInput.addEventListener(evt, e => {
+        if (e.getModifierState) capsHint.classList.toggle('show', e.getModifierState('CapsLock'));
+      })
+    );
+    passInput.addEventListener('blur', () => capsHint.classList.remove('show'));
+
+    // Validación y feedback de envío
+    const form = document.getElementById('loginForm');
+    const submitBtn = document.getElementById('submitBtn');
+
+    function setError(input, show){
+      input.setAttribute('aria-invalid', show ? 'true' : 'false');
+      document.getElementById(input.id + 'Error').classList.toggle('show', show);
+    }
+    form.querySelectorAll('.input').forEach(inp =>
+      inp.addEventListener('input', () => { if (inp.value.trim()) setError(inp, false); })
+    );
+
+    form.addEventListener('submit', e => {
+      let firstInvalid = null;
+      form.querySelectorAll('.input[required]').forEach(inp => {
+        const empty = !inp.value.trim();
+        setError(inp, empty);
+        if (empty && !firstInvalid) firstInvalid = inp;
+      });
+      if (firstInvalid){
+        e.preventDefault();
+        firstInvalid.focus();
+        return;
+      }
+      submitBtn.disabled = true;
+      submitBtn.classList.add('loading');
+      submitBtn.querySelector('.btn-label').textContent = 'Ingresando…';
+    });
+
+    // Si vuelve con "atrás" del navegador, reactivar el botón
+    window.addEventListener('pageshow', () => {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('loading');
+      submitBtn.querySelector('.btn-label').textContent = 'Acceder';
+    });
+
+    // Respetar "reducir movimiento": pausar el video de fondo
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      document.getElementById('bgVideo')?.pause();
+    }
+  </script>
+</body>
+</html>
