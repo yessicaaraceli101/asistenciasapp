@@ -5,6 +5,7 @@ import io
 import os
 import requests
 import csv, re, unicodedata
+import json
 from docx import Document
 from fpdf import FPDF
 from werkzeug.utils import secure_filename
@@ -1808,6 +1809,82 @@ def equipos_ingresar_stock():
         flash(f"Ingreso registrado. Stock nuevo: {res}", "success")
     else:
         flash(res, "danger")
+    return redirect(url_for("equipos"))
+
+# ---- Exportar / importar equipos (pasar el inventario entre la PC y el servidor) ----
+EQUIPOS_CAMPOS_EXPORT = ("nombre", "tipo", "descripcion", "stock", "imagen")
+
+@app.route("/equipos/exportar")
+def equipos_exportar():
+    """Descarga los equipos de la sucursal actual en un archivo .json."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_db()
+    campos = [c for c in EQUIPOS_CAMPOS_EXPORT if c in table_columns(conn, "equipos")]
+    filas = conn.execute(
+        f"SELECT {', '.join(campos)} FROM equipos WHERE sucursal_id=? ORDER BY nombre",
+        (current_sucursal_id(),)
+    ).fetchall()
+    conn.close()
+
+    datos = {"sucursal": g.sucursal_nombre, "equipos": [dict(f) for f in filas]}
+    buf = BytesIO(json.dumps(datos, ensure_ascii=False, indent=2).encode("utf-8"))
+    nombre = secure_filename(f"equipos_{g.sucursal_nombre}_{date.today().isoformat()}.json")
+    return send_file(buf, as_attachment=True, download_name=nombre, mimetype="application/json")
+
+@app.route("/equipos/importar", methods=["POST"])
+def equipos_importar():
+    """Agrega a la sucursal actual los equipos de un archivo exportado. No duplica por nombre."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    if session.get("rol") != "admin":
+        flash("Solo un administrador puede importar equipos.", "warning")
+        return redirect(url_for("equipos"))
+
+    archivo = request.files.get("archivo")
+    if not archivo or archivo.filename == "":
+        flash("Seleccioná el archivo exportado (.json).", "warning")
+        return redirect(url_for("equipos"))
+
+    try:
+        datos = json.loads(archivo.read().decode("utf-8-sig"))
+        lista = datos.get("equipos", []) if isinstance(datos, dict) else datos
+        if not isinstance(lista, list):
+            raise ValueError
+    except (ValueError, UnicodeDecodeError):
+        flash("El archivo no es un export de equipos válido.", "danger")
+        return redirect(url_for("equipos"))
+
+    conn = get_db()
+    sid = current_sucursal_id()
+    cols = table_columns(conn, "equipos")
+    agregados, salteados = 0, 0
+    for e in lista:
+        if not isinstance(e, dict) or not (e.get("nombre") or "").strip():
+            continue
+        nombre = e["nombre"].strip()
+        existe = conn.execute(
+            "SELECT 1 FROM equipos WHERE lower(nombre)=lower(?) AND sucursal_id=?", (nombre, sid)
+        ).fetchone()
+        if existe:
+            salteados += 1
+            continue
+        fila = {k: e.get(k) for k in EQUIPOS_CAMPOS_EXPORT if k in cols}
+        fila["nombre"] = nombre
+        fila["stock"] = int(fila.get("stock") or 0) if "stock" in cols else None
+        fila["sucursal_id"] = sid
+        fila = {k: v for k, v in fila.items() if k in cols}
+        conn.execute(f"INSERT INTO equipos ({', '.join(fila)}) VALUES ({', '.join('?' * len(fila))})",
+                     list(fila.values()))
+        agregados += 1
+    conn.commit()
+    conn.close()
+
+    msg = f"Importación lista: {agregados} equipo(s) agregado(s) en {g.sucursal_nombre}."
+    if salteados:
+        msg += f" {salteados} ya existían y se saltearon."
+    flash(msg, "success")
     return redirect(url_for("equipos"))
 
 # ---- Subir imagen para HERRAMIENTA ----

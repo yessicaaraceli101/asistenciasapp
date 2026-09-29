@@ -356,6 +356,10 @@
     <h2 class="eq-title"><i class="bi bi-router" style="font-size:.85em;vertical-align:-.05em;"></i> Equipos</h2>
     <div class="eq-actions">
       <a class="btn-back" href="{{ url_for('menu') }}"><i class="bi bi-arrow-left"></i> Volver</a>
+      <a class="btn-back" href="{{ url_for('equipos_exportar') }}"><i class="bi bi-download"></i> Exportar</a>
+      {% if session.get('rol') == 'admin' %}
+      <button class="btn-back" onclick="abrirModal('modalImportar')"><i class="bi bi-upload"></i> Importar</button>
+      {% endif %}
       <button class="btn-success-eq" onclick="abrirModal('modalReponerStock')"><i class="bi bi-plus-circle"></i> Reponer stock</button>
       <button class="btn-primary-eq" onclick="abrirModal('modalNuevoEquipo')"><i class="bi bi-plus-lg"></i> Nuevo equipo</button>
     </div>
@@ -752,6 +756,32 @@
       <div class="sp-modal-foot">
         <button type="button" class="btn-back" onclick="cerrarModal('modalEliminarEquipo')">Cancelar</button>
         <button type="submit" style="padding:8px 16px;border-radius:10px;background:#dc2626;border:none;color:#fff;font-weight:700;cursor:pointer;">Eliminar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Importar equipos -->
+<div id="modalImportar" class="sp-modal-backdrop" style="display:none;">
+  <div class="sp-modal">
+    <div class="sp-modal-head">
+      <h3><i class="bi bi-upload" style="color:#2563eb;margin-right:6px;"></i> Importar equipos</h3>
+      <button class="btn-close-modal" onclick="cerrarModal('modalImportar')"><i class="bi bi-x"></i></button>
+    </div>
+    <form method="POST" action="{{ url_for('equipos_importar') }}" enctype="multipart/form-data">
+      <div class="sp-modal-body">
+        <p style="color:#475569;font-size:.88rem;margin:0 0 14px;">
+          Elegí el archivo descargado con <strong>Exportar</strong>. Los equipos se agregan a la sucursal
+          <strong>{{ sucursal_nombre }}</strong>. Los que ya existen con el mismo nombre no se duplican.
+        </p>
+        <div class="sp-form-group">
+          <label>Archivo (.json)</label>
+          <input type="file" name="archivo" accept=".json,application/json" required>
+        </div>
+      </div>
+      <div class="sp-modal-foot">
+        <button type="button" class="btn-back" onclick="cerrarModal('modalImportar')">Cancelar</button>
+        <button type="submit" class="btn-primary-eq"><i class="bi bi-upload"></i> Importar</button>
       </div>
     </form>
   </div>
