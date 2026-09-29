@@ -161,9 +161,21 @@
   transform:translateY(-2px);
 }
 .eq-card-img{
-  width:100%;height:130px;object-fit:cover;
-  background:#f1f5f9;display:flex;align-items:center;justify-content:center;
+  width:100%;height:130px;object-fit:contain;padding:8px;
+  background:#f8fafc;display:block;
 }
+.eq-img-label{position:relative;display:block;cursor:pointer;margin:0;}
+.eq-img-label:hover .eq-card-img,
+.eq-img-label:hover .eq-card-img-placeholder{filter:brightness(.95);}
+.eq-img-pill{
+  position:absolute;right:8px;bottom:8px;
+  display:inline-flex;align-items:center;gap:4px;
+  padding:4px 10px;border-radius:999px;
+  background:rgba(255,255,255,.92);border:1px solid #dbeafe;
+  color:#1e40af;font-size:.72rem;font-weight:700;
+  box-shadow:0 2px 6px rgba(15,23,42,.08);
+}
+.eq-img-label:hover .eq-img-pill{background:#2563eb;color:#fff;border-color:#2563eb;}
 .eq-card-img-placeholder{
   width:100%;height:130px;background:#f1f5f9;
   display:flex;align-items:center;justify-content:center;
@@ -189,10 +201,16 @@
 
 /* usar equipo inline */
 .eq-use-form{
-  display:flex;gap:6px;align-items:center;
+  display:flex;gap:6px;align-items:center;flex-wrap:wrap;
   background:#f8fafc;border:1px solid #e2e8f0;
   border-radius:10px;padding:8px 10px;
 }
+.eq-use-tecnico{
+  width:100%;border:1px solid #dbeafe;border-radius:8px;
+  padding:6px 8px;font-size:.82rem;color:#0f172a;background:#fff;outline:none;
+}
+.eq-use-tecnico:focus{border-color:#2563eb;}
+.eq-use-tecnico:disabled{background:#f1f5f9;color:#94a3b8;}
 .eq-use-form input[type=number]{
   width:64px;border:1px solid #dbeafe;border-radius:8px;
   padding:5px 8px;font-size:.85rem;outline:none;
@@ -297,6 +315,28 @@
   border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.10);
 }
 
+/* tarjeta clickeable */
+.eq-stat-click{cursor:pointer;transition:box-shadow .15s,transform .15s;}
+.eq-stat-click:hover{box-shadow:0 8px 22px rgba(15,23,42,.08);transform:translateY(-2px);}
+.eq-stat-click small{display:block;font-size:.7rem;font-weight:600;margin-top:2px;}
+.stat-blue.eq-stat-click small{color:#2563eb;}
+.stat-orange.eq-stat-click small{color:#ea580c;}
+.stat-green.eq-stat-click small{color:#16a34a;}
+.disp-periodo{font-size:.8rem;color:#64748b;margin:0 0 12px;}
+.uso-tecnico{
+  display:inline-flex;align-items:center;gap:4px;margin-top:3px;
+  font-size:.8rem;font-weight:600;color:#1e40af;
+}
+
+/* lista de disponibles */
+.disp-list{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto;}
+.disp-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;
+}
+.disp-row p{margin:0;font-weight:700;font-size:.9rem;color:#0f172a;}
+.disp-row span.tipo{font-size:.75rem;color:#94a3b8;}
+
 /* responsive */
 @media(max-width:760px){
   .eq-stats{grid-template-columns:1fr 1fr;}
@@ -323,17 +363,32 @@
 
   <!-- stats -->
   <div class="eq-stats">
-    <div class="eq-stat stat-blue">
+    <div class="eq-stat stat-blue eq-stat-click" role="button" tabindex="0"
+         onclick="abrirModal('modalTotal')"
+         onkeydown="if(event.key==='Enter'){abrirModal('modalTotal')}">
       <div class="eq-stat-icon"><i class="bi bi-router"></i></div>
-      <div><strong>{{ total }}</strong><span>Total ítems</span></div>
+      <div>
+        <strong>{{ total }}</strong><span>Total ítems</span>
+        <small>Ver detalle <i class="bi bi-chevron-right"></i></small>
+      </div>
     </div>
-    <div class="eq-stat stat-orange">
+    <div class="eq-stat stat-orange eq-stat-click" role="button" tabindex="0"
+         onclick="abrirModal('modalUsados')"
+         onkeydown="if(event.key==='Enter'){abrirModal('modalUsados')}">
       <div class="eq-stat-icon"><i class="bi bi-tools"></i></div>
-      <div><strong>{{ en_uso }}</strong><span>Usados hoy</span></div>
+      <div>
+        <strong>{{ en_uso }}</strong><span>Usados hoy</span>
+        <small>Ver detalle <i class="bi bi-chevron-right"></i></small>
+      </div>
     </div>
-    <div class="eq-stat stat-green">
+    <div class="eq-stat stat-green eq-stat-click" role="button" tabindex="0"
+         onclick="abrirModal('modalDisponibles')"
+         onkeydown="if(event.key==='Enter'){abrirModal('modalDisponibles')}">
       <div class="eq-stat-icon"><i class="bi bi-check-circle"></i></div>
-      <div><strong>{{ disponibles }}</strong><span>Disponibles</span></div>
+      <div>
+        <strong>{{ disponibles }}</strong><span>Disponibles</span>
+        <small>Ver detalle <i class="bi bi-chevron-right"></i></small>
+      </div>
     </div>
   </div>
 
@@ -414,11 +469,19 @@
            data-desc="{{ (e['descripcion'] or '')|lower }}"
            data-stock="{{ stk }}">
 
-        {% if e['imagen'] %}
-          <img class="eq-card-img" src="{{ url_for('static', filename='img/equipos/' ~ e['imagen']) }}" alt="{{ e['nombre'] }}">
-        {% else %}
-          <div class="eq-card-img-placeholder"><i class="bi bi-router"></i></div>
-        {% endif %}
+        <form method="POST" action="{{ url_for('subir_imagen_equipo') }}" enctype="multipart/form-data">
+          <input type="hidden" name="equipo_id" value="{{ e['id'] }}">
+          <label class="eq-img-label" title="{{ 'Cambiar foto' if e['imagen'] else 'Subir foto' }}">
+            <input type="file" name="imagen" accept="image/png,image/jpeg,image/gif" hidden
+                   onchange="if(this.files.length){this.form.submit()}">
+            {% if e['imagen'] %}
+              <img class="eq-card-img" src="{{ url_for('static', filename='img/equipos/' ~ e['imagen']) }}" alt="{{ e['nombre'] }}">
+            {% else %}
+              <div class="eq-card-img-placeholder"><i class="bi bi-router"></i></div>
+            {% endif %}
+            <span class="eq-img-pill"><i class="bi bi-camera"></i> {{ 'Cambiar foto' if e['imagen'] else 'Subir foto' }}</span>
+          </label>
+        </form>
 
         <div class="eq-card-body">
           <div class="eq-card-top">
@@ -444,7 +507,12 @@
             <input type="hidden" name="item_id" value="{{ e['id'] }}">
             <input type="hidden" name="servicio" value="uso equipo">
             <input type="hidden" name="item_kind" value="equipo">
-            <input type="hidden" name="tecnico" value="{{ session['usuario'] }}">
+            <select name="tecnico" class="eq-use-tecnico" required {% if stk == 0 %}disabled{% endif %}>
+              <option value="" disabled selected>¿Quién lo lleva?</option>
+              {% for t in tecnicos %}
+                <option value="{{ t.nombre }}">{{ t.nombre }}</option>
+              {% endfor %}
+            </select>
             <input type="number" name="cantidad" min="1" max="{{ stk }}" value="1" {% if stk == 0 %}disabled{% endif %}>
             <button type="submit" class="btn-usar" {% if stk == 0 %}disabled{% endif %}>
               <i class="bi bi-check-lg"></i> Usar
@@ -636,6 +704,7 @@
 
   </div>
 </div>
+
 <!-- MODAL: Editar equipo -->
 <div id="modalEditarEquipo" class="sp-modal-backdrop" style="display:none;">
   <div class="sp-modal">
@@ -685,6 +754,113 @@
         <button type="submit" style="padding:8px 16px;border-radius:10px;background:#dc2626;border:none;color:#fff;font-weight:700;cursor:pointer;">Eliminar</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- MODAL: Total ítems -->
+<div id="modalTotal" class="sp-modal-backdrop" style="display:none;">
+  <div class="sp-modal">
+    <div class="sp-modal-head">
+      <h3><i class="bi bi-router" style="color:#2563eb;margin-right:6px;"></i> Todos los equipos</h3>
+      <button class="btn-close-modal" onclick="cerrarModal('modalTotal')"><i class="bi bi-x"></i></button>
+    </div>
+    <div class="sp-modal-body">
+      <div class="disp-list">
+        {% for e in equipos %}
+          {% set stk = e['stock'] or 0 %}
+          <div class="disp-row">
+            <div>
+              <p>{{ e['nombre'] }}</p>
+              <span class="tipo">{{ e['tipo'] }}</span>
+            </div>
+            {% if stk > 5 %}
+              <span class="stock-badge stock-ok">{{ stk }} unidades</span>
+            {% elif stk > 0 %}
+              <span class="stock-badge stock-low">{{ stk }} {{ 'unidad' if stk == 1 else 'unidades' }}</span>
+            {% else %}
+              <span class="stock-badge stock-zero">Sin stock</span>
+            {% endif %}
+          </div>
+        {% else %}
+          <p style="color:#94a3b8;text-align:center;margin:0;">No hay equipos registrados todavía.</p>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="sp-modal-foot">
+      <button type="button" class="btn-back" onclick="cerrarModal('modalTotal')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Usados hoy -->
+<div id="modalUsados" class="sp-modal-backdrop" style="display:none;">
+  <div class="sp-modal">
+    <div class="sp-modal-head">
+      <h3><i class="bi bi-tools" style="color:#ea580c;margin-right:6px;"></i> Equipos usados</h3>
+      <button class="btn-close-modal" onclick="cerrarModal('modalUsados')"><i class="bi bi-x"></i></button>
+    </div>
+    <div class="sp-modal-body">
+      {% if filtros.desde and filtros.hasta and filtros.desde != filtros.hasta %}
+        <p class="disp-periodo">Período: {{ filtros.desde }} al {{ filtros.hasta }}</p>
+      {% elif filtros.desde %}
+        <p class="disp-periodo">Fecha: {{ filtros.desde }}</p>
+      {% endif %}
+      <div class="disp-list">
+        {% for u in historial %}
+          <div class="disp-row">
+            <div>
+              <p>{{ u['nombre_item'] }}</p>
+              <span class="uso-tecnico"><i class="bi bi-person-fill"></i> {{ u['tecnico'] or 'Sin asignar' }}</span>
+              <span class="tipo" style="display:block;">{{ u['fecha'] }}</span>
+            </div>
+            <span class="stock-badge" style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;">
+              {{ u['cantidad'] or 1 }} {{ 'unidad' if (u['cantidad'] or 1) == 1 else 'unidades' }}
+            </span>
+          </div>
+        {% else %}
+          <p style="color:#94a3b8;text-align:center;margin:0;">No se usaron equipos en este período.</p>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="sp-modal-foot">
+      <button type="button" class="btn-back" onclick="cerrarModal('modalUsados')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Equipos disponibles -->
+<div id="modalDisponibles" class="sp-modal-backdrop" style="display:none;">
+  <div class="sp-modal">
+    <div class="sp-modal-head">
+      <h3><i class="bi bi-check-circle" style="color:#16a34a;margin-right:6px;"></i> Equipos disponibles</h3>
+      <button class="btn-close-modal" onclick="cerrarModal('modalDisponibles')"><i class="bi bi-x"></i></button>
+    </div>
+    <div class="sp-modal-body">
+      {% set ns = namespace(hay=false) %}
+      <div class="disp-list">
+        {% for e in equipos %}
+          {% set stk = e['stock'] or 0 %}
+          {% if stk > 0 %}
+            {% set ns.hay = true %}
+            <div class="disp-row">
+              <div>
+                <p>{{ e['nombre'] }}</p>
+                <span class="tipo">{{ e['tipo'] }}</span>
+              </div>
+              <span class="stock-badge {{ 'stock-ok' if stk > 5 else 'stock-low' }}">
+                {{ stk }} {{ 'unidad' if stk == 1 else 'unidades' }}
+              </span>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% if not ns.hay %}
+        <p style="color:#94a3b8;text-align:center;margin:0;">No hay equipos con stock disponible.</p>
+      {% endif %}
+    </div>
+    <div class="sp-modal-foot">
+      <button type="button" class="btn-back" onclick="cerrarModal('modalDisponibles')">Cerrar</button>
+    </div>
   </div>
 </div>
 

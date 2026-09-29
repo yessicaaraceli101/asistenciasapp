@@ -1864,7 +1864,9 @@ def subir_imagen_equipo():
         return redirect(url_for('equipos'))
 
     if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
+        # Nombre único por equipo y momento: evita que una foto pise a otra con el mismo nombre
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        filename = f"equipo_{request.form.get('equipo_id')}_{int(datetime.now().timestamp())}.{ext}"
         filepath = os.path.join(EQUIPOS_UPLOAD_FOLDER, filename)
         file.save(filepath)
 
