@@ -3,22 +3,28 @@
 
 {% block extra_head %}
 <style>
-  .ots{
+  .ots, .ots-modal{
     --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
     --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
-    --accent:#0284C7; --accent-hover:#0369A1;
-    max-width:1200px; margin:0 auto; padding:8px 0 40px; color:var(--ink);
+    --accent:#0284C7; --accent-hover:#0369A1; --danger:#C2362F;
+    color:var(--ink);
   }
+  .ots{ max-width:1200px; margin:0 auto; padding:8px 0 40px; }
   .ots-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
   .ots-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
   .ots-head p{ margin:0; font-size:14px; color:var(--ink-soft); }
 
   .ots-btn{
     display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 16px; border-radius:8px;
-    font-size:14px; font-weight:500; text-decoration:none; white-space:nowrap;
+    font-size:14px; font-weight:500; text-decoration:none; white-space:nowrap; cursor:pointer;
     border:1px solid var(--accent); background:var(--accent); color:#fff;
   }
   .ots-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .ots-btn:disabled{ opacity:.7; cursor:progress; }
+  .ots-btn-ghost{ background:#fff; border-color:var(--line); color:var(--ink); }
+  .ots-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+  .ots-btn-danger{ background:var(--danger); border-color:var(--danger); }
+  .ots-btn-danger:hover{ background:#A52B25; border-color:#A52B25; }
 
   .ots-panel{ background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
 
@@ -72,14 +78,18 @@
   .ots-actions{ display:flex; justify-content:flex-end; gap:2px; }
   .ots-icon{
     width:32px; height:32px; border-radius:6px; display:inline-grid; place-items:center;
-    color:var(--ink-faint); text-decoration:none;
+    color:var(--ink-faint); text-decoration:none; background:none; border:0; cursor:pointer;
   }
   .ots-icon:hover{ background:#EEF2F6; color:var(--ink); }
   .ots-icon.wa:hover{ background:#E8F7EE; color:#178A45; }
+  .ots-icon.danger:hover{ background:#FDF1F0; color:var(--danger); }
   .ots-icon:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
 
   .ots-empty{ padding:40px 16px; text-align:center; color:var(--ink-soft); }
   .ots-empty i{ display:block; font-size:26px; color:var(--ink-faint); margin-bottom:8px; }
+
+  .ots-modal .modal-content{ border:1px solid var(--line); border-radius:12px; }
+  .ots-modal .modal-title{ font-weight:600; font-size:18px; }
 
   @media (max-width:768px){
     .ots-table .col-hide{ display:none; }
@@ -90,6 +100,7 @@
 
 {% block content %}
 {% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Resuelto', 'cancelado':'Cancelado'} %}
+{% set es_admin = session.get('rol') == 'admin' %}
 
 <div class="ots">
   <div class="ots-head">
@@ -168,6 +179,13 @@
                      title="{{ 'Enviar a ' ~ o.tec.nombre if o.tec_tiene_tel else 'Enviar por WhatsApp' }}" aria-label="Enviar {{ o.ot_num }} por WhatsApp">
                     <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
                   </a>
+                  {% if es_admin %}
+                    <button type="button" class="ots-icon danger js-borrar" title="Eliminar" aria-label="Eliminar {{ o.ot_num }}"
+                            data-action="{{ url_for('tickets_borrar', tid=t.id) }}" data-num="{{ o.ot_num }}"
+                            data-cliente="{{ t.cliente or 'cliente sin nombre' }}" data-tipo="{{ (t.tipo or 'el trabajo')|lower }}">
+                      <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+                    </button>
+                  {% endif %}
                 </div>
               </td>
             </tr>
@@ -186,22 +204,62 @@
     </div>
   </div>
 </div>
+
+{% if es_admin %}
+<!-- Confirmar eliminación -->
+<div class="modal fade ots-modal" id="mBorrar" tabindex="-1" aria-labelledby="mBorrarTit" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="" id="fBorrar">
+      <input type="hidden" name="volver" value="{{ request.full_path }}">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="mBorrarTit">¿Eliminar orden?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body pt-0" style="color:var(--ink-soft)">
+        Se va a eliminar <span id="bTipo"></span> de <strong id="bCliente" style="color:var(--ink)"></strong>
+        con su orden de trabajo. Esta acción no se puede deshacer.
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="ots-btn ots-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="ots-btn ots-btn-danger"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Sí, eliminar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
 (() => {
+  // ----- Buscar -----
   const input = document.getElementById('otsFiltro');
   const rows  = document.querySelectorAll('#otsTabla tbody tr[data-search]');
   const vacio = document.getElementById('otsVacio');
-  if (!rows.length) return;
-  const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-  input.addEventListener('input', () => {
-    const q = norm(input.value);
-    let n = 0;
-    rows.forEach(tr => { const ok = !q || norm(tr.dataset.search).includes(q); tr.hidden = !ok; if (ok) n++; });
-    vacio.hidden = n > 0;
-  });
+  if (rows.length){
+    const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    input.addEventListener('input', () => {
+      const q = norm(input.value);
+      let n = 0;
+      rows.forEach(tr => { const ok = !q || norm(tr.dataset.search).includes(q); tr.hidden = !ok; if (ok) n++; });
+      vacio.hidden = n > 0;
+    });
+  }
+
+  // ----- Eliminar con confirmación -----
+  const mEl = document.getElementById('mBorrar');
+  if (mEl){
+    const modal = new bootstrap.Modal(mEl), form = document.getElementById('fBorrar');
+    document.querySelectorAll('.js-borrar').forEach(b => b.addEventListener('click', () => {
+      form.action = b.dataset.action;
+      document.getElementById('mBorrarTit').textContent = '¿Eliminar ' + b.dataset.num + '?';
+      document.getElementById('bTipo').textContent = b.dataset.tipo;
+      document.getElementById('bCliente').textContent = b.dataset.cliente;
+      form.querySelector('[type=submit]').disabled = false;
+      modal.show();
+    }));
+    form.addEventListener('submit', () => form.querySelector('[type=submit]').disabled = true);
+  }
 })();
 </script>
 {% endblock %}

@@ -42,6 +42,14 @@
   .pf-avatar-actions{ display:none; gap:8px; justify-content:center; margin-top:14px; }
   .pf-avatar-actions.show{ display:flex; }
   .pf-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:8px; }
+  .pf-help{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
+
+  /* Aviso: falta la cédula */
+  .pf-aviso{
+    display:flex; align-items:flex-start; gap:10px; margin:14px 20px 0; padding:10px 14px;
+    border-radius:8px; font-size:13.5px; background:#FFF7E6; border:1px solid #F5E0B3; color:#8A5A00;
+  }
+  .pf-aviso i{ margin-top:2px; }
 
   /* Campos */
   .pf-fields{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
@@ -73,6 +81,7 @@
 
   .pf-pass{ position:relative; }
   .pf-pass .pf-input{ padding-right:44px; }
+  .pf-pass .pf-input::-ms-reveal{ display:none; }
   .pf-eye{
     position:absolute; right:4px; top:50%; transform:translateY(-50%);
     width:36px; height:36px; border:0; background:none; border-radius:6px; color:var(--ink-faint); cursor:pointer;
@@ -135,6 +144,14 @@
       <!-- Datos personales -->
       <form class="pf-card" method="post" action="{{ url_for('perfil') }}" id="fDatos" novalidate>
         <div class="pf-card-head"><h2>Datos personales</h2></div>
+
+        {% if not user.get('cedula') %}
+          <div class="pf-aviso" role="status">
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            <span>Carga tu <strong>número de cédula</strong>: sin ella no vas a poder recuperar tu contraseña si la olvidas.</span>
+          </div>
+        {% endif %}
+
         <div class="pf-body pf-fields">
           <div class="pf-field" id="fNombre">
             <label for="nombre">Nombre y apellido</label>
@@ -152,6 +169,12 @@
           <div class="pf-field">
             <label for="telefono">Teléfono</label>
             <input class="pf-input" id="telefono" name="telefono" type="tel" value="{{ user['telefono'] or '' }}" autocomplete="tel" placeholder="09xx xxx xxx">
+          </div>
+          <div class="pf-field" id="fCedula">
+            <label for="cedula">Número de cédula</label>
+            <input class="pf-input" id="cedula" name="cedula" inputmode="numeric" value="{{ user.get('cedula') or '' }}" autocomplete="off" placeholder="Ej.: 4567890">
+            <div class="pf-help">La necesitas para recuperar tu contraseña. Solo tú puedes cambiarla.</div>
+            <div class="pf-error">Escribe solo números (puede llevar puntos).</div>
           </div>
 
           {% if session.get('rol') == 'tecnico' %}
@@ -261,14 +284,19 @@
 
   // ----- Datos personales -----
   $('fDatos').addEventListener('submit', e => {
-    const ok = $('nombre').value.trim();
-    $('fNombre').classList.toggle('invalid', !ok);
-    if (!ok){ e.preventDefault(); $('nombre').focus(); return; }
+    const okNombre = !!$('nombre').value.trim();
+    const ci = $('cedula').value.trim();
+    const okCedula = !ci || /^[\d.\s-]+$/.test(ci);        // solo números (se aceptan puntos)
+    $('fNombre').classList.toggle('invalid', !okNombre);
+    $('fCedula').classList.toggle('invalid', !okCedula);
+    if (!okNombre){ e.preventDefault(); $('nombre').focus(); return; }
+    if (!okCedula){ e.preventDefault(); $('cedula').focus(); return; }
     $('btnDatos').disabled = true;
   });
   $('nombre').addEventListener('input', () => $('fNombre').classList.remove('invalid'));
+  $('cedula').addEventListener('input', () => $('fCedula').classList.remove('invalid'));
 
-  // ----- Contraseña -----
+  // ----- Contraseña: ojo cerrado = oculta · ojo abierto = visible -----
   document.querySelectorAll('.pf-eye').forEach(b => b.addEventListener('click', () => {
     const f = $(b.dataset.for), ver = f.type === 'password';
     f.type = ver ? 'text' : 'password';

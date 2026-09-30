@@ -178,12 +178,12 @@ if cursor.fetchone()[0] == 0:
         VALUES (?,?,?,?)
     """, herramientas)
 
-    print(f"✅ Insertadas {len(herramientas)} herramientas.")
+    print(f"Insertadas {len(herramientas)} herramientas.")
 
 else:
-    print("ℹ️ Herramientas ya cargadas.")
+    print("Herramientas ya cargadas.")
 
 conn.commit()
 conn.close()
 
-print("\n✅ Base de datos actualizada correctamente.")
+print("\nBase de datos actualizada correctamente.")

@@ -6,7 +6,7 @@
   .ins, .ins-modal{
     --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
     --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
-    --accent:#0284C7; --accent-hover:#0369A1; --ok:#177A56;
+    --accent:#0284C7; --accent-hover:#0369A1; --ok:#177A56; --danger:#C2362F;
     color:var(--ink);
   }
   .ins{ max-width:1200px; margin:0 auto; padding:8px 0 40px; }
@@ -27,6 +27,8 @@
   .ins-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
   .ins-btn-ok{ background:var(--ok); border-color:var(--ok); }
   .ins-btn-ok:hover{ background:#12613F; border-color:#12613F; }
+  .ins-btn-danger{ background:var(--danger); border-color:var(--danger); }
+  .ins-btn-danger:hover{ background:#A52B25; border-color:#A52B25; }
 
   /* Indicadores */
   .ins-kpis{
@@ -113,6 +115,7 @@
     background:none; border:0; color:var(--ink-faint); text-decoration:none; cursor:pointer;
   }
   .ins-icon:hover{ background:#EEF2F6; color:var(--ink); }
+  .ins-icon.danger:hover{ background:#FDF1F0; color:var(--danger); }
   .ins-icon:focus-visible, .ins-done:focus-visible, .ins-link:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
 
   .ins-empty{ padding:40px 16px; text-align:center; color:var(--ink-soft); }
@@ -141,6 +144,7 @@
 
 {% block content %}
 {% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Realizada', 'cancelado':'Cancelada'} %}
+{% set es_admin = session.get('rol') == 'admin' %}
 
 <div class="ins">
   <div class="ins-head">
@@ -252,6 +256,12 @@
                   <a class="ins-icon" href="{{ url_for('tickets_ot', tid=i.id) }}" title="Orden de trabajo" aria-label="Orden de trabajo de {{ i.cliente }}">
                     <i class="fa-regular fa-file-lines" aria-hidden="true"></i>
                   </a>
+                  {% if es_admin %}
+                    <button type="button" class="ins-icon danger js-borrar" title="Eliminar" aria-label="Eliminar la instalación de {{ i.cliente }}"
+                            data-action="{{ url_for('tickets_borrar', tid=i.id) }}" data-cliente="{{ i.cliente }}">
+                      <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+                    </button>
+                  {% endif %}
                 </div>
               </td>
             </tr>
@@ -329,6 +339,28 @@
     </form>
   </div>
 </div>
+
+{% if es_admin %}
+<!-- Modal: eliminar instalación -->
+<div class="modal fade ins-modal" id="mBorrar" tabindex="-1" aria-labelledby="mBorrarTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="">
+      <input type="hidden" name="volver" value="{{ request.full_path }}">
+      <div class="modal-header border-0"><h5 class="modal-title" id="mBorrarTitle">¿Eliminar instalación?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+      <div class="modal-body">
+        Se va a eliminar la instalación de <strong class="js-nombre" style="color:var(--ink)"></strong> con su orden de trabajo.
+        Esta acción no se puede deshacer.
+        <p class="mb-0 mt-2" style="font-size:13px">El cliente no se borra: sigue en la lista de Clientes.</p>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="ins-btn ins-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="ins-btn ins-btn-danger"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Sí, eliminar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
@@ -349,6 +381,7 @@
   // Modales: completan el formulario con los datos del botón
   function conectar(selector, modalId, preparar){
     const el = document.getElementById(modalId);
+    if (!el) return null;
     const modal = new bootstrap.Modal(el);
     const form = el.querySelector('form');
     document.querySelectorAll(selector).forEach(btn => btn.addEventListener('click', () => {
@@ -378,6 +411,9 @@
   conectar('.js-asig', 'mAsig', (form, btn) => {
     form.querySelector('#asigTec').value = btn.dataset.tecnico || '';
   });
+
+  // Eliminar (solo administradores)
+  conectar('.js-borrar', 'mBorrar');
 })();
 </script>
 {% endblock %}

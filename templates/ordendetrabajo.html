@@ -27,7 +27,34 @@
   .ot-toolbar .btn-group > .ot-btn:first-child{ border-top-right-radius:0; border-bottom-right-radius:0; }
   .ot-caret{ padding:0 10px !important; border-top-left-radius:0 !important; border-bottom-left-radius:0 !important; border-left:1px solid rgba(255,255,255,.35) !important; }
   .ot-btn:disabled{ opacity:.7; cursor:progress; }
+  .ot-btn.danger{ color:#C2362F; border-color:#F3CFCC; }
+  .ot-btn.danger:hover{ background:#FDF1F0; border-color:#C2362F; color:#C2362F; }
+  .ot-modal .modal-content{ border:1px solid var(--line); border-radius:12px; }
+  .ot-modal .modal-title{ font-weight:600; font-size:18px; }
   .ot-note{ width:100%; font-size:13px; color:var(--ink-faint); margin-top:-4px; }
+
+  /* Panel para cargar la señal (solo pantalla, no sale en la hoja ni en el PDF) */
+  .sn-panel{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin-bottom:16px; }
+  .sn-panel h2{ font-size:15px; font-weight:600; margin:0 0 2px; }
+  .sn-panel > p{ font-size:13px; color:var(--ink-faint); margin:0 0 14px; }
+  .sn-grid{ display:grid; grid-template-columns:200px 1fr; gap:16px; align-items:start; }
+  .sn-field label{ display:block; font-size:14px; font-weight:500; margin-bottom:6px; }
+  .sn-dbm{ position:relative; }
+  .sn-dbm input{
+    width:100%; height:42px; padding:0 52px 0 12px; font:inherit; font-size:15px; font-weight:600; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; font-variant-numeric:tabular-nums;
+  }
+  .sn-dbm input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .sn-dbm span{ position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:14px; color:var(--ink-faint); pointer-events:none; }
+  .sn-foto{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .sn-foto img{ width:96px; height:72px; object-fit:cover; border-radius:6px; border:1px solid var(--line); }
+  .sn-pick{ position:relative; overflow:hidden; }
+  .sn-pick input{ position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .sn-quitar{ background:none; border:0; padding:0; font-size:13px; font-weight:500; color:#C2362F; cursor:pointer; }
+  .sn-quitar:hover{ text-decoration:underline; }
+  .sn-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
+  .sn-foot{ display:flex; justify-content:flex-end; margin-top:14px; }
+  @media (max-width:640px){ .sn-grid{ grid-template-columns:1fr; } }
 
   /* Hoja */
   .ot{
@@ -60,6 +87,14 @@
   #otQR img, #otQR canvas{ width:96px !important; height:96px !important; }
   .ot-qr-cap{ font-size:10.5px; color:var(--ink-faint); text-align:center; margin-top:4px; }
 
+  /* Señal medida en la hoja */
+  .ot-senal{ display:grid; grid-template-columns:180px 1fr; gap:16px; align-items:start; }
+  .ot-senal-valor{ border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
+  .ot-senal-valor span{ display:block; font-size:11.5px; color:var(--ink-faint); }
+  .ot-senal-valor strong{ font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .ot-senal-foto{ border:1px solid var(--line); border-radius:6px; padding:6px; text-align:center; }
+  .ot-senal-foto img{ max-width:100%; max-height:300px; object-fit:contain; display:block; margin:0 auto; }
+
   /* Campos para completar a mano */
   .ot-fill{ border:1px solid var(--line); border-radius:6px; }
   .ot-line{ height:30px; border-bottom:1px dotted #B7C2D0; margin:0 12px; }
@@ -67,6 +102,8 @@
   .ot-boxes{ display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
   .ot-box{ border:1px solid var(--line); border-radius:6px; padding:6px 10px 22px; }
   .ot-box span{ font-size:11.5px; color:var(--ink-faint); }
+  .ot-box strong{ display:block; font-size:14px; margin-top:2px; }
+  .ot-box.lleno{ padding-bottom:8px; }
   .ot-checks{ display:flex; flex-wrap:wrap; gap:6px 20px; margin-bottom:8px; }
   .ot-checks span::before{ content:""; display:inline-block; width:12px; height:12px; border:1.5px solid var(--ink-soft); border-radius:2px; margin-right:6px; vertical-align:-2px; }
 
@@ -85,12 +122,13 @@
     .ot-top{ flex-direction:column; }
     .ot-id{ text-align:left; }
     .ot-dl, .ot-boxes{ grid-template-columns:1fr 1fr; }
+    .ot-senal{ grid-template-columns:1fr; }
   }
 
   /* ===== Impresión: solo la hoja ===== */
   @page{ size:A4; margin:12mm; }
   @media print{
-    .sidebar, .sb-backdrop, .topbar, .fab-add, .flash-container, .ot-toolbar, #toastContainer{ display:none !important; }
+    .sidebar, .sb-backdrop, .topbar, .fab-add, .flash-container, .ot-toolbar, .sn-panel, #toastContainer{ display:none !important; }
     body, .app-main{ background:#fff !important; margin:0 !important; }
     .page-container{ padding:0 !important; }
     .ot-wrap{ max-width:none; padding:0; }
@@ -103,8 +141,10 @@
 
 {% block content %}
 {% macro val(x) -%}{{ x if x else '—' }}{%- endmacro %}
+{% macro dbm(x) -%}{{ x }}{% if 'dbm' not in (x|string|lower) %} dBm{% endif %}{%- endmacro %}
 {% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Resuelto', 'cancelado':'Cancelado'} %}
 {% set est = (t.estado or 'pendiente')|lower %}
+{% set foto_senal = url_for('static', filename='img/senal/' ~ t.senal_foto) if t.senal_foto else '' %}
 
 <div class="ot-wrap">
 
@@ -130,6 +170,11 @@
     <button type="button" class="ot-btn primary" onclick="window.print()">
       <i class="fa-solid fa-print" aria-hidden="true"></i> Imprimir
     </button>
+    {% if session.get('rol') == 'admin' %}
+      <button type="button" class="ot-btn danger" data-bs-toggle="modal" data-bs-target="#mBorrarOT">
+        <i class="fa-regular fa-trash-can" aria-hidden="true"></i> Eliminar
+      </button>
+    {% endif %}
     <div class="ot-note" id="waAyuda" hidden>
       <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
       Se descargó <strong id="waArchivo"></strong> y se abrió WhatsApp con el mensaje. Adjunta el PDF con el clip 📎 antes de enviar.
@@ -145,6 +190,68 @@
       </div>
     {% endif %}
   </div>
+
+  <!-- ===== Cargar la señal medida (solo pantalla) ===== -->
+  <form class="sn-panel" method="post" action="{{ url_for('tickets_senal', tid=t.id) }}" enctype="multipart/form-data" id="fSenal">
+    <h2><i class="fa-solid fa-signal" aria-hidden="true" style="color:var(--accent)"></i> Señal de la {{ 'instalación' if ((t.tipo or '')|lower).startswith('instal') else 'visita' }}</h2>
+    <p>Lo que cargues aquí aparece en la orden de trabajo y en el PDF.</p>
+    <div class="sn-grid">
+      <div class="sn-field">
+        <label for="senal">Señal que llega</label>
+        <div class="sn-dbm">
+          <input id="senal" name="senal" inputmode="decimal" autocomplete="off" placeholder="-18.5" value="{{ t.senal or '' }}">
+          <span aria-hidden="true">dBm</span>
+        </div>
+        <div class="sn-hint">Si escribes 18.5 se guarda como -18.5</div>
+      </div>
+      <div class="sn-field">
+        <label>Foto del medidor</label>
+        <div class="sn-foto">
+          <img id="snPrev" src="{{ foto_senal }}" alt="Foto de la señal" {{ '' if foto_senal else 'hidden' }}>
+          <label class="ot-btn sn-pick" style="margin:0">
+            <i class="fa-solid fa-camera" aria-hidden="true"></i> <span id="snPickTxt">{{ 'Cambiar foto' if foto_senal else 'Subir foto' }}</span>
+            <input type="file" name="senal_foto" id="snFoto" accept="image/png,image/jpeg,image/gif">
+          </label>
+          {% if foto_senal %}
+            <button type="submit" class="sn-quitar" name="accion" value="quitar_foto"
+                    onclick="return confirm('¿Quitar la foto de la señal?')">Quitar foto</button>
+          {% endif %}
+        </div>
+        <div class="sn-hint" id="snHint">Desde el celular puedes sacar la foto en el momento.</div>
+      </div>
+    </div>
+    <div class="sn-foot">
+      <button type="submit" class="ot-btn primary" name="accion" value="guardar" id="snGuardar">
+        <i class="fa-solid fa-check" aria-hidden="true"></i> Guardar señal
+      </button>
+    </div>
+  </form>
+
+  {% if session.get('rol') == 'admin' %}
+  <!-- Confirmar eliminación -->
+  <div class="modal fade ot-modal" id="mBorrarOT" tabindex="-1" aria-labelledby="mBorrarOTTit" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form class="modal-content" method="post" action="{{ url_for('tickets_borrar', tid=t.id) }}"
+            onsubmit="this.querySelector('[type=submit]').disabled = true">
+        <input type="hidden" name="volver" value="{{ url_for('ordenes_trabajo') }}">
+        <div class="modal-header border-0">
+          <h5 class="modal-title" id="mBorrarOTTit">¿Eliminar {{ ot_num }}?</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body pt-0" style="color:var(--ink-soft)">
+          Se va a eliminar {{ (t.tipo or 'el trabajo')|lower }} de <strong style="color:var(--ink)">{{ t.cliente or 'cliente sin nombre' }}</strong>
+          con su orden de trabajo{{ ' y la foto de la señal' if t.senal_foto }}. Esta acción no se puede deshacer.
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="ot-btn" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="ot-btn" style="background:#C2362F;border-color:#C2362F;color:#fff">
+            <i class="fa-regular fa-trash-can" aria-hidden="true"></i> Sí, eliminar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 
   <article class="ot" aria-label="Orden de trabajo {{ ot_num }}">
 
@@ -174,9 +281,8 @@
       <h2>Trabajo</h2>
       <dl class="ot-dl">
         <div><dt>Tipo</dt><dd>{{ val(t.tipo) }}</dd></div>
-        <div><dt>Señal</dt><dd>{{ val(t.prioridad) }}</dd></div>
         <div><dt>Estado</dt><dd>{{ etiquetas.get(est, est|capitalize) }}</dd></div>
-        <div><dt>Ticket creado</dt><dd>{{ val((t.fecha or '')|string|truncate(16, true, '')) }}</dd></div>
+        <div class="s2"><dt>Ticket creado</dt><dd>{{ val((t.fecha or '')|string|truncate(16, true, '')) }}</dd></div>
         <div class="s2"><dt>Técnico asignado</dt><dd>{{ val(tec.nombre or t.tecnico) }}</dd></div>
         <div class="s2"><dt>Visita programada</dt><dd>{{ val((t.programada_en or '')|string|truncate(16, true, '')) }}</dd></div>
         <div class="s2">
@@ -199,7 +305,7 @@
         <div><dt>Cédula (CI)</dt><dd>{{ val(t.cedula or c.cedula) }}</dd></div>
         <div><dt>Teléfono</dt><dd>{{ val(c.telefono) }}</dd></div>
         <div class="s2"><dt>Usuario PPPoE</dt><dd>{{ val(t.pppoe or c.pppoe) }}</dd></div>
-        <div><dt>Plan</dt><dd>{% if c.plan_mostrar %}{{ c.plan_mostrar }} Gs.{% else %}—{% endif %}</dd></div>
+        <div><dt>Plan</dt><dd>{% if c.plan_mostrar %}{{ c.plan_mostrar }} Gs.{% else %}—{% endif %}{% if c.megas %} · {{ c.megas }}{% endif %}</dd></div>
         <div><dt>Situación</dt><dd>{{ val((c.situacion or '')|capitalize) }}</dd></div>
       </dl>
     </section>
@@ -265,13 +371,33 @@
       <div class="ot-problem">{{ t.problema or 'Sin descripción.' }}</div>
     </section>
 
+    {% if t.senal or foto_senal %}
+    <!-- Señal medida por el técnico -->
+    <section class="ot-sec">
+      <h2>Señal medida</h2>
+      <div class="ot-senal">
+        <div class="ot-senal-valor">
+          <span>Potencia que llega (Rx)</span>
+          <strong>{{ dbm(t.senal) if t.senal else '—' }}</strong>
+        </div>
+        {% if foto_senal %}
+          <div class="ot-senal-foto"><img src="{{ foto_senal }}" alt="Foto del medidor de señal"></div>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
     <!-- Para completar en campo -->
     <section class="ot-sec">
       <h2>Para completar por el técnico</h2>
       <div class="ot-boxes" style="margin-bottom:10px">
         <div class="ot-box"><span>Hora de llegada</span></div>
         <div class="ot-box"><span>Hora de salida</span></div>
-        <div class="ot-box"><span>Potencia Rx ONU (dBm)</span></div>
+        {% if t.senal %}
+          <div class="ot-box lleno"><span>Potencia Rx ONU</span><strong>{{ dbm(t.senal) }}</strong></div>
+        {% else %}
+          <div class="ot-box"><span>Potencia Rx ONU (dBm)</span></div>
+        {% endif %}
         <div class="ot-box"><span>Caja NAP / puerto</span></div>
       </div>
       <div class="ot-checks">
@@ -308,6 +434,32 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 (() => {
+  // ----- Señal: vista previa de la foto antes de guardar -----
+  const snFoto = document.getElementById('snFoto'), snPrev = document.getElementById('snPrev');
+  snFoto?.addEventListener('change', () => {
+    const f = snFoto.files[0];
+    if (!f) return;
+    if (f.size > 16 * 1024 * 1024){
+      document.getElementById('snHint').textContent = 'La foto pesa más de 16 MB. Elige una más liviana.';
+      snFoto.value = ''; return;
+    }
+    snPrev.src = URL.createObjectURL(f); snPrev.hidden = false;
+    document.getElementById('snPickTxt').textContent = 'Cambiar foto';
+    document.getElementById('snHint').textContent = 'Toca "Guardar señal" para confirmar.';
+  });
+  document.getElementById('fSenal')?.addEventListener('submit', e => {
+    if (e.submitter && e.submitter.value === 'guardar'){
+      e.submitter.disabled = true;
+      e.submitter.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Guardando…';
+      const h = document.createElement('input'); h.type = 'hidden'; h.name = 'accion'; h.value = 'guardar';
+      e.target.appendChild(h);
+    }
+  });
+  window.addEventListener('pageshow', () => {
+    const b = document.getElementById('snGuardar');
+    if (b){ b.disabled = false; b.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Guardar señal'; }
+  });
+
   // QR con la ubicación (Google Maps)
   const qr = document.getElementById('otQR');
   if (qr && window.QRCode){
@@ -350,6 +502,10 @@
     document.body.appendChild(cont);
 
     try {
+      // Esperar a que carguen las imágenes de la copia (foto de la señal, logo)
+      await Promise.all([...hoja.querySelectorAll('img')].map(img =>
+        img.complete ? null : new Promise(ok => { img.onload = img.onerror = ok; })));
+
       // 2) Puntos donde se puede cortar página: el inicio de cada bloque
       const base = cont.getBoundingClientRect().top;
       const cortes = [...hoja.querySelectorAll('.ot-top, .ot-sec, .ot-pie, .ot-sign, .ot-foot')]

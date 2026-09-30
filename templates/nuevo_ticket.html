@@ -162,6 +162,29 @@
   .gm-alt:hover, .gm-prev a:hover{ text-decoration:underline; text-underline-offset:3px; }
   @media (max-width:720px){ .gm-row{ flex-direction:column; } }
 
+  /* Diagnóstico: campo con unidad al final (dBm, Mbps) */
+  .nt-unit{ position:relative; }
+  .nt-unit .nt-input{ padding-right:56px; }
+  .nt-unit b{
+    position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    font-size:13px; font-weight:500; color:var(--ink-faint); pointer-events:none;
+  }
+
+  /* Diagnóstico: resumen listo para copiar */
+  .dx-resumen{
+    border:1px solid var(--line-soft); border-radius:8px; background:#F9FAFC;
+  }
+  .dx-resumen-head{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:8px 8px 8px 14px; border-bottom:1px solid var(--line-soft);
+    font-size:13px; color:var(--ink-faint);
+  }
+  .dx-resumen-head .nt-btn{ height:34px; padding:0 12px; font-size:13px; }
+  .dx-resumen pre{
+    margin:0; padding:12px 14px; white-space:pre-wrap; word-break:break-word;
+    font:inherit; font-size:14px; line-height:1.6; color:var(--ink);
+  }
+
   @media (max-width:720px){
     .nt-grid{ grid-template-columns:1fr; }
     .nt-client dl{ grid-template-columns:1fr 1fr; }
@@ -286,7 +309,7 @@
         </div>
 
         <div class="nt-field">
-          <label for="prioridad">Señal</label>
+          <label for="prioridad">Prioridad</label>
           <select id="prioridad" name="prioridad">
             <option>Alta</option>
             <option selected>Media</option>
@@ -349,6 +372,79 @@
         <div class="nt-field full">
           <label for="problema">Descripción del problema</label>
           <textarea id="problema" name="problema" placeholder="Qué reporta el cliente, qué se observó, qué hay que llevar…"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 4. Diagnóstico de asistencia ============ -->
+    <section class="nt-section">
+      <div class="nt-section-head">
+        <h2>Diagnóstico de asistencia</h2>
+        <span>Se puede completar después de la visita</span>
+      </div>
+      <div class="nt-section-body nt-grid">
+        <div class="nt-field full">
+          <label for="falla">Falla</label>
+          <input class="nt-input" id="falla" name="falla" list="listaFallas" autocomplete="off"
+                 placeholder="Ej.: Sin internet, LOS en rojo, fibra cortada">
+          <datalist id="listaFallas">
+            <option value="Sin internet">
+            <option value="Internet lento">
+            <option value="Cortes intermitentes">
+            <option value="LOS en rojo">
+            <option value="Fibra cortada">
+            <option value="Conector dañado">
+            <option value="Router dañado">
+            <option value="Router reseteado / sin configuración">
+            <option value="Poca cobertura WiFi">
+            <option value="Sin energía en el equipo">
+          </datalist>
+        </div>
+
+        <div class="nt-field full">
+          <label for="cambio">Cambio</label>
+          <input class="nt-input" id="cambio" name="cambio" list="listaCambios" autocomplete="off"
+                 placeholder="Qué se cambió o se hizo. Ej.: Cambio de conector">
+          <datalist id="listaCambios">
+            <option value="Ninguno">
+            <option value="Cambio de router">
+            <option value="Cambio de ONU">
+            <option value="Cambio de conector">
+            <option value="Cambio de patchcord">
+            <option value="Cambio de fuente">
+            <option value="Empalme de fibra">
+            <option value="Cambio de fibra drop">
+            <option value="Reconfiguración del router">
+          </datalist>
+        </div>
+
+        <div class="nt-field">
+          <label for="senal">Señal</label>
+          <div class="nt-unit">
+            <input class="nt-input" id="senal" name="senal" inputmode="decimal" autocomplete="off" placeholder="Ej.: -21.5">
+            <b aria-hidden="true">dBm</b>
+          </div>
+        </div>
+
+        <div class="nt-field">
+          <label for="megas">Megas</label>
+          <div class="nt-unit">
+            <input class="nt-input" id="megas" name="megas" inputmode="decimal" autocomplete="off" placeholder="Ej.: 300">
+            <b aria-hidden="true">Mbps</b>
+          </div>
+        </div>
+
+        <div class="nt-field full">
+          <div class="dx-resumen">
+            <div class="dx-resumen-head">
+              <span>Resumen para enviar</span>
+              <button type="button" class="nt-btn nt-btn-ghost" id="btnCopiarDx">
+                <i class="fa-regular fa-copy" aria-hidden="true"></i> <span>Copiar</span>
+              </button>
+            </div>
+            <pre id="dxTexto" aria-live="polite"></pre>
+          </div>
+          <input type="hidden" name="diagnostico" id="diagnostico">
         </div>
       </div>
     </section>
@@ -469,6 +565,51 @@
     dt.min = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
   })();
 
+  // ---------- Diagnóstico de asistencia ----------
+  const dxCampos = ['falla', 'cambio', 'senal', 'megas'];
+  const conUnidad = (v, unidad) => {
+    v = (v || '').trim();
+    if (!v) return '';
+    return /^-?\d+([.,]\d+)?$/.test(v) ? `${v} ${unidad}` : v;
+  };
+
+  function armarDiagnostico(){
+    const sel = $('cliente');
+    const cliente = sel.value ? sel.options[sel.selectedIndex].textContent.trim() : '';
+    const texto = [
+      'Diagnóstico de Asistencia',
+      `Cliente: ${cliente}`,
+      `Falla: ${$('falla').value.trim()}`,
+      `Cambio: ${$('cambio').value.trim()}`,
+      `Señal: ${conUnidad($('senal').value, 'dBm')}`,
+      `Megas: ${conUnidad($('megas').value, 'Mbps')}`
+    ].join('\n');
+    $('dxTexto').textContent = texto;
+    $('diagnostico').value = texto;
+    return texto;
+  }
+  dxCampos.forEach(id => $(id).addEventListener('input', armarDiagnostico));
+
+  // La señal de fibra siempre es negativa: si escriben "21.5", se guarda "-21.5"
+  $('senal').addEventListener('blur', e => {
+    const v = e.target.value.trim().replace(',', '.');
+    if (/^\d+(\.\d+)?$/.test(v) && parseFloat(v) > 0){ e.target.value = '-' + v; armarDiagnostico(); }
+  });
+
+  $('btnCopiarDx').addEventListener('click', async () => {
+    const btnTxt = $('btnCopiarDx').querySelector('span');
+    try {
+      await navigator.clipboard.writeText(armarDiagnostico());
+      btnTxt.textContent = 'Copiado';
+    } catch {
+      // Respaldo para navegadores sin acceso al portapapeles
+      const r = document.createRange(); r.selectNodeContents($('dxTexto'));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      btnTxt.textContent = 'Seleccionado: Ctrl+C';
+    }
+    setTimeout(() => { btnTxt.textContent = 'Copiar'; }, 2000);
+  });
+
   // ---------- Cliente ----------
   let geocodeToken = 0; // evita que una búsqueda vieja pise a una nueva
 
@@ -480,6 +621,7 @@
   }
 
   async function fillFromOption(op){
+    armarDiagnostico();
     if (!op || !op.value){ limpiarCliente(); return; }
     fieldCli.classList.remove('invalid');
     const d = op.dataset;
@@ -538,6 +680,7 @@
   // Si al volver atrás quedó un cliente elegido, rellenar
   const sel = $('cliente');
   if (sel.value) fillFromOption(sel.options[sel.selectedIndex]);
+  else armarDiagnostico();
 
   // Preseleccionar cliente desde la ficha: /nuevo_ticket?cliente_id=123
   const preId = new URLSearchParams(location.search).get('cliente_id');
@@ -573,6 +716,7 @@
       jQuery('#cliente').select2('open');
       return;
     }
+    armarDiagnostico();
     const btn = $('btnGuardar');
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Guardando…';

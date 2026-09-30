@@ -14,6 +14,19 @@ from datetime import datetime, date, timedelta
 from unicodedata import normalize
 from io import StringIO, BytesIO
 
+# Reportes de uso de equipos (Excel y PDF): pip install reportlab openpyxl
+from xml.sax.saxutils import escape as _xesc
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib import colors as rl_colors
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+from reportlab.pdfgen import canvas as rl_canvas
+
 # Variables de entorno desde un archivo .env (opcional: pip install python-dotenv)
 try:
     from dotenv import load_dotenv
@@ -31,6 +44,7 @@ from crear_db import main as migrate_db
 app = Flask(__name__)
 app.secret_key = os.getenv("APP_SECRET_KEY", "tu_clave_secreta_super_segura")
 app.permanent_session_lifetime = timedelta(days=30)
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024   # fotos del celular de hasta 16 MB
 
 # Asegurar estructura de BD al arrancar
 migrate_db()
@@ -45,6 +59,10 @@ os.makedirs(EQUIPOS_UPLOAD_FOLDER, exist_ok=True)
 # Avatares de usuario
 USER_UPLOAD_FOLDER = os.path.join('static', 'img', 'users')
 os.makedirs(USER_UPLOAD_FOLDER, exist_ok=True)
+
+# Fotos de la señal medida en la instalación (medidor de potencia / ONU)
+SENAL_UPLOAD_FOLDER = os.path.join('static', 'img', 'senal')
+os.makedirs(SENAL_UPLOAD_FOLDER, exist_ok=True)
 
 # Estados válidos de un ticket (asistencia)
 ESTADOS_VALIDOS = {'pendiente', 'en_progreso', 'resuelto', 'cancelado'}
@@ -168,7 +186,7 @@ def _ensure_cliente_cols():
         conn = get_db()
         cols = table_columns(conn, "clientes")
         if cols:  # la tabla existe
-            for c in ("cedula", "pppoe", "direccion"):
+            for c in ("cedula", "pppoe", "direccion", "megas"):
                 if c not in cols:
                     conn.execute(f"ALTER TABLE clientes ADD COLUMN {c} TEXT")
             for c in ("lat", "lng"):
@@ -202,6 +220,9 @@ def _ensure_config():
                 conn.execute("ALTER TABLE usuarios ADD COLUMN sucursal_pred INTEGER")
             if "activo" not in ucols:
                 conn.execute("ALTER TABLE usuarios ADD COLUMN activo INTEGER DEFAULT 1")
+            # Cédula del usuario: se usa para recuperar la contraseña
+            if "cedula" not in ucols:
+                conn.execute("ALTER TABLE usuarios ADD COLUMN cedula TEXT")
         tcols = table_columns(conn, "tecnicos")
         if tcols:
             if "telefono" not in tcols:
@@ -210,10 +231,12 @@ def _ensure_config():
                 conn.execute("ALTER TABLE tecnicos ADD COLUMN activo INTEGER DEFAULT 1")
             if "sucursal_id" not in tcols:
                 conn.execute("ALTER TABLE tecnicos ADD COLUMN sucursal_id INTEGER")
-        # Tickets: dispositivos conectados al WiFi y repetidores
+        # Tickets: dispositivos conectados al WiFi, repetidores y diagnóstico de asistencia
         acols = table_columns(conn, "asistencias")
         if acols:
-            for c, tipo in (("dispositivos", "TEXT"), ("repetidor", "INTEGER"), ("repetidor_cant", "INTEGER")):
+            for c, tipo in (("dispositivos", "TEXT"), ("repetidor", "INTEGER"), ("repetidor_cant", "INTEGER"),
+                            ("falla", "TEXT"), ("cambio", "TEXT"), ("senal", "TEXT"), ("megas", "TEXT"),
+                            ("diagnostico", "TEXT"), ("senal_foto", "TEXT")):
                 if c not in acols:
                     conn.execute(f"ALTER TABLE asistencias ADD COLUMN {c} {tipo}")
         conn.execute("CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT)")
@@ -450,44 +473,70 @@ def register():
 
     return render_template("register.html")
 
-@app.route("/forgot_password", methods=["GET","POST"])
+# ---------- Recuperar contraseña con usuario + cédula ----------
+# La cédula la carga el administrador al crear el usuario; después solo el propio
+# usuario puede cambiarla (desde Mi perfil). Así nadie puede poner una cédula
+# conocida en la cuenta de otro para cambiarle la contraseña.
+_intentos_recuperar = {}   # usuario -> [horas de intentos fallidos]
+
+def _solo_digitos_ci(v):
+    return re.sub(r"\D", "", str(v or ""))
+
+def _demasiados_intentos(usuario):
+    """Máximo 5 intentos fallidos cada 15 minutos por usuario."""
+    ahora = datetime.now()
+    lista = [t for t in _intentos_recuperar.get(usuario.lower(), []) if ahora - t < timedelta(minutes=15)]
+    _intentos_recuperar[usuario.lower()] = lista
+    return len(lista) >= 5
+
+@app.route("/forgot_password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
-        usuario = request.form.get("usuario","").strip()
-        nueva = request.form.get("nueva","")
-        confirmar = request.form.get("confirmar","")
-        if not usuario or not nueva or not confirmar:
-            flash("Completá todos los campos","danger")
-            return render_template("forgot_password.html")
+        usuario = (request.form.get("usuario") or "").strip()
+        cedula = _solo_digitos_ci(request.form.get("cedula"))
+        nueva = request.form.get("nueva") or ""
+        confirmar = request.form.get("confirmar") or ""
+
+        if not usuario or not cedula or not nueva or not confirmar:
+            flash("Completa todos los campos.", "danger")
+            return render_template("forgot_password.html", usuario=usuario)
         if nueva != confirmar:
-            flash("Las contraseñas no coinciden","danger")
-            return render_template("forgot_password.html")
+            flash("Las contraseñas no coinciden.", "danger")
+            return render_template("forgot_password.html", usuario=usuario)
+        if len(nueva) < 6:
+            flash("La contraseña nueva debe tener al menos 6 caracteres.", "danger")
+            return render_template("forgot_password.html", usuario=usuario)
+        if _demasiados_intentos(usuario):
+            flash("Demasiados intentos. Espera 15 minutos y vuelve a probar.", "danger")
+            return render_template("forgot_password.html", usuario=usuario)
 
         db = get_db()
         cols = table_columns(db, "usuarios")
-        # Select tolerante a ausencia de sucursal_id
-        if "sucursal_id" in cols:
-            user = db.execute("SELECT * FROM usuarios WHERE usuario=? AND sucursal_id=?",
-                              (usuario, current_sucursal_id())).fetchone()
-        else:
-            user = db.execute("SELECT * FROM usuarios WHERE usuario=?",
-                              (usuario,)).fetchone()
+        dueno = None
+        for u in db.execute("SELECT * FROM usuarios WHERE usuario=?", (usuario,)).fetchall():
+            ci = _solo_digitos_ci(col(u, "cedula"))
+            if ci and ci == cedula and col(u, "activo", 1) != 0:
+                dueno = u
+                break
 
-        if not user:
+        if not dueno:
             db.close()
-            flash("El usuario no existe" + (" en esta sucursal" if "sucursal_id" in cols else ""), "danger")
-            return render_template("forgot_password.html")
+            _intentos_recuperar.setdefault(usuario.lower(), []).append(datetime.now())
+            # Mismo mensaje si falla el usuario o la cédula: no revela qué usuarios existen
+            flash("El usuario o la cédula no coinciden.", "danger")
+            return render_template("forgot_password.html", usuario=usuario)
 
         if "password_hash" in cols:
-            pwd_hash = generate_password_hash(nueva)
-            update_user_fields(db, col(user, "id"), {"password_hash": pwd_hash, "contrasena": None})
+            update_user_fields(db, dueno["id"], {"password_hash": generate_password_hash(nueva), "contrasena": None})
         else:
-            update_user_fields(db, col(user, "id"), {"contrasena": nueva})
+            update_user_fields(db, dueno["id"], {"contrasena": nueva})
+        db.close()
+        _intentos_recuperar.pop(usuario.lower(), None)
 
-        flash("Contraseña actualizada. Iniciá sesión.","success")
+        flash("Contraseña actualizada. Ya puedes iniciar sesión.", "success")
         return redirect(url_for("login"))
 
-    return render_template("forgot_password.html")
+    return render_template("forgot_password.html", usuario="")
 
 # ===========================
 #  LOGIN (ÚNICO) + alias /login
@@ -737,6 +786,7 @@ def perfil():
         telefono = (request.form.get("telefono") or "").strip()
         area     = (request.form.get("area") or "").strip()
         turno    = (request.form.get("turno") or "").strip()
+        cedula   = _solo_digitos_ci(request.form.get("cedula")) if "cedula" in request.form else None
         # Las preferencias (notificaciones, sonido, sucursal) se guardan en Configuración → Mis preferencias
 
         if not nombre:
@@ -754,14 +804,17 @@ def perfil():
                     rol = "admin"
                     flash("Sigues como administrador: debe quedar al menos uno en el sistema.", "warning")
 
-        update_user_fields(db, user["id"], {
+        cambios_perfil = {
             "nombre": nombre,
             "email": email or None,
             "telefono": telefono or None,
             "area": area or None,
             "turno": turno or None,
             "rol": rol
-        })
+        }
+        if "cedula" in request.form:          # solo si el formulario trae el campo
+            cambios_perfil["cedula"] = cedula or None
+        update_user_fields(db, user["id"], cambios_perfil)
 
         session["nombre"] = nombre or session.get("usuario")
         session["email"]  = email or None
@@ -817,6 +870,41 @@ def perfil_password():
     db.close()
     flash("Contraseña actualizada.", "success")
     return redirect(url_for("perfil"))
+
+@app.route("/perfil/cedula", methods=["POST"])
+def perfil_cedula():
+    """Cada usuario carga o cambia SU cédula (la usa para recuperar la contraseña). Pide su contraseña actual."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    volver = request.referrer or url_for("usuarios")
+
+    cedula = _solo_digitos_ci(request.form.get("cedula"))
+    actual = request.form.get("actual") or ""
+    if len(cedula) < 5:
+        flash("Escribe un número de cédula válido.", "warning")
+        return redirect(volver)
+
+    db = get_db()
+    user = db.execute("SELECT * FROM usuarios WHERE id=?", (session.get("usuario_id"),)).fetchone()
+    if not user:
+        db.close()
+        flash("Usuario no encontrado.", "danger")
+        return redirect(volver)
+
+    ok = False
+    if col(user, "password_hash"):
+        ok = check_password_hash(user["password_hash"], actual)
+    elif col(user, "contrasena") is not None:
+        ok = (actual == user["contrasena"])
+    if not ok:
+        db.close()
+        flash("La contraseña actual es incorrecta. La cédula no se guardó.", "danger")
+        return redirect(volver)
+
+    update_user_fields(db, user["id"], {"cedula": cedula})
+    db.close()
+    flash("Cédula guardada. Ya puedes recuperar tu contraseña si la olvidas.", "success")
+    return redirect(volver)
 
 @app.route("/perfil/avatar", methods=["POST"])
 def perfil_avatar():
@@ -930,6 +1018,15 @@ def nuevo_ticket():
         programada_local = (request.form.get("programada_local") or "").strip()
         programada_en  = programada_local.replace("T", " ") if programada_local else None
 
+        # Diagnóstico de asistencia
+        falla       = (request.form.get("falla") or "").strip() or None
+        cambio      = (request.form.get("cambio") or "").strip() or None
+        senal       = (request.form.get("senal") or "").strip() or None
+        megas       = (request.form.get("megas") or "").strip() or None
+        diagnostico = (request.form.get("diagnostico") or "").strip() or None
+        if not (falla or cambio or senal or megas):
+            diagnostico = None   # el resumen vacío no se guarda
+
         if not cliente:
             flash("Selecciona un cliente.", "warning")
             return redirect(url_for("nuevo_ticket"))
@@ -979,6 +1076,11 @@ def nuevo_ticket():
             "sucursal_id": current_sucursal_id(),
             "lat": lat,
             "lng": lng,
+            "falla": falla,
+            "cambio": cambio,
+            "senal": senal,
+            "megas": megas,
+            "diagnostico": diagnostico,
         })
         db.close()
 
@@ -1440,6 +1542,7 @@ def instalaciones_nueva():
                     "lat": lat, "lng": lng,
                     "tipo": "cliente",
                     "valor": valor,
+                    "megas": (f.get("megas") or "").strip() or None,   # velocidad contratada, ej. "130 Mbps"
                     **servicio,
                 }
                 if "tipo_valor" in ccols and ("tipo" not in ccols or "valor" not in ccols):
@@ -1607,6 +1710,9 @@ def equipos():
         WHERE sucursal_id=?
     """, (sid,)).fetchone()[0] or 0
 
+    # Equipos que se quedaron sin stock (para el aviso de "reponer")
+    sin_stock = [e for e in equipos if (e["stock"] or 0) <= 0]
+
     # ===========================
     # HISTORIAL
     # ===========================
@@ -1665,6 +1771,7 @@ def equipos():
         total=total_equipos,
         en_uso=int(en_uso),
         disponibles=int(disponibles),
+        sin_stock=sin_stock,
         tecnicos=tecnicos,
         filtros={
             "desde": desde,
@@ -1748,11 +1855,12 @@ def registrar_uso_item():
 
     # ¿Es equipo?
     equipo = conn.execute("""
-        SELECT id
+        SELECT id, nombre
         FROM equipos
         WHERE id=? AND sucursal_id=?
     """, (item_id, sid)).fetchone()
 
+    restante = None
     if equipo:
         # Descontar stock utilizando la función existente
         ok, res = ajustar_stock(conn, item_id, -cantidad, "egreso", tecnico, servicio)
@@ -1761,6 +1869,7 @@ def registrar_uso_item():
             flash(res, "warning")
             return redirect(url_for("equipos"))
         item_type = "equipo"
+        restante = res
     else:
         # ¿Es herramienta?
         herramienta = conn.execute("""
@@ -1784,7 +1893,14 @@ def registrar_uso_item():
     conn.commit()
     conn.close()
 
-    flash("Uso registrado correctamente.", "success")
+    # Avisar cuánto queda; si llegó a 0, pedir reponer
+    if item_type == "equipo":
+        if restante <= 0:
+            flash(f"Uso registrado. {equipo['nombre']} quedó con stock 0: hay que reponerlo.", "warning")
+        else:
+            flash(f"Uso registrado. Quedan {restante} de {equipo['nombre']}.", "success")
+    else:
+        flash("Uso registrado correctamente.", "success")
     return redirect(url_for("equipos"))
 
 @app.route("/equipos/ingresar_stock", methods=["POST"])
@@ -1794,7 +1910,8 @@ def equipos_ingresar_stock():
 
     equipo_id = request.form.get("equipo_id", type=int)
     cantidad  = request.form.get("cantidad", type=int)
-    motivo    = (request.form.get("motivo") or "").strip()
+    # El formulario manda "nota"; se acepta también "motivo"
+    motivo    = (request.form.get("nota") or request.form.get("motivo") or "").strip()
     tecnico   = session.get("usuario")
 
     if not equipo_id or not cantidad or cantidad <= 0:
@@ -1997,15 +2114,26 @@ def subir_foto_instalacion():
     flash("Foto subida correctamente.", "success")
     return redirect(url_for("equipos"))
 
-# ---------- Reportes de uso_items (CSV/PDF) ----------
+# ---------- Reportes de uso_items (Excel/PDF) ----------
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 def _query_uso(conn, where_sql, params):
+    # Stock actual de cada ítem (para ver qué se quedó en 0)
+    ecols = table_columns(conn, "equipos")
+    hcols = table_columns(conn, "herramientas")
+    stk_e = "e.stock" if "stock" in ecols else "NULL"
+    stk_h = "h.stock" if "stock" in hcols else "NULL"
     sql = f"""
         SELECT u.item_type,
-               CASE 
+               CASE
                  WHEN u.item_type='herramienta' THEN h.nombre
                  WHEN u.item_type='equipo'      THEN e.nombre
                  ELSE 'Desconocido'
                END AS nombre_item,
+               CASE
+                 WHEN u.item_type='herramienta' THEN {stk_h}
+                 WHEN u.item_type='equipo'      THEN {stk_e}
+               END AS stock_actual,
                u.tecnico,
                IFNULL(u.cantidad, 1) AS cantidad,
                IFNULL(u.servicio, '') AS servicio,
@@ -2019,6 +2147,14 @@ def _query_uso(conn, where_sql, params):
     rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
+def _query_sin_stock(conn):
+    """Equipos de la sucursal que se quedaron sin stock."""
+    if "stock" not in table_columns(conn, "equipos"):
+        return []
+    return [dict(r) for r in conn.execute(
+        "SELECT nombre, tipo FROM equipos WHERE sucursal_id=? AND IFNULL(stock,0)<=0 ORDER BY nombre COLLATE NOCASE",
+        (current_sucursal_id(),)).fetchall()]
+
 def _query_uso_hoy(conn):
     hoy = date.today().isoformat()
     rows = _query_uso(conn, "AND date(u.fecha)=?", [current_sucursal_id(), hoy])
@@ -2027,57 +2163,299 @@ def _query_uso_hoy(conn):
 def _query_uso_rango(conn, desde, hasta, tecnico_id=None):
     where = "AND date(u.fecha) BETWEEN ? AND ?"
     params = [current_sucursal_id(), desde, hasta]
+    tec_nombre = None
     if tecnico_id:
         tr = conn.execute("SELECT nombre FROM tecnicos WHERE id=? AND sucursal_id=?", (tecnico_id, current_sucursal_id())).fetchone()
         if tr and tr["nombre"]:
             where += " AND u.tecnico=?"
             params.append(tr["nombre"])
+            tec_nombre = tr["nombre"]
     rows = _query_uso(conn, where, params)
-    return rows
+    return rows, tec_nombre
 
-def _uso_pdf(titulo, rows, filename):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, txt=titulo, ln=True, align="C")
+def _fecha_iso(v):
+    s = str(v or "").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s[:19], fmt)
+        except ValueError:
+            pass
+    return None
 
-    pdf.set_font("Arial", "B", 10)
-    headers = ["Fecha", "Tipo", "Ítem", "Técnico", "Cant.", "Servicio"]
-    widths  = [32, 22, 52, 38, 14, 32]
-    for h, w in zip(headers, widths): pdf.cell(w, 8, h, 1, 0, "C")
-    pdf.ln(8)
-
-    pdf.set_font("Arial", "", 10)
+def _filas_uso(rows):
+    filas = []
     for r in rows:
-        cells = [
-            r["fecha"] or "", r["item_type"] or "", (r["nombre_item"] or "")[:40],
-            (r["tecnico"] or "")[:24], str(r["cantidad"]), (r["servicio"] or "")[:22],
-        ]
-        for txt, w in zip(cells, widths): pdf.cell(w, 8, txt, 1, 0)
-        pdf.ln(8)
+        stk = r.get("stock_actual")
+        filas.append({
+            "fecha": _fecha_iso(r.get("fecha")),
+            "fecha_txt": str(r.get("fecha") or ""),
+            "item": str(r.get("nombre_item") or "—"),
+            "tipo": str(r.get("item_type") or "").capitalize(),
+            "tecnico": str(r.get("tecnico") or "").strip() or "Sin asignar",
+            "cantidad": int(r.get("cantidad") or 1),
+            "servicio": str(r.get("servicio") or "").capitalize() or "—",
+            "stock": None if stk is None else int(stk),
+        })
+    return filas
 
-    out = pdf.output(dest="S").encode("latin-1", errors="replace")
-    buf = io.BytesIO(out); buf.seek(0)
+def _uso_por_tecnico(filas):
+    res = {}
+    for f in sorted(filas, key=lambda x: x["tecnico"].lower()):
+        res[f["tecnico"]] = res.get(f["tecnico"], 0) + f["cantidad"]
+    return res
+
+def _fecha_es(iso):
+    try:
+        return datetime.strptime(iso, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except (TypeError, ValueError):
+        return iso or ""
+
+# ---- Excel ----
+def _uso_excel(titulo, subtitulo, rows, sin_stock, filename):
+    filas = _filas_uso(rows)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Usos"
+
+    base = Font(name="Arial", size=10)
+    negr = Font(name="Arial", size=10, bold=True)
+    rojo = Font(name="Arial", size=10, bold=True, color="B91C1C")
+    blanco = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+    cab_fill = PatternFill("solid", fgColor="1D4ED8")
+    zebra = PatternFill("solid", fgColor="F1F5F9")
+    tot_fill = PatternFill("solid", fgColor="E0E7FF")
+    rojo_fill = PatternFill("solid", fgColor="FEE2E2")
+    borde = Border(bottom=Side(style="thin", color="CBD5E1"))
+    centro = Alignment(horizontal="center")
+
+    ws["A1"] = titulo
+    ws["A1"].font = Font(name="Arial", size=14, bold=True, color="1D4ED8")
+    ws["A2"] = subtitulo
+    ws["A2"].font = Font(name="Arial", size=10, color="64748B")
+
+    cols = [("Fecha", 18), ("Ítem", 30), ("Tipo", 12), ("Técnico", 24),
+            ("Cantidad", 11), ("Stock actual", 13), ("Servicio", 22)]
+    CAB = 4
+    for i, (nombre, ancho) in enumerate(cols, start=1):
+        c = ws.cell(row=CAB, column=i, value=nombre)
+        c.font, c.fill = blanco, cab_fill
+        c.alignment = Alignment(horizontal="center" if nombre in ("Cantidad", "Stock actual") else "left")
+        ws.column_dimensions[get_column_letter(i)].width = ancho
+
+    r = CAB
+    for n, f in enumerate(filas):
+        r += 1
+        vals = [f["fecha"] or f["fecha_txt"], f["item"], f["tipo"], f["tecnico"],
+                f["cantidad"], f["stock"], f["servicio"]]
+        for i, v in enumerate(vals, start=1):
+            c = ws.cell(row=r, column=i, value=v)
+            c.font, c.border = base, borde
+            if n % 2:
+                c.fill = zebra
+        ws.cell(row=r, column=1).number_format = "DD/MM/YYYY HH:MM"
+        ws.cell(row=r, column=5).alignment = centro
+        cs = ws.cell(row=r, column=6)
+        cs.alignment = centro
+        if f["stock"] is not None and f["stock"] <= 0:
+            cs.font, cs.fill = rojo, rojo_fill
+
+    r_tot = r + 1
+    ws.cell(row=r_tot, column=4, value="Total unidades").font = negr
+    ws.cell(row=r_tot, column=5, value=f"=SUM(E{CAB + 1}:E{r})" if filas else 0)
+    ws.cell(row=r_tot, column=5).font = negr
+    ws.cell(row=r_tot, column=5).alignment = centro
+    for i in range(1, len(cols) + 1):
+        ws.cell(row=r_tot, column=i).fill = tot_fill
+
+    ws.freeze_panes = f"A{CAB + 1}"
+    if filas:
+        ws.auto_filter.ref = f"A{CAB}:G{r}"
+    ws.page_setup.orientation = "landscape"
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+
+    # Hoja: por técnico
+    ws2 = wb.create_sheet("Por técnico")
+    for i, (nombre, ancho) in enumerate([("Técnico", 28), ("Unidades", 12)], start=1):
+        c = ws2.cell(row=1, column=i, value=nombre)
+        c.font, c.fill = blanco, cab_fill
+        ws2.column_dimensions[get_column_letter(i)].width = ancho
+    k = 1
+    for tec in _uso_por_tecnico(filas):
+        k += 1
+        ws2.cell(row=k, column=1, value=tec).font = base
+        c = ws2.cell(row=k, column=2,
+                     value=f"=SUMIF(Usos!$D${CAB + 1}:$D${max(r, CAB + 1)},A{k},Usos!$E${CAB + 1}:$E${max(r, CAB + 1)})")
+        c.font, c.alignment = base, centro
+
+    # Hoja: sin stock
+    ws3 = wb.create_sheet("Sin stock")
+    for i, (nombre, ancho) in enumerate([("Equipo", 34), ("Tipo", 16), ("Stock", 10)], start=1):
+        c = ws3.cell(row=1, column=i, value=nombre)
+        c.font, c.fill = blanco, PatternFill("solid", fgColor="B91C1C")
+        ws3.column_dimensions[get_column_letter(i)].width = ancho
+    if sin_stock:
+        for k, e in enumerate(sin_stock, start=2):
+            ws3.cell(row=k, column=1, value=e["nombre"]).font = base
+            ws3.cell(row=k, column=2, value=e.get("tipo") or "").font = base
+            c = ws3.cell(row=k, column=3, value=0)
+            c.font, c.alignment = rojo, centro
+    else:
+        ws3.cell(row=2, column=1, value="Todos los equipos tienen stock.").font = base
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name=filename, mimetype=XLSX_MIME)
+
+# ---- PDF ----
+_AZUL = rl_colors.HexColor("#1D4ED8")
+_TINTA = rl_colors.HexColor("#0F172A")
+_GRIS = rl_colors.HexColor("#64748B")
+_LINEA = rl_colors.HexColor("#E2E8F0")
+_ZEBRA = rl_colors.HexColor("#F8FAFC")
+_TOTAL = rl_colors.HexColor("#EEF2FF")
+_ROJO = rl_colors.HexColor("#B91C1C")
+_ROJO_BG = rl_colors.HexColor("#FEF2F2")
+
+class _CanvasNumerado(rl_canvas.Canvas):
+    """Pie de página con 'Página X de N'."""
+    def __init__(self, *a, pie_izq="", **kw):
+        super().__init__(*a, **kw)
+        self._paginas, self._pie_izq = [], pie_izq
+    def showPage(self):
+        self._paginas.append(dict(self.__dict__))
+        self._startPage()
+    def save(self):
+        total = len(self._paginas)
+        for estado in self._paginas:
+            self.__dict__.update(estado)
+            self.setFont("Helvetica", 8)
+            self.setFillColor(_GRIS)
+            self.setStrokeColor(_LINEA)
+            self.line(15 * mm, 12 * mm, A4[0] - 15 * mm, 12 * mm)
+            self.drawString(15 * mm, 8 * mm, self._pie_izq)
+            self.drawRightString(A4[0] - 15 * mm, 8 * mm, f"Página {self._pageNumber} de {total}")
+            super().showPage()
+        super().save()
+
+def _uso_pdf(titulo, subtitulo, rows, sin_stock, filename):
+    filas = _filas_uso(rows)
+    empresa = get_empresa().get("nombre_comercial") or "SPYnet"
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, title=titulo,
+                            leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=18 * mm)
+
+    P = ParagraphStyle
+    st_emp = P("emp", fontName="Helvetica-Bold", fontSize=9, textColor=_AZUL)
+    st_tit = P("tit", fontName="Helvetica-Bold", fontSize=17, leading=21, textColor=_TINTA)
+    st_sub = P("sub", fontName="Helvetica", fontSize=9.5, leading=13, textColor=_GRIS)
+    st_h2 = P("h2", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=_TINTA)
+    st_cel = P("cel", fontName="Helvetica", fontSize=9, leading=11.5, textColor=_TINTA)
+    st_celb = P("celb", parent=st_cel, fontName="Helvetica-Bold")
+    st_celg = P("celg", parent=st_cel, fontSize=8, leading=10, textColor=_GRIS)
+    st_num = P("num", parent=st_celb, alignment=TA_CENTER)
+    st_num0 = P("num0", parent=st_num, textColor=_ROJO)
+    st_cab = P("cab", fontName="Helvetica-Bold", fontSize=8.5, leading=10, textColor=rl_colors.white)
+    st_cabc = P("cabc", parent=st_cab, alignment=TA_CENTER)
+    st_totl = P("totl", parent=st_celb, alignment=TA_RIGHT)
+
+    total_u = sum(f["cantidad"] for f in filas)
+    h = [Paragraph(_xesc(empresa), st_emp), Spacer(0, 2 * mm), Paragraph(_xesc(titulo), st_tit)]
+    if subtitulo:
+        h.append(Paragraph(_xesc(subtitulo), st_sub))
+    h.append(Paragraph(
+        f"{len(filas)} registro{'s' if len(filas) != 1 else ''} · {total_u} unidad{'es' if total_u != 1 else ''}"
+        f" · Generado el {datetime.now():%d/%m/%Y %H:%M}", st_sub))
+    h.append(Spacer(0, 6 * mm))
+
+    # Tabla principal: anchos que suman 180 mm; el texto largo se parte en renglones
+    anchos = [24 * mm, 46 * mm, 19 * mm, 35 * mm, 13 * mm, 15 * mm, 28 * mm]
+    datos = [[Paragraph(t, st_cabc if t in ("Cant.", "Stock") else st_cab)
+              for t in ("Fecha", "Ítem", "Tipo", "Técnico", "Cant.", "Stock", "Servicio")]]
+    for f in filas:
+        fecha = (Paragraph(f"{f['fecha']:%d/%m/%Y}<br/><font color='#64748B' size='8'>{f['fecha']:%H:%M}</font>", st_cel)
+                 if f["fecha"] else Paragraph(_xesc(f["fecha_txt"]), st_cel))
+        stk = "—" if f["stock"] is None else str(f["stock"])
+        datos.append([
+            fecha,
+            Paragraph(_xesc(f["item"]), st_celb),
+            Paragraph(_xesc(f["tipo"]), st_celg),
+            Paragraph(_xesc(f["tecnico"]), st_cel),
+            Paragraph(str(f["cantidad"]), st_num),
+            Paragraph(stk, st_num0 if f["stock"] is not None and f["stock"] <= 0 else st_num),
+            Paragraph(_xesc(f["servicio"]), st_celg),
+        ])
+    if not filas:
+        datos.append([Paragraph("No hay usos registrados en este período.", st_celg)] + [""] * 6)
+    datos.append(["", "", "", Paragraph("Total unidades", st_totl), Paragraph(str(total_u), st_num), "", ""])
+
+    estilo = [
+        ("BACKGROUND", (0, 0), (-1, 0), _AZUL),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("LINEBELOW", (0, 1), (-1, -2), 0.5, _LINEA),
+        ("BACKGROUND", (0, -1), (-1, -1), _TOTAL),
+        ("LINEABOVE", (0, -1), (-1, -1), 1, _AZUL),
+    ]
+    for i in range(1, len(datos) - 1):
+        if i % 2 == 0:
+            estilo.append(("BACKGROUND", (0, i), (-1, i), _ZEBRA))
+        f = filas[i - 1] if filas else None
+        if f and f["stock"] is not None and f["stock"] <= 0:
+            estilo.append(("BACKGROUND", (5, i), (5, i), _ROJO_BG))
+    if not filas:
+        estilo.append(("SPAN", (0, 1), (-1, 1)))
+    t = Table(datos, colWidths=anchos, repeatRows=1)
+    t.setStyle(TableStyle(estilo))
+    h.append(t)
+
+    # Resumen por técnico (si hay más de uno)
+    resumen = _uso_por_tecnico(filas)
+    if len(resumen) > 1:
+        h += [Spacer(0, 8 * mm), Paragraph("Resumen por técnico", st_h2), Spacer(0, 3 * mm)]
+        d2 = [[Paragraph("Técnico", st_cab), Paragraph("Unidades", st_cabc)]]
+        d2 += [[Paragraph(_xesc(k), st_cel), Paragraph(str(v), st_num)] for k, v in resumen.items()]
+        t2 = Table(d2, colWidths=[70 * mm, 24 * mm], hAlign="LEFT")
+        t2.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _AZUL), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.5, _LINEA),
+        ]))
+        h.append(t2)
+
+    # Equipos sin stock: lo que hay que reponer
+    if sin_stock:
+        h += [Spacer(0, 8 * mm), Paragraph("Equipos sin stock (reponer)", P("h2r", parent=st_h2, textColor=_ROJO)),
+              Spacer(0, 3 * mm)]
+        d3 = [[Paragraph("Equipo", st_cab), Paragraph("Tipo", st_cab), Paragraph("Stock", st_cabc)]]
+        d3 += [[Paragraph(_xesc(e["nombre"]), st_celb), Paragraph(_xesc(e.get("tipo") or ""), st_celg),
+                Paragraph("0", st_num0)] for e in sin_stock]
+        t3 = Table(d3, colWidths=[70 * mm, 40 * mm, 20 * mm], hAlign="LEFT")
+        t3.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ROJO), ("BACKGROUND", (0, 1), (-1, -1), _ROJO_BG),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.5, rl_colors.HexColor("#FECACA")),
+        ]))
+        h.append(t3)
+
+    doc.build(h, canvasmaker=lambda *a, **kw: _CanvasNumerado(*a, pie_izq=f"{empresa} · {titulo}", **kw))
+    buf.seek(0)
     return send_file(buf, as_attachment=True, download_name=filename, mimetype="application/pdf")
 
-def _uso_csv(rows, filename):
-    si = StringIO()
-    writer = csv.writer(si)
-    writer.writerow(["Fecha", "Tipo", "Ítem", "Técnico", "Cantidad", "Servicio"])
-    for r in rows:
-        writer.writerow([r["fecha"], r["item_type"], r["nombre_item"], r["tecnico"], r["cantidad"], r["servicio"]])
-    buf = io.BytesIO(si.getvalue().encode("utf-8-sig"))
-    buf.seek(0)
-    return send_file(buf, as_attachment=True, download_name=filename, mimetype="text/csv")
-
-@app.route("/equipos/descargar/hoy.csv")
+@app.route("/equipos/descargar/hoy.xlsx")
 def equipos_descargar_hoy_csv():
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
     conn = get_db()
     hoy, rows = _query_uso_hoy(conn)
+    sin_stock = _query_sin_stock(conn)
     conn.close()
-    return _uso_csv(rows, f"uso_items_{hoy}.csv")
+    sub = f"{_fecha_es(hoy)} · Sucursal {g.sucursal_nombre}"
+    return _uso_excel("Uso de equipos", sub, rows, sin_stock, f"uso_items_{hoy}.xlsx")
 
 @app.route("/equipos/descargar/hoy.pdf")
 def equipos_descargar_hoy_pdf():
@@ -2085,34 +2463,43 @@ def equipos_descargar_hoy_pdf():
         return redirect(url_for("login"))
     conn = get_db()
     hoy, rows = _query_uso_hoy(conn)
+    sin_stock = _query_sin_stock(conn)
     conn.close()
-    return _uso_pdf(f"Usos registrados - {hoy}", rows, f"uso_items_{hoy}.pdf")
+    sub = f"{_fecha_es(hoy)} · Sucursal {g.sucursal_nombre}"
+    return _uso_pdf("Uso de equipos", sub, rows, sin_stock, f"uso_items_{hoy}.pdf")
 
-@app.route("/equipos/descargar/rango.csv")
+def _args_rango():
+    desde = request.args.get("desde") or date.today().isoformat()
+    hasta = request.args.get("hasta") or date.today().isoformat()
+    return desde, hasta, (request.args.get("tecnico_id") or None)
+
+def _sub_rango(desde, hasta, tec_nombre):
+    periodo = _fecha_es(desde) if desde == hasta else f"Del {_fecha_es(desde)} al {_fecha_es(hasta)}"
+    return f"{periodo} · Sucursal {g.sucursal_nombre} · Técnico: {tec_nombre or 'Todos'}"
+
+@app.route("/equipos/descargar/rango.xlsx")
 def equipos_descargar_rango_csv():
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
-    desde = request.args.get("desde") or date.today().isoformat()
-    hasta = request.args.get("hasta") or date.today().isoformat()
-    tecnico_id = request.args.get("tecnico_id") or None
-
+    desde, hasta, tecnico_id = _args_rango()
     conn = get_db()
-    rows = _query_uso_rango(conn, desde, hasta, tecnico_id)
+    rows, tec_nombre = _query_uso_rango(conn, desde, hasta, tecnico_id)
+    sin_stock = _query_sin_stock(conn)
     conn.close()
-    return _uso_csv(rows, f"uso_items_{desde}_a_{hasta}.csv")
+    return _uso_excel("Uso de equipos", _sub_rango(desde, hasta, tec_nombre), rows, sin_stock,
+                      f"uso_items_{desde}_a_{hasta}.xlsx")
 
 @app.route("/equipos/descargar/rango.pdf")
 def equipos_descargar_rango_pdf():
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
-    desde = request.args.get("desde") or date.today().isoformat()
-    hasta = request.args.get("hasta") or date.today().isoformat()
-    tecnico_id = request.args.get("tecnico_id") or None
-
+    desde, hasta, tecnico_id = _args_rango()
     conn = get_db()
-    rows = _query_uso_rango(conn, desde, hasta, tecnico_id)
+    rows, tec_nombre = _query_uso_rango(conn, desde, hasta, tecnico_id)
+    sin_stock = _query_sin_stock(conn)
     conn.close()
-    return _uso_pdf(f"Usos registrados - {desde} a {hasta}", rows, f"uso_items_{desde}_a_{hasta}.pdf")
+    return _uso_pdf("Uso de equipos", _sub_rango(desde, hasta, tec_nombre), rows, sin_stock,
+                    f"uso_items_{desde}_a_{hasta}.pdf")
 
 # ---------- Kardex (movimientos de equipos) ----------
 def _query_movs(conn, desde, hasta, equipo_id=None):
@@ -2688,15 +3075,18 @@ def tickets_eliminar(tid):
 
 @app.route("/tickets/<int:tid>/borrar", methods=["POST"])
 def tickets_borrar(tid):
-    """Elimina un ticket en cualquier estado (solo administradores). Se usa desde Estadísticas."""
+    """Elimina un ticket en cualquier estado (solo administradores). Se usa en Estadísticas y Órdenes de trabajo."""
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
-    volver = request.referrer or url_for("estadisticas")
+    # A dónde volver: la página que indique el formulario (solo rutas internas) o la anterior
+    volver = request.form.get("volver") or ""
+    if not (volver.startswith("/") and not volver.startswith("//")):
+        volver = request.referrer or url_for("estadisticas")
     if session.get("rol") != "admin":
         flash("Solo un administrador puede eliminar trabajos.", "warning")
         return redirect(volver)
     db = get_db()
-    t = db.execute("SELECT cliente, tipo FROM asistencias WHERE id=? AND sucursal_id=?",
+    t = db.execute("SELECT * FROM asistencias WHERE id=? AND sucursal_id=?",
                    (tid, current_sucursal_id())).fetchone()
     if not t:
         db.close()
@@ -2705,7 +3095,14 @@ def tickets_borrar(tid):
     db.execute("DELETE FROM asistencias WHERE id=? AND sucursal_id=?", (tid, current_sucursal_id()))
     db.commit()
     db.close()
-    flash(f"Se eliminó {(t['tipo'] or 'el trabajo').lower()} de {t['cliente'] or 'cliente sin nombre'}.", "success")
+    # Borrar también la foto de la señal, si tenía
+    foto = col(t, "senal_foto")
+    if foto:
+        try:
+            os.remove(os.path.join(SENAL_UPLOAD_FOLDER, os.path.basename(foto)))
+        except OSError:
+            pass
+    flash(f"Se eliminó {(t['tipo'] or 'el trabajo').lower()} de {t['cliente'] or 'cliente sin nombre'} (OT-{int(tid):06d}).", "success")
     return redirect(volver)
 
 @app.route("/tickets/eliminar_resueltos", methods=["POST"])
@@ -3181,11 +3578,17 @@ def config_usuario_guardar():
     usuario = (f.get("usuario") or "").strip()
     nombre = (f.get("nombre") or "").strip()
     clave = f.get("contrasena") or ""
+    if uid:
+        # La contraseña de un usuario existente solo la cambia él mismo, desde Mi perfil
+        clave = ""
     rol = f.get("rol") if f.get("rol") in ("admin", "operador", "tecnico") else "operador"
     sucursal_id = f.get("sucursal_id", type=int) or current_sucursal_id()
 
     if not usuario or not nombre:
         flash("El nombre y el usuario son obligatorios.", "warning")
+        return redirect(url_for("usuarios"))
+    if not uid and not _solo_digitos_ci(f.get("cedula")):
+        flash("Carga la cédula del usuario: la necesita para recuperar su contraseña.", "warning")
         return redirect(url_for("usuarios"))
     if (not uid and len(clave) < 6) or (uid and clave and len(clave) < 6):
         flash("La contraseña debe tener al menos 6 caracteres.", "warning")
@@ -3200,6 +3603,7 @@ def config_usuario_guardar():
         "area": (f.get("area") or "").strip() or None,
         "turno": (f.get("turno") or "").strip() or None,
         "rol": rol, "sucursal_id": sucursal_id,
+        "cedula": _solo_digitos_ci(f.get("cedula")) or None,
     }
     if clave:
         if "password_hash" in cols:
@@ -3217,6 +3621,9 @@ def config_usuario_guardar():
             flash("Debe quedar al menos un administrador activo.", "warning")
             return redirect(url_for("usuarios"))
 
+    if uid:
+        # La cédula sirve para recuperar la contraseña: solo el propio usuario la cambia (Mi perfil)
+        datos.pop("cedula", None)
     datos = {k: v for k, v in datos.items() if k in cols}
     try:
         if uid:
@@ -3224,8 +3631,8 @@ def config_usuario_guardar():
             extra = ", updated_at=CURRENT_TIMESTAMP" if "updated_at" in cols else ""
             db.execute(f"UPDATE usuarios SET {sets}{extra} WHERE id=?", list(datos.values()) + [uid])
             if uid == session.get("usuario_id"):
-                session["nombre"], session["rol"], session["email"] = nombre, rol, datos.get("email")
-            flash(f"Usuario {usuario} actualizado." + (" Se cambió su contraseña." if clave else ""), "success")
+                session["nombre"], session["rol"] = nombre, rol
+            flash(f"Usuario {usuario} actualizado.", "success")
         else:
             ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             for k, v in (("created_at", ahora), ("updated_at", ahora), ("activo", 1)):
@@ -3450,6 +3857,13 @@ def _tel_whatsapp(tel):
         d = d[1:]
     return "595" + d
 
+def _con_unidad(valor, unidad, clave):
+    """'-21.5' -> '-21.5 dBm'; si ya trae la unidad, se deja como está."""
+    v = str(valor or "").strip()
+    if not v:
+        return ""
+    return v if clave in v.lower() else f"{v} {unidad}"
+
 def _ot_datos(db, t, sid):
     """Arma los datos de la OT de un ticket: cliente, técnico, mapa y mensaje de WhatsApp."""
     from urllib.parse import quote
@@ -3492,7 +3906,7 @@ def _ot_datos(db, t, sid):
     # Mensaje de WhatsApp con lo esencial (el técnico puede no tener usuario en el sistema)
     lineas = [
         f"*Orden de trabajo {ot_num}*",
-        f"Tipo: {t.get('tipo') or '-'}  |  Señal: {t.get('prioridad') or '-'}",
+        f"Tipo: {t.get('tipo') or '-'}  |  Prioridad: {t.get('prioridad') or '-'}",
     ]
     if t.get("programada_en"):
         lineas.append(f"Visita: {str(t['programada_en'])[:16]}")
@@ -3509,7 +3923,17 @@ def _ot_datos(db, t, sid):
         lineas.append(f"Referencia: {c['referencia']}")
     if maps_url:
         lineas.append(f"Ubicación: {maps_url}")
-    lineas += ["", f"*Problema:* {t.get('problema') or '-'}", "", f"OT completa: {ot_url}"]
+    lineas += ["", f"*Problema:* {t.get('problema') or '-'}"]
+
+    # Diagnóstico de asistencia (solo lo que esté cargado)
+    dx = [("Falla", t.get("falla")), ("Cambio", t.get("cambio")),
+          ("Señal", _con_unidad(t.get("senal"), "dBm", "dbm")),
+          ("Megas", _con_unidad(t.get("megas"), "Mbps", "mb"))]
+    dx = [f"{k}: {v}" for k, v in dx if v]
+    if dx:
+        lineas += ["", "*Diagnóstico de Asistencia*"] + dx
+
+    lineas += ["", f"OT completa: {ot_url}"]
     texto = quote("\n".join(lineas))
 
     tel_tec = _tel_whatsapp(tec.get("telefono") or tec.get("celular") or "")
@@ -3543,6 +3967,54 @@ def tickets_ot(tid):
         emitida=datetime.now().strftime("%d/%m/%Y %H:%M"),
         emitida_por=session.get("nombre") or session.get("usuario"),
     )
+
+@app.route("/tickets/<int:tid>/senal", methods=["POST"])
+def tickets_senal(tid):
+    """Guarda la señal medida (dBm) y la foto del medidor. Aparecen en la OT y en su PDF."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+
+    db = get_db()
+    sid = current_sucursal_id()
+    t = db.execute("SELECT id, senal_foto FROM asistencias WHERE id=? AND sucursal_id=?", (tid, sid)).fetchone()
+    if not t:
+        db.close()
+        flash("Ticket no encontrado en esta sucursal.", "warning")
+        return redirect(url_for("ordenes_trabajo"))
+
+    cambios = {}
+    # Señal: "18,5" -> "-18.5" (la potencia óptica recibida siempre es negativa)
+    senal = (request.form.get("senal") or "").strip().replace(",", ".").replace(" ", "")
+    senal = re.sub(r"(?i)dbm", "", senal)
+    if senal:
+        if not re.fullmatch(r"-?\d{1,2}(\.\d{1,2})?", senal):
+            db.close()
+            flash("La señal debe ser un número, por ejemplo -18.5", "warning")
+            return redirect(url_for("tickets_ot", tid=tid))
+        if not senal.startswith("-") and float(senal) > 0:
+            senal = "-" + senal
+    cambios["senal"] = senal or None
+
+    if request.form.get("accion") == "quitar_foto":
+        cambios["senal_foto"] = None
+    else:
+        foto = request.files.get("senal_foto")
+        if foto and foto.filename:
+            if not allowed_file(foto.filename):
+                db.close()
+                flash("La foto debe ser JPG, PNG o GIF.", "warning")
+                return redirect(url_for("tickets_ot", tid=tid))
+            ext = foto.filename.rsplit(".", 1)[1].lower()
+            nombre = f"senal_{tid}_{int(datetime.now().timestamp())}.{ext}"
+            foto.save(os.path.join(SENAL_UPLOAD_FOLDER, nombre))
+            cambios["senal_foto"] = nombre
+
+    sets = ", ".join(f"{k}=?" for k in cambios)
+    db.execute(f"UPDATE asistencias SET {sets} WHERE id=? AND sucursal_id=?", list(cambios.values()) + [tid, sid])
+    db.commit()
+    db.close()
+    flash("Señal guardada. Ya aparece en la orden de trabajo y en el PDF.", "success")
+    return redirect(url_for("tickets_ot", tid=tid))
 
 @app.route("/ordenes")
 def ordenes_trabajo():

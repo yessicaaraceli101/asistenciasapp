@@ -45,6 +45,14 @@
   .ni-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
   .ni-subtitle{ grid-column:1 / -1; font-size:13px; font-weight:600; color:var(--ink-soft); margin:6px 0 -6px; }
 
+  /* Monto en guaraníes: "160.000" con "Gs." al final */
+  .ni-money{ position:relative; }
+  .ni-money .ni-input{ padding-right:44px; font-variant-numeric:tabular-nums; }
+  .ni-money span{
+    position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    font-size:14px; color:var(--ink-faint); pointer-events:none;
+  }
+
   /* Select2 */
   .ni .select2-container--default .select2-selection--single{ height:42px; border:1px solid var(--line); border-radius:8px; }
   .ni .select2-container--default .select2-selection--single .select2-selection__rendered{ line-height:40px; padding-left:12px; padding-right:48px; font-size:14px; color:var(--ink); }
@@ -173,8 +181,20 @@
 
           <div class="ni-subtitle">Servicio contratado</div>
           <div class="ni-field s2">
-            <label for="valor">Plan (Gs.)</label>
-            <input class="ni-input" id="valor" name="valor" inputmode="numeric" autocomplete="off" placeholder="Ej.: 130.000">
+            <label for="megas">Megas</label>
+            <select id="megas" name="megas">
+              <option value="">Elige la velocidad…</option>
+              {% for m in [70, 130, 180] %}
+                <option value="{{ m }} Mbps">{{ m }} Mbps</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="ni-field s2">
+            <label for="valor">Plan</label>
+            <div class="ni-money">
+              <input class="ni-input js-gs" id="valor" name="valor" inputmode="numeric" autocomplete="off" placeholder="Ej.: 130.000">
+              <span aria-hidden="true">Gs.</span>
+            </div>
           </div>
           <div class="ni-field s2">
             <label for="pppoe">Usuario PPPoE <span class="opt">(opcional)</span></label>
@@ -182,7 +202,8 @@
           </div>
           <div class="ni-field s2">
             <label for="vencimiento">Vencimiento</label>
-            <input class="ni-input" id="vencimiento" name="vencimiento" inputmode="numeric" autocomplete="off" placeholder="Día del mes">
+            <input class="ni-input" id="vencimiento" name="vencimiento" type="date">
+            <div class="ni-hint">Fecha del primer vencimiento.</div>
           </div>
         </div>
         <div class="ni-hint" style="margin-top:12px">El cliente se crea como "pendiente de instalación" y pasa a activo cuando marques la instalación como realizada.</div>
@@ -353,6 +374,22 @@
   const form = $id('niForm');
   const bloqueNuevo = $id('bloqueNuevo'), bloqueExist = $id('bloqueExistente');
   const latEl = $id('lat'), lngEl = $id('lng'), status = $id('geoStatus');
+
+  // ---------- Montos en guaraníes: 160000 -> 160.000 mientras se escribe ----------
+  const miles = n => n.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  document.querySelectorAll('.js-gs').forEach(inp => {
+    const formatear = () => {
+      const pos = inp.selectionStart ?? inp.value.length;
+      const digitosAntes = inp.value.slice(0, pos).replace(/\D/g, '').length;   // para no mover el cursor
+      const digitos = inp.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 12);
+      inp.value = miles(digitos);
+      let i = 0, vistos = 0;                                                       // volver a poner el cursor en su lugar
+      while (i < inp.value.length && vistos < digitosAntes){ if (/\d/.test(inp.value[i])) vistos++; i++; }
+      if (document.activeElement === inp) inp.setSelectionRange(i, i);
+    };
+    inp.addEventListener('input', formatear);
+    formatear();
+  });
 
   // ---------- Ubicación ----------
   function setStatus(ok, text){

@@ -77,6 +77,27 @@
 .stat-green .eq-stat-icon{background:#f0fdf4;color:#16a34a;}
 .stat-green strong{color:#15803d;}
 
+/* aviso de equipos sin stock */
+.eq-alerta{
+  background:#fef2f2;border:1px solid #fecaca;border-radius:14px;
+  padding:.875rem 1.25rem;margin-bottom:1.25rem;
+  display:flex;align-items:flex-start;gap:12px;color:#991b1b;
+}
+.eq-alerta > i{font-size:1.25rem;line-height:1.2;flex-shrink:0;}
+.eq-alerta-body{flex:1;min-width:0;}
+.eq-alerta-body strong{display:block;font-size:.92rem;margin-bottom:6px;}
+.eq-alerta-items{display:flex;flex-wrap:wrap;gap:6px;}
+.eq-alerta-item{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 6px 4px 10px;border-radius:999px;
+  background:#fff;border:1px solid #fecaca;font-size:.8rem;font-weight:600;color:#7f1d1d;
+}
+.eq-alerta-item button{
+  border:0;background:#dc2626;color:#fff;border-radius:999px;
+  font-size:.72rem;font-weight:700;padding:2px 9px;cursor:pointer;
+}
+.eq-alerta-item button:hover{background:#b91c1c;}
+
 /* toolbar */
 .eq-toolbar{
   background:#fff;border:1px solid #dbeafe;
@@ -160,6 +181,7 @@
   box-shadow:0 10px 28px rgba(15,23,42,.10);
   transform:translateY(-2px);
 }
+.eq-card.agotado{border-color:#fecaca;}
 .eq-card-img{
   width:100%;height:130px;object-fit:contain;padding:8px;
   background:#f8fafc;display:block;
@@ -240,9 +262,14 @@
 .btn-del-sm:hover{background:#fff1f2;}
 
 .eq-no-stock{
-  font-size:.75rem;color:#ef4444;
-  display:flex;align-items:center;gap:4px;
+  font-size:.78rem;color:#b91c1c;margin:0;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
 }
+.eq-no-stock button{
+  border:1px solid #16a34a;background:#f0fdf4;color:#15803d;
+  border-radius:8px;padding:4px 10px;font-size:.78rem;font-weight:700;cursor:pointer;
+}
+.eq-no-stock button:hover{background:#dcfce7;}
 
 /* historial tabla */
 .hist-wrap{
@@ -360,7 +387,7 @@
       {% if session.get('rol') == 'admin' %}
       <button class="btn-back" onclick="abrirModal('modalImportar')"><i class="bi bi-upload"></i> Importar</button>
       {% endif %}
-      <button class="btn-success-eq" onclick="abrirModal('modalReponerStock')"><i class="bi bi-plus-circle"></i> Reponer stock</button>
+      <button class="btn-success-eq" onclick="reponer()"><i class="bi bi-plus-circle"></i> Reponer stock</button>
       <button class="btn-primary-eq" onclick="abrirModal('modalNuevoEquipo')"><i class="bi bi-plus-lg"></i> Nuevo equipo</button>
     </div>
   </div>
@@ -396,6 +423,23 @@
     </div>
   </div>
 
+  <!-- aviso: equipos que se quedaron sin stock -->
+  {% if sin_stock %}
+  <div class="eq-alerta" role="status">
+    <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+    <div class="eq-alerta-body">
+      <strong>{{ sin_stock|length }} equipo{{ 's' if sin_stock|length != 1 }} con stock 0: hay que reponer</strong>
+      <div class="eq-alerta-items">
+        {% for e in sin_stock %}
+          <span class="eq-alerta-item">{{ e['nombre'] }}
+            <button type="button" onclick="reponer('{{ e['id'] }}')">Reponer</button>
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- toolbar -->
   <div class="eq-toolbar">
     <div class="eq-search">
@@ -403,13 +447,13 @@
       <input id="filterInput" type="text" placeholder="Buscar equipo…">
     </div>
     <label class="check-label">
-      <input type="checkbox" id="chkSoloStock" checked style="accent-color:#2563eb;">
+      <input type="checkbox" id="chkSoloStock" style="accent-color:#2563eb;">
       Solo con stock
     </label>
     <button class="btn-ghost-sm" id="btnLimpiarVista"><i class="bi bi-x-circle"></i> Limpiar</button>
     <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn-ghost-sm" onclick="location.href='{{ url_for('equipos_descargar_hoy_csv') }}'">
-        <i class="bi bi-file-earmark-spreadsheet" style="color:#16a34a;"></i> CSV hoy
+        <i class="bi bi-file-earmark-excel" style="color:#16a34a;"></i> Excel hoy
       </button>
       <button class="btn-ghost-sm" onclick="location.href='{{ url_for('equipos_descargar_hoy_pdf') }}'">
         <i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF hoy
@@ -443,8 +487,8 @@
       </div>
       <div class="fgroup" style="justify-content:flex-end;">
         <label>&nbsp;</label>
-        <button class="btn-ghost-sm" type="button" onclick="exportRango('csv')">
-          <i class="bi bi-file-earmark-spreadsheet" style="color:#16a34a;"></i> CSV rango
+        <button class="btn-ghost-sm" type="button" onclick="exportRango('xlsx')">
+          <i class="bi bi-file-earmark-excel" style="color:#16a34a;"></i> Excel rango
         </button>
       </div>
       <div class="fgroup" style="justify-content:flex-end;">
@@ -467,7 +511,7 @@
     <div class="eq-grid" id="equiposList">
       {% for e in equipos %}
       {% set stk = e['stock'] or 0 %}
-      <div class="eq-card item-card-wrapper"
+      <div class="eq-card item-card-wrapper {{ 'agotado' if stk <= 0 }}"
            data-name="{{ e['nombre']|lower }}"
            data-type="{{ e['tipo']|lower }}"
            data-desc="{{ (e['descripcion'] or '')|lower }}"
@@ -498,7 +542,7 @@
             {% elif stk > 0 %}
               <span class="stock-badge stock-low"><i class="bi bi-exclamation-triangle"></i> {{ stk }}</span>
             {% else %}
-              <span class="stock-badge stock-zero"><i class="bi bi-x-circle"></i> Sin stock</span>
+              <span class="stock-badge stock-zero"><i class="bi bi-x-circle"></i> 0 · Sin stock</span>
             {% endif %}
           </div>
 
@@ -511,20 +555,23 @@
             <input type="hidden" name="item_id" value="{{ e['id'] }}">
             <input type="hidden" name="servicio" value="uso equipo">
             <input type="hidden" name="item_kind" value="equipo">
-            <select name="tecnico" class="eq-use-tecnico" required {% if stk == 0 %}disabled{% endif %}>
+            <select name="tecnico" class="eq-use-tecnico" required {% if stk <= 0 %}disabled{% endif %}>
               <option value="" disabled selected>¿Quién lo lleva?</option>
               {% for t in tecnicos %}
                 <option value="{{ t.nombre }}">{{ t.nombre }}</option>
               {% endfor %}
             </select>
-            <input type="number" name="cantidad" min="1" max="{{ stk }}" value="1" {% if stk == 0 %}disabled{% endif %}>
-            <button type="submit" class="btn-usar" {% if stk == 0 %}disabled{% endif %}>
+            <input type="number" name="cantidad" min="1" max="{{ stk }}" value="1" {% if stk <= 0 %}disabled{% endif %}>
+            <button type="submit" class="btn-usar" {% if stk <= 0 %}disabled{% endif %}>
               <i class="bi bi-check-lg"></i> Usar
             </button>
           </form>
 
-          {% if stk == 0 %}
-            <p class="eq-no-stock"><i class="bi bi-exclamation-triangle"></i> Sin stock disponible</p>
+          {% if stk <= 0 %}
+            <p class="eq-no-stock">
+              <span><i class="bi bi-exclamation-triangle"></i> Stock 0: hay que reponer</span>
+              <button type="button" onclick="reponer('{{ e['id'] }}')">Reponer</button>
+            </p>
           {% endif %}
 
           <div class="eq-card-actions">
@@ -629,83 +676,37 @@
 <!-- MODAL: Reponer stock -->
 <div id="modalReponerStock" class="sp-modal-backdrop" style="display:none;">
   <div class="sp-modal">
-
     <div class="sp-modal-head">
-      <h3>
-        <i class="bi bi-plus-circle" style="color:#16a34a;margin-right:6px;"></i>
-        Reponer stock
-      </h3>
-      <button class="btn-close-modal"
-              onclick="cerrarModal('modalReponerStock')">
-        <i class="bi bi-x"></i>
-      </button>
+      <h3><i class="bi bi-plus-circle" style="color:#16a34a;margin-right:6px;"></i> Reponer stock</h3>
+      <button class="btn-close-modal" onclick="cerrarModal('modalReponerStock')"><i class="bi bi-x"></i></button>
     </div>
-
-    <form method="POST"
-          action="{{ url_for('equipos_ingresar_stock') }}">
-
+    <form method="POST" action="{{ url_for('equipos_ingresar_stock') }}">
       <div class="sp-modal-body">
-
         <div class="sp-form-group">
           <label>Equipo</label>
-
-          <select name="equipo_id" required>
-            <option value="" disabled selected>
-              Seleccioná un equipo…
-            </option>
-
+          <select name="equipo_id" id="reponerEquipo" required>
+            <option value="" disabled selected>Seleccioná un equipo…</option>
             {% for e in equipos %}
             <option value="{{ e['id'] }}">
-              {{ e['nombre'] }} — {{ e['tipo'] }}
-              (stock: {{ e['stock'] or 0 }})
+              {{ e['nombre'] }} — {{ e['tipo'] }} (stock: {{ e['stock'] or 0 }})
             </option>
             {% endfor %}
           </select>
-
         </div>
-
         <div class="sp-form-group">
           <label>Cantidad a agregar</label>
-
-          <input
-              type="number"
-              name="cantidad"
-              min="1"
-              value="1"
-              required>
+          <input type="number" name="cantidad" id="reponerCantidad" min="1" value="1" required>
         </div>
-
         <div class="sp-form-group">
           <label>Nota (opcional)</label>
-
-          <input
-              type="text"
-              name="nota"
-              placeholder="Ej: Compra del 10/06">
+          <input type="text" name="nota" placeholder="Ej: Compra del 10/06">
         </div>
-
       </div>
-
       <div class="sp-modal-foot">
-
-        <button
-            type="button"
-            class="btn-back"
-            onclick="cerrarModal('modalReponerStock')">
-          Cancelar
-        </button>
-
-        <button
-            type="submit"
-            class="btn-success-eq">
-          <i class="bi bi-plus-circle"></i>
-          Reponer
-        </button>
-
+        <button type="button" class="btn-back" onclick="cerrarModal('modalReponerStock')">Cancelar</button>
+        <button type="submit" class="btn-success-eq"><i class="bi bi-plus-circle"></i> Reponer</button>
       </div>
-
     </form>
-
   </div>
 </div>
 
@@ -808,7 +809,7 @@
             {% elif stk > 0 %}
               <span class="stock-badge stock-low">{{ stk }} {{ 'unidad' if stk == 1 else 'unidades' }}</span>
             {% else %}
-              <span class="stock-badge stock-zero">Sin stock</span>
+              <span class="stock-badge stock-zero">0 · Sin stock</span>
             {% endif %}
           </div>
         {% else %}
@@ -914,6 +915,15 @@ document.querySelectorAll('.sp-modal-backdrop').forEach(backdrop => {
   });
 });
 
+/* reponer: abre el modal con el equipo ya elegido */
+function reponer(id){
+  const sel = document.getElementById('reponerEquipo');
+  sel.value = id || '';
+  if (!id) sel.selectedIndex = 0;
+  abrirModal('modalReponerStock');
+  (id ? document.getElementById('reponerCantidad') : sel).focus();
+}
+
 /* editar */
 function abrirEditar(id, nombre, tipo, desc){
   document.getElementById('editNombre').value = nombre;
@@ -949,7 +959,7 @@ filterInput?.addEventListener('input', aplicarFiltros);
 chkSoloStock?.addEventListener('change', aplicarFiltros);
 document.getElementById('btnLimpiarVista')?.addEventListener('click', () => {
   filterInput.value = '';
-  chkSoloStock.checked = true;
+  chkSoloStock.checked = false;
   aplicarFiltros();
 });
 
@@ -959,7 +969,7 @@ function exportRango(tipo){
   const desde = form.querySelector('[name=desde]').value;
   const hasta  = form.querySelector('[name=hasta]').value;
   const tec    = form.querySelector('[name=tecnico_id]').value;
-  const base   = tipo === 'csv'
+  const base   = tipo === 'xlsx'
     ? `{{ url_for('equipos_descargar_rango_csv', desde='DESDE', hasta='HASTA', tecnico_id='TEC') }}`
     : `{{ url_for('equipos_descargar_rango_pdf', desde='DESDE', hasta='HASTA', tecnico_id='TEC') }}`;
   location.href = base.replace('DESDE', desde).replace('HASTA', hasta).replace('TEC', tec);

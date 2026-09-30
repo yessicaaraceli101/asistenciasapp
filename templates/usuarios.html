@@ -40,7 +40,7 @@
   .cfg-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
   .cfg-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
 
-  /* Tabla de técnicos */
+  /* Tabla */
   .cfg-table{ width:100%; border-collapse:collapse; font-size:14px; }
   .cfg-table th{ text-align:left; font-size:13px; font-weight:500; color:var(--ink-soft); background:#F9FAFC; padding:11px 16px; border-bottom:1px solid var(--line); white-space:nowrap; }
   .cfg-table td{ padding:12px 16px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
@@ -60,7 +60,7 @@
   .cfg-icon:hover{ background:#EEF2F6; color:var(--ink); }
   .cfg-icon.wa:hover{ background:#E8F7EE; color:#178A45; }
   .cfg-icon.danger:hover{ background:#FDF1F0; color:var(--danger); }
-  .cfg-link{ background:none; border:0; padding:0 6px; font:inherit; font-size:13px; font-weight:500; color:var(--accent); cursor:pointer; }
+  .cfg-link{ background:none; border:0; padding:0 6px; font:inherit; font-size:13px; font-weight:500; color:var(--accent); cursor:pointer; text-decoration:none; }
   .cfg-link:hover{ text-decoration:underline; text-underline-offset:3px; }
   .cfg-empty{ padding:36px 16px; text-align:center; color:var(--ink-soft); }
 
@@ -79,6 +79,11 @@
     margin:12px 20px 0; padding:10px 14px; border-radius:8px; font-size:13.5px;
     background:#FFF7E6; border:1px solid #F5E0B3; color:#8A5A00;
   }
+  .usr-clave-nota{
+    display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:8px;
+    background:#F9FAFC; border:1px solid var(--line-soft); font-size:13.5px; color:var(--ink-soft);
+  }
+  .usr-clave-nota i{ color:var(--ink-faint); margin-top:2px; }
 
   /* Formularios */
   .cfg-grid{ display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; }
@@ -93,37 +98,7 @@
   .cfg-input::placeholder, .cfg-field textarea::placeholder{ color:#9AA5B4; }
   .cfg-input:focus, .cfg-field select:focus, .cfg-field textarea:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
   .cfg-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
-  .cfg-prev-label{ font-size:12.5px; color:var(--ink-faint); margin-bottom:6px; }
-  .cfg-prev{
-    display:flex; align-items:center; gap:12px; padding:14px 16px;
-    border:1px dashed #B7C2D0; border-radius:8px; background:#F9FAFC;
-  }
-  .cfg-prev img{ width:40px; height:40px; border-radius:50%; object-fit:cover; }
-  .cfg-prev strong{ display:block; font-size:16px; }
-  .cfg-prev span{ display:block; font-size:12.5px; color:var(--ink-soft); }
-  .cfg-prev-ot{ margin-left:auto; text-align:right; }
-  .cfg-prev-ot strong{ font-size:18px; letter-spacing:.5px; }
   .cfg-foot{ display:flex; justify-content:flex-end; gap:8px; padding:16px 20px; border-top:1px solid var(--line-soft); }
-
-  /* Interruptores */
-  .cfg-switch{ display:flex; align-items:flex-start; gap:14px; padding:16px 0; border-top:1px solid var(--line-soft); cursor:pointer; }
-  .cfg-switch:first-child{ border-top:0; padding-top:0; }
-  .cfg-switch input{ position:absolute; opacity:0; pointer-events:none; }
-  .cfg-switch .track{
-    flex-shrink:0; width:40px; height:22px; border-radius:999px; background:#CBD3DD; position:relative; margin-top:2px;
-    transition:background-color .15s;
-  }
-  .cfg-switch .track::after{
-    content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff;
-    box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .15s;
-  }
-  .cfg-switch input:checked + .track{ background:var(--accent); }
-  .cfg-switch input:checked + .track::after{ transform:translateX(18px); }
-  .cfg-switch input:focus-visible + .track{ outline:2px solid var(--accent); outline-offset:2px; }
-  .cfg-switch input:disabled + .track{ opacity:.45; }
-  .cfg-switch strong{ display:block; font-size:14px; font-weight:500; }
-  .cfg-switch span.txt{ font-size:13px; color:var(--ink-faint); }
-  .cfg-switch.is-disabled{ cursor:not-allowed; opacity:.6; }
 
   .cfg-modal .modal-content{ border:1px solid var(--line); border-radius:12px; }
   .cfg-modal .modal-title{ font-weight:600; font-size:18px; }
@@ -133,8 +108,9 @@
     .cfg-grid{ grid-template-columns:1fr; }
     .cfg-table .col-hide{ display:none; }
     .cfg-foot{ flex-direction:column-reverse; }
+    #usrClave{ max-width:none !important; }
+    .pw-wrap{ max-width:none !important; }
   }
-  @media (prefers-reduced-motion: reduce){ .cfg-switch .track, .cfg-switch .track::after{ transition:none; } }
 </style>
 {% endblock %}
 
@@ -203,6 +179,7 @@
                     <div>
                       <strong>{{ u.nombre or u.usuario }}</strong>{% if yo %} <span class="usr-tu">Tú</span>{% endif %}
                       <span class="cfg-sub">@{{ u.usuario }}</span>
+                      {% if not u.cedula %}<span class="cfg-warn" style="font-size:12px" title="Sin cédula no puede recuperar su contraseña"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Sin cédula</span>{% endif %}
                     </div>
                   </div>
                 </td>
@@ -225,7 +202,8 @@
                               data-id="{{ u.id }}" data-nombre="{{ u.nombre or '' }}" data-usuario="{{ u.usuario }}"
                               data-email="{{ u.email or '' }}" data-telefono="{{ u.telefono or '' }}"
                               data-area="{{ u.area or '' }}" data-turno="{{ u.turno or '' }}"
-                              data-rol="{{ u.rol or 'operador' }}" data-sucursal="{{ u.sucursal_id or '' }}">
+                              data-rol="{{ u.rol or 'operador' }}" data-sucursal="{{ u.sucursal_id or '' }}"
+                              data-yo="{{ '1' if yo else '' }}">
                         <i class="fa-regular fa-pen-to-square" aria-hidden="true"></i>
                       </button>
                       {% if not yo %}
@@ -247,6 +225,10 @@
         </table>
       </div>
       <div class="cfg-hint" style="padding:12px 20px 16px">
+        <i class="fa-solid fa-key" aria-hidden="true"></i>
+        Cada persona cambia su propia contraseña y su cédula desde su perfil; nadie más puede cambiarlas.
+        Si olvida la contraseña, la recupera con su usuario y su cédula.
+        <a class="cfg-link" href="{{ url_for('perfil') }}">Cambiar mi contraseña</a>
       </div>
     </section>
 
@@ -282,10 +264,25 @@
                   {% for s in sucursales %}<option value="{{ s['id'] }}">{{ s['nombre'] }}</option>{% endfor %}
                 </select>
               </div>
-              <div class="cfg-field full">
-                <label for="usrClave" id="usrClaveLbl">Contraseña</label>
+
+              <!-- Usuario nuevo: cédula (para recuperar la contraseña) -->
+              <div class="cfg-field full" id="usrCedulaBox">
+                <label for="usrCedula">Número de cédula</label>
+                <input class="cfg-input" id="usrCedula" name="cedula" inputmode="numeric" autocomplete="off" placeholder="Ej.: 4567890" style="max-width:calc(50% - 8px)">
+                <div class="cfg-hint">La usa para recuperar su contraseña si la olvida. Después solo él puede cambiarla, desde Mi perfil.</div>
+              </div>
+
+              <!-- Usuario nuevo: contraseña inicial -->
+              <div class="cfg-field full" id="usrClaveBox">
+                <label for="usrClave">Contraseña inicial</label>
                 <input class="cfg-input" id="usrClave" name="contrasena" type="password" autocomplete="new-password" style="max-width:calc(50% - 8px)">
-                <div class="cfg-hint" id="usrClaveHint">Mínimo 6 caracteres. El usuario puede cambiarla después desde Mi perfil.</div>
+                <div class="cfg-hint">Mínimo 6 caracteres. Después, solo el propio usuario puede cambiarla desde Mi perfil.</div>
+              </div>
+
+              <!-- Usuario existente: la contraseña no se toca desde aquí -->
+              <div class="full usr-clave-nota" id="usrClaveNota" hidden>
+                <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                <span id="usrClaveNotaTxt"></span>
               </div>
             </div>
             <div class="cfg-hint" id="usrError" style="color:#C2362F" hidden></div>
@@ -318,14 +315,73 @@
       </div>
     </div>
     {% endif %}
-  
+
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+/* Botón de ojo para ver / ocultar contraseñas.
+   Se aplica solo a todos los <input type="password"> de la página.
+   Ojo cerrado = contraseña oculta · Ojo abierto = contraseña visible. */
 (() => {
-  // ----- Usuarios -----
+  if (window.ojoContrasena) return;   // ya cargado en esta página
+  const OJO_ABIERTO = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const OJO_CERRADO = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10c2.2 3 5.3 5 9 5s6.8-2 9-5"/><path d="M5.5 13.2 3.8 15.5M9.3 14.7 8.5 17.5M14.7 14.7l.8 2.8M18.5 13.2l1.7 2.3"/></svg>';
+
+  const css = document.createElement('style');
+  css.textContent = `
+    .pw-wrap{ position:relative; display:block; }
+    .pw-wrap > input{ width:100%; padding-right:46px !important; }
+    .pw-eye{ position:absolute; right:4px; top:50%; transform:translateY(-50%);
+      width:38px; height:34px; display:grid; place-items:center;
+      border:0; border-radius:6px; background:none; color:#7A8699; cursor:pointer; }
+    .pw-eye:hover{ background:#EEF2F6; color:#0F1B2D; }
+    .pw-eye:focus-visible{ outline:2px solid #0284C7; outline-offset:1px; }
+    .pw-wrap > input::-ms-reveal{ display:none; }`;
+  document.head.appendChild(css);
+
+  function preparar(inp){
+    if (inp.dataset.ojo) return;
+    inp.dataset.ojo = '1';
+    const wrap = document.createElement('span');
+    wrap.className = 'pw-wrap';
+    if (inp.style.maxWidth){ wrap.style.maxWidth = inp.style.maxWidth; inp.style.maxWidth = ''; }
+    inp.parentNode.insertBefore(wrap, inp);
+    wrap.appendChild(inp);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-eye';
+    const pintar = () => {
+      const visible = inp.type === 'text';
+      btn.innerHTML = visible ? OJO_ABIERTO : OJO_CERRADO;
+      btn.setAttribute('aria-label', visible ? 'Ocultar contraseña' : 'Mostrar contraseña');
+      btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+      btn.title = visible ? 'Ocultar contraseña' : 'Mostrar contraseña';
+    };
+    btn.addEventListener('click', () => {
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+      pintar();
+      inp.focus();
+    });
+    // Para volver a ocultarla desde otro script (por ejemplo, al reabrir un modal)
+    inp.ocultarClave = () => { inp.type = 'password'; pintar(); };
+    // Al enviar el formulario, siempre vuelve a quedar oculta
+    inp.form?.addEventListener('submit', () => inp.ocultarClave());
+    pintar();
+    wrap.appendChild(btn);
+  }
+
+  function aplicar(){ document.querySelectorAll('input[type=password]').forEach(preparar); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', aplicar);
+  else aplicar();
+  window.ojoContrasena = aplicar;
+})();
+</script>
+<script>
+(() => {
+  // ----- Buscar usuarios -----
   const uFiltro = document.getElementById('usrFiltro');
   if (uFiltro){
     const filas = document.querySelectorAll('#usrTabla tbody tr[data-search]');
@@ -336,41 +392,63 @@
       document.getElementById('usrVacio').hidden = n > 0;
     });
   }
+
+  // ----- Agregar / editar usuario -----
   const uEl = document.getElementById('mUsr');
   if (uEl){
     const modal = new bootstrap.Modal(uEl), form = document.getElementById('fUsr');
     const campos = { usrNombre:'nombre', usrUsuario:'usuario', usrEmail:'email', usrTel:'telefono', usrArea:'area', usrTurno:'turno' };
+    const clave = document.getElementById('usrClave');
+    const claveBox = document.getElementById('usrClaveBox');
+    const claveNota = document.getElementById('usrClaveNota');
     let editando = false;
+
     document.querySelectorAll('.js-usr').forEach(btn => btn.addEventListener('click', () => {
       const d = btn.dataset; editando = !!d.id;
       document.getElementById('mUsrTitle').textContent = editando ? 'Editar usuario' : 'Agregar usuario';
       document.getElementById('usrId').value = d.id || '';
       Object.entries(campos).forEach(([id, k]) => document.getElementById(id).value = d[k] || '');
+      // La cédula se carga al crear; después solo el propio usuario la cambia (Mi perfil)
+      const ci = document.getElementById('usrCedula');
+      ci.value = '';
+      document.getElementById('usrCedulaBox').hidden = editando;
+      ci.disabled = editando;
       document.getElementById('usrRol').value = d.rol || 'operador';
       if (d.sucursal) document.getElementById('usrSuc').value = d.sucursal;
-      document.getElementById('usrClave').value = '';
-      document.getElementById('usrClaveLbl').textContent = editando ? 'Nueva contraseña (opcional)' : 'Contraseña';
-      document.getElementById('usrClaveHint').textContent = editando
-        ? 'Déjala vacía para no cambiarla. Úsala si el usuario olvidó su contraseña.'
-        : 'Mínimo 6 caracteres. El usuario puede cambiarla después desde Mi perfil.';
+
+      // Contraseña: solo se pide al crear. Al editar, nadie puede cambiarla desde aquí.
+      clave.value = '';
+      clave.ocultarClave?.();
+      claveBox.hidden = editando;
+      clave.disabled = editando;          // un campo deshabilitado no se envía
+      claveNota.hidden = !editando;
+      if (editando){
+        document.getElementById('usrClaveNotaTxt').innerHTML = d.yo
+          ? 'Tu contraseña y tu cédula las cambias tú desde <a class="cfg-link" style="padding:0" href="{{ url_for("perfil") }}">Mi perfil</a>.'
+          : 'La contraseña y la cédula solo las puede cambiar ' + (d.nombre || d.usuario).replace(/[<>&"]/g, '') + ' desde su perfil.';
+      }
+
       document.getElementById('usrError').hidden = true;
       form.querySelector('[type=submit]').disabled = false;
       modal.show();
     }));
     uEl.addEventListener('shown.bs.modal', () => document.getElementById('usrNombre').focus());
+    uEl.addEventListener('hidden.bs.modal', () => { clave.value = ''; clave.ocultarClave?.(); });
+
     form.addEventListener('submit', e => {
       const err = document.getElementById('usrError');
       const nombre = document.getElementById('usrNombre').value.trim();
       const usuario = document.getElementById('usrUsuario').value.trim();
-      const clave = document.getElementById('usrClave').value;
       let msg = '';
       if (!nombre || !usuario) msg = 'Completa el nombre y el usuario.';
-      else if (!editando && clave.length < 6) msg = 'La contraseña debe tener al menos 6 caracteres.';
-      else if (editando && clave && clave.length < 6) msg = 'La nueva contraseña debe tener al menos 6 caracteres.';
+      else if (!editando && !document.getElementById('usrCedula').value.replace(/\D/g, '')) msg = 'Carga el número de cédula.';
+      else if (!editando && clave.value.length < 6) msg = 'La contraseña debe tener al menos 6 caracteres.';
       if (msg){ e.preventDefault(); err.textContent = msg; err.hidden = false; return; }
       form.querySelector('[type=submit]').disabled = true;
     });
   }
+
+  // ----- Eliminar usuario -----
   const udEl = document.getElementById('mUsrDel');
   if (udEl){
     const modal = new bootstrap.Modal(udEl), form = document.getElementById('fUsrDel');
@@ -382,7 +460,6 @@
     }));
     form.addEventListener('submit', () => form.querySelector('[type=submit]').disabled = true);
   }
-
 
   // /usuarios?nuevo=1 abre directamente el formulario de alta
   if (new URLSearchParams(location.search).get('nuevo') === '1'){
