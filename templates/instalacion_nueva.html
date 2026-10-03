@@ -322,7 +322,8 @@
       <div class="ni-body ni-grid">
         <div class="ni-field s3">
           <label for="programada_local">Fecha y hora <span class="opt">(opcional)</span></label>
-          <input type="datetime-local" class="ni-input" id="programada_local" name="programada_local">
+          <input type="datetime-local" class="ni-input" id="programada_local" name="programada_local" value="{{ fecha_pre or '' }}">
+          {% if fecha_pre %}<div class="ni-hint">Fecha tomada de la Agenda. Ajusta la hora si hace falta.</div>{% endif %}
         </div>
         <div class="ni-field s3">
           <label for="tecnico_id">Técnico</label>

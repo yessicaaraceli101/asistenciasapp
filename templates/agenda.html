@@ -44,7 +44,17 @@
   color:#fff; font-size:.875rem; font-weight:700;
   text-decoration:none; transition:background .15s;
 }
-.btn-new:hover{ background:#1d4ed8; }
+.btn-new:hover{ background:#1d4ed8; color:#fff; }
+
+/* Nueva instalación: mismo tamaño, contorno azul para distinguirlo de Nuevo ticket */
+.btn-new-alt{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:7px 15px; border-radius:10px;
+  background:#fff; border:1px solid #2563eb;
+  color:#1d4ed8; font-size:.875rem; font-weight:700;
+  text-decoration:none; transition:background .15s;
+}
+.btn-new-alt:hover{ background:#eff6ff; color:#1d4ed8; }
 
 /* ── panel de filtros ── */
 .ag-filters{
@@ -164,9 +174,13 @@
 }
 .ag-empty i{ font-size:2.5rem; display:block; margin-bottom:.75rem; }
 .ag-empty p{ margin:0; font-size:.9rem; }
+.ag-empty-actions{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:1rem; }
 </style>
 
 <div class="bg-soft"></div>
+
+{# Si se está mirando un día (no un rango), los botones "nuevo" llevan esa fecha #}
+{% set fecha_nueva = dia if (not range_mode and dia) else None %}
 
 <div class="container page">
 
@@ -175,6 +189,7 @@
     <h2 class="ag-title"><i class="bi bi-calendar3" style="font-size:.85em;vertical-align:-.05em;"></i> Agenda</h2>
     <div class="ag-actions">
       <a class="btn-back" href="{{ url_for('menu') }}"><i class="bi bi-arrow-left"></i> Volver</a>
+      <a class="btn-new-alt" href="{{ url_for('instalaciones_nueva', fecha=fecha_nueva) }}"><i class="bi bi-plug"></i> Nueva instalación</a>
       <a class="btn-new"  href="{{ url_for('nuevo_ticket') }}"><i class="bi bi-plus-lg"></i> Nuevo ticket</a>
     </div>
   </div>
@@ -235,6 +250,10 @@
     <div class="ag-empty">
       <i class="bi bi-calendar2-week"></i>
       <p>No hay eventos programados para este período.</p>
+      <div class="ag-empty-actions">
+        <a class="btn-new-alt" href="{{ url_for('instalaciones_nueva', fecha=fecha_nueva) }}"><i class="bi bi-plug"></i> Nueva instalación</a>
+        <a class="btn-new" href="{{ url_for('nuevo_ticket') }}"><i class="bi bi-plus-lg"></i> Nuevo ticket</a>
+      </div>
     </div>
   {% else %}
     <div class="ag-list" id="listaAgenda">

@@ -34,6 +34,15 @@ try:
 except ImportError:
     pass
 
+# ---- Hora de Paraguay ----
+# El servidor está en UTC: sin esto, los PDF, tickets y la agenda quedan 3 horas adelantados.
+# Paraguay usa UTC-3 todo el año (desde 2024 ya no cambia la hora), por eso se fija así.
+# Se puede cambiar con APP_TZ en el .env si algún día hiciera falta.
+import time
+os.environ["TZ"] = os.getenv("APP_TZ", "<-03>3")
+if hasattr(time, "tzset"):      # en Linux (el servidor); Windows ya usa la hora de la PC
+    time.tzset()
+
 # Config via ENV con defaults
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "mi_token_secreto")
 DEFAULT_WHATSAPP_SUCURSAL = int(os.getenv("WHATSAPP_DEFAULT_SUCURSAL", "1"))
@@ -287,6 +296,50 @@ def _insert_tecnico_pos(conn, tecnico_id: int, lat: float, lng: float, ts: str, 
     )
 
 
+# ---- Ubicación de cada sucursal (centro de su mapa) ----
+_CENTROS_CONOCIDOS = {
+    "sapucai": (-25.6676096, -56.950988),       # Google Maps: Sapucai (enlace de la empresa)
+    "valenzuela": (-25.5949816, -56.873283),    # Google Maps: centro de Valenzuela
+}
+_CENTRO_POR_DEFECTO = (-25.60, -56.90)
+
+def _ensure_sucursal_ubicacion():
+    """Columnas lat/lng en sucursales; Sapucai y Valenzuela se completan con su ubicación conocida."""
+    try:
+        conn = get_db()
+        cols = table_columns(conn, "sucursales")
+        if cols:
+            for c in ("lat", "lng"):
+                if c not in cols:
+                    conn.execute(f"ALTER TABLE sucursales ADD COLUMN {c} REAL")
+            for nombre, (la, lo) in _CENTROS_CONOCIDOS.items():
+                conn.execute("UPDATE sucursales SET lat=?, lng=? WHERE lower(nombre)=? AND (lat IS NULL OR lng IS NULL)",
+                             (la, lo, nombre))
+            # Sapucai tenía una ubicación aproximada: se corrige solo si todavía es esa
+            conn.execute("UPDATE sucursales SET lat=?, lng=? WHERE lower(nombre)='sapucai' AND lat=-25.6789 AND lng=-56.9497",
+                         _CENTROS_CONOCIDOS["sapucai"])
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        print("Aviso: no se pudo preparar la ubicación de las sucursales:", e)
+
+_ensure_sucursal_ubicacion()
+
+def sucursal_centro(sid=None):
+    """(lat, lng) de la sucursal: lo guardado en la base, o el conocido por nombre."""
+    sid = sid or current_sucursal_id()
+    try:
+        conn = get_db()
+        r = conn.execute("SELECT nombre, lat, lng FROM sucursales WHERE id=?", (sid,)).fetchone()
+        conn.close()
+    except sqlite3.Error:
+        r = None
+    if r and r["lat"] is not None and r["lng"] is not None:
+        return (float(r["lat"]), float(r["lng"]))
+    if r and (r["nombre"] or "").lower() in _CENTROS_CONOCIDOS:
+        return _CENTROS_CONOCIDOS[r["nombre"].lower()]
+    return None
+
 @app.before_request
 def inject_sucursal():
     g.sucursal_id, g.sucursal_nombre = get_current_sucursal()
@@ -294,15 +347,12 @@ def inject_sucursal():
 @app.context_processor
 def inject_centros():
     sid = current_sucursal_id()
-    nombres = {1: "Sapucai", 2: "Valenzuela"}
-    centros = {
-        1: (-25.6789, -56.9497),     # 📍 Sapucai
-        2: (-25.5949816, -56.873283) # 📍 Valenzuela (Google Maps)
-    }
+    centro = sucursal_centro(sid)
     return {
         "sucursal_id": sid,
-        "sucursal_nombre": nombres.get(sid, ""),
-        "sucursal_center": centros.get(sid, (-25.50, -57.10))
+        "sucursal_nombre": getattr(g, "sucursal_nombre", "") or "",
+        "sucursal_center": centro or _CENTRO_POR_DEFECTO,
+        "sucursal_tiene_ubicacion": centro is not None,
     }
 
 @app.context_processor
@@ -1084,6 +1134,8 @@ def nuevo_ticket():
         })
         db.close()
 
+        push_notificacion(f"Nueva asistencia: {tipo}",
+                          _cuerpo_aviso(cliente, tecnico_nombre, programada_en, falla))
         flash("Ticket registrado.", "success")
         return redirect(url_for("tickets"))
 
@@ -1284,13 +1336,35 @@ def descargar_word():
 def mapa():
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
+    sid = current_sucursal_id()
     db = get_db()
     tecnicos = db.execute(
         "SELECT id, nombre FROM tecnicos WHERE activo=1 AND sucursal_id=? ORDER BY nombre COLLATE NOCASE ASC",
-        (current_sucursal_id(),)
+        (sid,)
     ).fetchall()
     db.close()
-    return render_template("mapa.html", tecnicos=tecnicos)
+    centro = sucursal_centro(sid)
+    suc = {"id": sid, "nombre": g.sucursal_nombre,
+           "lat": centro[0] if centro else None, "lng": centro[1] if centro else None}
+    return render_template("mapa.html", tecnicos=tecnicos, suc_mapa=suc,
+                           es_admin=session.get("rol") == "admin")
+
+@app.route("/sucursales/ubicacion", methods=["POST"])
+def sucursal_fijar_ubicacion():
+    """Guarda la ubicación de la sucursal actual (centro de su mapa). Solo administradores."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return jsonify({"ok": False, "error": "no_auth"}), 401
+    if session.get("rol") != "admin":
+        return jsonify({"ok": False, "error": "Solo un administrador puede cambiar la ubicación de la sucursal."}), 403
+    lat = request.form.get("lat", type=float)
+    lng = request.form.get("lng", type=float)
+    if lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify({"ok": False, "error": "Ubicación no válida."}), 400
+    db = get_db()
+    db.execute("UPDATE sucursales SET lat=?, lng=? WHERE id=?", (round(lat, 7), round(lng, 7), current_sucursal_id()))
+    db.commit()
+    db.close()
+    return jsonify({"ok": True, "lat": lat, "lng": lng})
 
 # Helper para PDF del mapa
 def _query_tickets_for_report(conn, desde, hasta, estado=None):
@@ -1600,6 +1674,9 @@ def instalaciones_nueva():
         db.commit()
         db.close()
 
+        push_notificacion("Nueva instalación",
+                          _cuerpo_aviso(nombre_completo, tecnico_nombre, prog,
+                                        cli.get("barrio") or direccion or None))
         flash(f"Instalación registrada para {nombre_completo}.", "success")
         if f.get("despues") == "ot" and tid:
             return redirect(url_for("tickets_ot", tid=tid))
@@ -1621,9 +1698,17 @@ def instalaciones_nueva():
         tecnicos = []
     db.close()
 
-    centro = {1: (-25.6789, -56.9497), 2: (-25.5949816, -56.873283)}.get(sid, (-25.5949816, -56.873283))
+    centro = sucursal_centro(sid) or _CENTRO_POR_DEFECTO
+
+    # Desde la Agenda: ?fecha=2026-10-03 deja la visita precargada ese día (solo hoy o fechas futuras)
+    fecha_pre = ""
+    fecha = (request.args.get("fecha") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha) and fecha >= date.today().isoformat():
+        fecha_pre = f"{fecha}T08:00"
+
     return render_template("instalacion_nueva.html", clientes=clientes, tecnicos=tecnicos,
-                           cliente_pre=request.args.get("cliente_id", type=int), centro=centro)
+                           cliente_pre=request.args.get("cliente_id", type=int), centro=centro,
+                           fecha_pre=fecha_pre)
 
 # ===========================
 #  Equipos (incluye stock y movimientos)
@@ -3247,43 +3332,67 @@ def api_mapa_datos():
 
     db = get_db()
     sid = current_sucursal_id()
+    acols = table_columns(db, "asistencias")
+    ccols = table_columns(db, "clientes")
 
-    # Tickets con coordenadas
-    tickets = db.execute("""
+    # Ubicación del ticket o, si no tiene, la de su cliente
+    if "cliente_id" in acols and {"lat", "lng"} <= ccols:
+        join_c = "LEFT JOIN clientes c ON c.id = a.cliente_id"
+        lat, lng = "COALESCE(a.lat, c.lat)", "COALESCE(a.lng, c.lng)"
+        barrio = "c.barrio" if "barrio" in ccols else "NULL"
+    else:
+        join_c, lat, lng, barrio = "", "a.lat", "a.lng", "NULL"
+    prog = "a.programada_en" if "programada_en" in acols else "NULL"
+    tid_join = "LEFT JOIN tecnicos t ON a.tecnico_id = t.id" if "tecnico_id" in acols else ""
+    tec = "COALESCE(t.nombre, a.tecnico)" if "tecnico_id" in acols else "a.tecnico"
+
+    filas = db.execute(f"""
         SELECT a.id, a.cliente, a.direccion, a.tipo, a.prioridad, a.estado,
-               a.programada_en, a.lat, a.lng,
-               COALESCE(t.nombre, a.tecnico) AS tecnico
-        FROM asistencias a
-        LEFT JOIN tecnicos t ON a.tecnico_id = t.id
-        WHERE a.sucursal_id=?
-          AND a.lat IS NOT NULL AND a.lng IS NOT NULL
-        ORDER BY datetime(COALESCE(a.programada_en, a.fecha)) DESC
-        LIMIT 500
+               {prog} AS programada_en, {lat} AS lat, {lng} AS lng, {barrio} AS barrio,
+               {tec} AS tecnico
+          FROM asistencias a
+          {join_c}
+          {tid_join}
+         WHERE a.sucursal_id=?
+         ORDER BY datetime(COALESCE({prog}, a.fecha)) DESC
+         LIMIT 800
     """, (sid,)).fetchall()
 
-    # Última posición por técnico (por sucursal)
-    pos = db.execute("""
-        SELECT tp.tecnico_id, tp.lat, tp.lng, tp.ts, te.nombre
-        FROM tecnico_pos tp
-        JOIN (
-            SELECT tecnico_id, MAX(ts) AS mts
-            FROM tecnico_pos
-            WHERE sucursal_id = ?
-            GROUP BY tecnico_id
-        ) x ON x.tecnico_id = tp.tecnico_id AND x.mts = tp.ts
-        LEFT JOIN tecnicos te ON te.id = tp.tecnico_id
-        WHERE tp.sucursal_id = ?
-    """, (sid, sid)).fetchall()
+    tickets, sin_ubicacion = [], 0
+    for r in filas:
+        d = dict(r)
+        try:
+            d["lat"], d["lng"] = float(d["lat"]), float(d["lng"])
+        except (TypeError, ValueError):
+            sin_ubicacion += 1
+            continue
+        d["url"] = url_for("tickets_ot", tid=d["id"])
+        tickets.append(d)
+        if len(tickets) >= 500:
+            break
+
+    # Última posición de cada técnico (solo si se registran posiciones GPS)
+    tecnicos = []
+    try:
+        pos = db.execute("""
+            SELECT tp.tecnico_id, tp.lat, tp.lng, tp.ts, te.nombre
+            FROM tecnico_pos tp
+            JOIN (
+                SELECT tecnico_id, MAX(ts) AS mts
+                FROM tecnico_pos
+                WHERE sucursal_id = ?
+                GROUP BY tecnico_id
+            ) x ON x.tecnico_id = tp.tecnico_id AND x.mts = tp.ts
+            LEFT JOIN tecnicos te ON te.id = tp.tecnico_id
+            WHERE tp.sucursal_id = ?
+        """, (sid, sid)).fetchall()
+        tecnicos = [{"id": r["tecnico_id"], "nombre": r["nombre"],
+                     "lat": r["lat"], "lng": r["lng"], "ts": r["ts"]} for r in pos]
+    except sqlite3.OperationalError:
+        pass   # todavía no existe la tabla de posiciones: el mapa funciona igual, sin técnicos
     db.close()
 
-    return jsonify({
-        "tickets": [dict(r) for r in tickets],
-        "tecnicos": [
-            {"id": r["tecnico_id"], "nombre": r["nombre"],
-             "lat": r["lat"], "lng": r["lng"], "ts": r["ts"]}
-            for r in pos
-        ]
-    })
+    return jsonify({"tickets": tickets, "tecnicos": tecnicos, "sin_ubicacion": sin_ubicacion})
 
 # --- Trayectoria de un técnico (por fecha) ---
 @app.route("/api/tecnico_trayectoria/<int:tid>", endpoint="api_tecnico_trayectoria")
@@ -3296,6 +3405,11 @@ def api_tecnico_trayectoria(tid):
     sid   = current_sucursal_id()
 
     db = get_db()
+    try:
+        db.execute("SELECT 1 FROM tecnico_pos LIMIT 1")
+    except sqlite3.OperationalError:
+        db.close()
+        return jsonify([])   # todavía no se registró ninguna posición GPS
 
     # 1) Normal: por sucursal y rango
     rows = db.execute("""
@@ -3704,15 +3818,34 @@ def push_notificacion(titulo: str, cuerpo: str = "", sucursal_id: int | None = N
     Usa la sucursal actual si no se especifica.
     """
     sid = sucursal_id or current_sucursal_id()
-    db = get_db()
-    cur = db.execute("""
-        INSERT INTO notificaciones (sucursal_id, titulo, cuerpo, creado_en)
-        VALUES (?, ?, ?, datetime('now'))
-    """, (sid, titulo.strip() or "Notificación", cuerpo or ""))
-    db.commit()
-    nid = cur.lastrowid
-    db.close()
-    return nid
+    try:
+        db = get_db()
+        db.execute("""CREATE TABLE IF NOT EXISTS notificaciones (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, sucursal_id INTEGER,
+            titulo TEXT, cuerpo TEXT, creado_en TEXT)""")
+        cur = db.execute("""
+            INSERT INTO notificaciones (sucursal_id, titulo, cuerpo, creado_en)
+            VALUES (?, ?, ?, datetime('now','localtime'))
+        """, (sid, titulo.strip() or "Notificación", cuerpo or ""))
+        db.commit()
+        nid = cur.lastrowid
+        db.close()
+        return nid
+    except sqlite3.Error as e:
+        # Una notificación que falla no debe impedir guardar el ticket
+        print("Aviso: no se pudo crear la notificación:", e)
+        return None
+
+def _cuerpo_aviso(cliente, tecnico=None, programada=None, extra=None):
+    """Texto corto de la notificación: cliente · técnico · visita."""
+    partes = [cliente or "Sin cliente"]
+    if extra:
+        partes.append(extra)
+    partes.append(f"Técnico: {tecnico}" if tecnico else "Sin técnico")
+    if programada:
+        p = str(programada).replace("T", " ")
+        partes.append(f"Visita: {p[8:10]}/{p[5:7]} {p[11:16]}".strip())
+    return " · ".join(partes)
 
 # ===========================
 #  API: Notificaciones (poll)
@@ -3746,6 +3879,45 @@ def api_notificaciones():
 
     db.close()
     return jsonify([dict(r) for r in rows])
+
+@app.route("/api/pendientes")
+def api_pendientes():
+    """Asistencias e instalaciones abiertas de la sucursal, para la campanita."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return jsonify({"error": "no_auth"}), 401
+
+    db = get_db()
+    sid = current_sucursal_id()
+    acols = table_columns(db, "asistencias")
+    prog = "programada_en" if "programada_en" in acols else "NULL"
+    est = "lower(IFNULL(estado,'pendiente'))" if "estado" in acols else "'pendiente'"
+    filas = db.execute(f"""
+        SELECT id, cliente, tipo, tecnico, {prog} AS visita, fecha
+          FROM asistencias
+         WHERE sucursal_id=? AND {est} IN ('pendiente','en_progreso')
+         ORDER BY CASE WHEN {prog} IS NULL THEN 1 ELSE 0 END, datetime({prog}) ASC, datetime(fecha) DESC
+         LIMIT 300
+    """, (sid,)).fetchall()
+    db.close()
+
+    hoy = date.today().isoformat()
+    grupos = {"asistencias": {"total": 0, "hoy": 0, "items": []},
+              "instalaciones": {"total": 0, "hoy": 0, "items": []}}
+    for r in filas:
+        g_ = grupos["instalaciones" if str(r["tipo"] or "").lower().startswith("instal") else "asistencias"]
+        g_["total"] += 1
+        visita = str(r["visita"] or "")
+        if visita[:10] == hoy:
+            g_["hoy"] += 1
+        if len(g_["items"]) < 5:
+            g_["items"].append({
+                "id": r["id"], "cliente": r["cliente"] or "Sin cliente", "tipo": r["tipo"] or "Ticket",
+                "tecnico": r["tecnico"] or "", "visita": visita[:16], "es_hoy": visita[:10] == hoy,
+                "url": url_for("tickets_ot", tid=r["id"]),
+            })
+    grupos["asistencias"]["url"] = url_for("tickets")
+    grupos["instalaciones"]["url"] = url_for("instalaciones")
+    return jsonify(grupos)
 
 # Prueba manual: http://127.0.0.1:5000/api/notificaciones/test?msg=Hola
 @app.route("/api/notificaciones/test")

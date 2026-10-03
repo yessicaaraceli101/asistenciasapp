@@ -13,8 +13,9 @@
   .map-sidebar .hdr { padding: 10px 12px; border-bottom: 1px solid #f0f2f5; display:flex; align-items:center; justify-content:space-between; }
   .map-sidebar .body { padding: 12px; }
   .chip { font-size: .75rem; padding: 2px 8px; border-radius: 12px; background: #f3f4f6; }
+  .chip-warn { background:#FFF7E6; color:#8A5A00; }
   .legend {
-    position: absolute; z-index: 1000; right: 12px; bottom: 12px;
+    position: absolute; z-index: 1000; right: 12px; bottom: 24px;
     background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
     padding: 10px 12px; box-shadow: 0 10px 25px rgba(0,0,0,.08); font-size: .9rem;
   }
@@ -25,9 +26,28 @@
   .marker-cluster-small  { background-color: rgba(13,110,253,0.2); } .marker-cluster-small div { background: rgba(13,110,253,0.7); }
   .marker-cluster-medium { background-color: rgba(25,135,84,0.2); } .marker-cluster-medium div { background: rgba(25,135,84,0.7); }
   .marker-cluster-large  { background-color: rgba(255,193,7,0.2); } .marker-cluster-large div { background: rgba(255,193,7,0.8); }
+  .map-aviso{
+    position:absolute; z-index:1000; top:12px; left:50%; transform:translateX(-50%);
+    max-width:440px; background:#fff; border:1px solid #F5E0B3; border-radius:10px;
+    padding:10px 14px; font-size:.88rem; color:#8A5A00; box-shadow:0 10px 25px rgba(0,0,0,.08);
+  }
+  .map-cruz{ position:absolute; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);
+    font-size:28px; color:#C2362F; pointer-events:none; text-shadow:0 0 3px #fff, 0 0 6px #fff; }
+  .map-fijar{
+    position:absolute; z-index:1001; left:50%; bottom:24px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center;
+    background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 14px;
+    box-shadow:0 10px 25px rgba(0,0,0,.12); font-size:.9rem; max-width:calc(100% - 24px);
+  }
+  .leaflet-popup-content a.pop-ot{ display:inline-block; margin-top:6px; font-weight:600; }
+  @media (max-width: 768px){
+    .map-sidebar{ width:260px; }
+    .legend{ display:none; }
+    .map-aviso{ top:auto; bottom:12px; }
+  }
 </style>
 
-<h1 class="mb-3">Mapa</h1>
+<h1 class="mb-3">Mapa de {{ suc_mapa.nombre or 'la sucursal' }}</h1>
 
 <div class="d-flex flex-wrap align-items-center toolbar mb-3">
   <div class="input-group" style="max-width: 360px;">
@@ -46,6 +66,13 @@
 
   <button id="btnRuta" class="btn btn-outline-primary"><i class="fa-solid fa-route me-1"></i> Ver trayectoria</button>
   <button id="btnRefrescar" class="btn btn-primary"><i class="fa-solid fa-rotate me-1"></i> Refrescar</button>
+  <button id="btnCentrar" class="btn btn-outline-secondary"><i class="fa-solid fa-store me-1"></i> Centrar en sucursal</button>
+  <button id="btnVerTodo" class="btn btn-outline-secondary"><i class="fa-solid fa-expand me-1"></i> Ver todos los puntos</button>
+  {% if es_admin %}
+  <button id="btnFijarSuc" class="btn btn-outline-secondary" title="Guarda el centro del mapa como ubicación de la sucursal">
+    <i class="fa-solid fa-thumbtack me-1"></i> Fijar ubicación de la sucursal
+  </button>
+  {% endif %}
   <button id="btnLocate" class="btn btn-outline-secondary"><i class="fa-solid fa-location-crosshairs me-1"></i> Mi ubicación</button>
   <button id="btnExport" class="btn btn-outline-success"><i class="fa-solid fa-file-arrow-down me-1"></i> Exportar CSV</button>
   <button id="btnExportPdf" class="btn btn-outline-danger"><i class="fa-solid fa-file-pdf me-1"></i> Exportar PDF</button>
@@ -54,6 +81,7 @@
     Auto-actualiza cada 30s •
     <span class="chip" id="chipTickets">Tickets: 0</span>
     <span class="chip" id="chipTec">Técnicos: 0</span>
+    <span class="chip chip-warn" id="chipSinUb" hidden></span>
   </span>
 </div>
 
@@ -72,7 +100,7 @@
       </div>
       <hr>
       <div class="mb-2">
-        <label class="form-label mb-1">Estado de tickets</label>
+        <label class="form-label mb-1" for="estadoSel">Estado de tickets</label>
         <select id="estadoSel" class="form-select form-select-sm">
           <option value="">(Todos)</option>
           <option value="pendiente">Pendiente</option>
@@ -88,6 +116,13 @@
   </div>
 
   <div id="map" aria-label="Mapa de tickets, técnicos y sucursales"></div>
+  <div class="map-aviso" id="mapAviso" hidden></div>
+  <div class="map-cruz" id="mapCruz" hidden aria-hidden="true"><i class="fa-solid fa-plus"></i></div>
+  <div class="map-fijar" id="mapFijar" hidden>
+    <span>Mueve el mapa hasta que la <strong>cruz</strong> quede sobre la sucursal.</span>
+    <button type="button" class="btn btn-sm btn-primary" id="btnFijarOk">Guardar aquí</button>
+    <button type="button" class="btn btn-sm btn-light border" id="btnFijarNo">Cancelar</button>
+  </div>
 
   <div class="legend">
     <div class="fw-semibold mb-1"><i class="fa-solid fa-circle-info me-1"></i>Leyenda</div>
@@ -111,22 +146,22 @@
 <script>
   // util sin chocar con jQuery
   function qs(id){ return document.getElementById(id); }
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
   const fmt2 = n => String(n).padStart(2,'0');
   const todayISO = () => { const d=new Date(); return `${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}`; };
+  const ESTADOS = { pendiente:'Pendiente', en_progreso:'En progreso', resuelto:'Resuelto', cancelado:'Cancelado' };
 
   const desdeEl = qs('desde'); const hastaEl = qs('hasta');
   // Últimos 7 días como default
   (function initDates(){
     const hoy = new Date();
-    const hasta = todayISO();
     const d = new Date(hoy); d.setDate(d.getDate()-7);
-    const desde = `${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}`;
-    desdeEl.value = desde; hastaEl.value = hasta;
+    desdeEl.value = `${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}`;
+    hastaEl.value = todayISO();
   })();
 
   const estadoColor = (estado) => {
-    if (!estado) return '#0d6efd';
-    const s = String(estado).toLowerCase();
+    const s = String(estado || '').toLowerCase();
     if (s==='pendiente') return '#dc3545';
     if (s==='resuelto') return '#20c997';
     if (s==='en_progreso') return '#ffc107';
@@ -145,28 +180,31 @@
     iconSize: [16,16], iconAnchor: [8,8]
   });
 
-  /* ===== Sucursales fijas ===== */
-  // Coordenadas correctas:
-  //  - Sapucai: aproximado
-  //  - Valenzuela: -25.5949816, -56.873283 (Google Maps)
-  const sucursales = [
-    { nombre: "Sapucai",    lat: -25.6789,   lng: -56.9497 },
-    { nombre: "Valenzuela", lat: -25.5949816, lng: -56.873283 }
-  ];
-
-  // Si el backend inyectó un centro (ver app.context_processor), lo usamos
-  const injectedCenter = {{ sucursal_center|default(None)|tojson|safe }};
-  const currentSucursalName = "{{ g.sucursal_nombre|default('', true) }}";
+  /* ===== Sucursal actual (cada sucursal tiene su propio mapa) ===== */
+  const SUC = {{ suc_mapa|tojson }};                     // {id, nombre, lat, lng}
+  const CENTRO_DEF = {{ sucursal_center|tojson }};       // centro por defecto si la sucursal no tiene ubicación
+  const ES_ADMIN = {{ 'true' if es_admin else 'false' }};
 
   const sucIcon = L.divIcon({
     className: 'suc-icon',
-    html: `<div style="background:#6f42c1;width:14px;height:14px;border-radius:3px;border:2px solid #fff;box-shadow:0 0 0 1px #333"></div>`,
-    iconSize: [16,16], iconAnchor: [8,8]
+    html: `<div style="display:flex;align-items:center;gap:4px;white-space:nowrap">
+             <div style="background:#6f42c1;width:16px;height:16px;border-radius:3px;border:2px solid #fff;box-shadow:0 0 0 1px #333"></div>
+             <span style="background:#6f42c1;color:#fff;font:600 12px/1 system-ui;padding:3px 6px;border-radius:4px">${esc(SUC.nombre || 'Sucursal')}</span>
+           </div>`,
+    iconSize: [120,20], iconAnchor: [9,10]
   });
 
-  // Mapa y capas
+  // Mapa: calles o satélite con calles
   const map = L.map('map', { zoomControl: true });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 20, attribution: '&copy; OpenStreetMap'}).addTo(map);
+  const calles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap'});
+  const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+  const satelite = L.layerGroup([
+    L.tileLayer(esri + 'World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, attribution: 'Imágenes © Esri'}),
+    L.tileLayer(esri + 'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19}),
+    L.tileLayer(esri + 'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19})
+  ]);
+  calles.addTo(map);
+  L.control.layers({ 'Calles': calles, 'Satélite con calles': satelite }, null, { position: 'topright' }).addTo(map);
 
   const clusterTickets = L.markerClusterGroup({
     disableClusteringAtZoom: 17,
@@ -181,13 +219,21 @@
 
   function renderSucursales(){
     layerSucursales.clearLayers();
-    sucursales.forEach(s=>{
-      L.marker([s.lat, s.lng], {icon: sucIcon})
-        .bindPopup(`<b>Sucursal ${s.nombre}</b>`)
-        .addTo(layerSucursales);
-    });
+    if (SUC.lat == null || SUC.lng == null) return;
+    L.marker([SUC.lat, SUC.lng], {icon: sucIcon})
+      .bindPopup(`<b>Sucursal ${esc(SUC.nombre)}</b><br><small>${Number(SUC.lat).toFixed(5)}, ${Number(SUC.lng).toFixed(5)}</small><br>
+                  <a href="https://www.google.com/maps?q=${SUC.lat},${SUC.lng}" target="_blank" rel="noopener">Ver en Google Maps</a>`)
+      .setZIndexOffset(1000)
+      .addTo(layerSucursales);
   }
   renderSucursales();
+
+  // Centrar en la sucursal actual
+  function centrarSucursal(){
+    if (SUC.lat != null && SUC.lng != null) map.setView([SUC.lat, SUC.lng], 14);
+    else map.setView(CENTRO_DEF, 12);
+  }
+  centrarSucursal();   // el mapa se ve desde el primer momento, aunque todavía no haya datos
 
   // Toast mini no bloqueante
   function toast(msg){
@@ -198,7 +244,15 @@
     setTimeout(()=>{ n.remove(); }, 3200);
   }
 
+  function aviso(txt){
+    const el = qs('mapAviso');
+    el.hidden = !txt;
+    el.innerHTML = txt || '';
+  }
+
   let lastData = { tickets: [], tecnicos: [] };
+  let primeraCarga = true;
+  let ultimosPuntos = [];
 
   async function cargarDatos(){
     try{
@@ -217,40 +271,43 @@
       (data.tickets || []).forEach(t=>{
         if (t.lat==null || t.lng==null) return;
         if (estadoFiltro && String(t.estado||'').toLowerCase()!==estadoFiltro) return;
+        const est = String(t.estado||'pendiente').toLowerCase();
         const m=L.marker([t.lat,t.lng],{icon:dotIcon(estadoColor(t.estado))})
-          .bindPopup(`<b>${t.cliente||'Cliente'}</b><br>${t.direccion||''}<br>
-                      <small>Tipo: ${t.tipo||'-'} | Prioridad: ${t.prioridad||'-'}</small><br>
-                      <small>Estado: ${t.estado||'-'} | Técnico: ${t.tecnico||'-'}</small><br>
-                      <small>Agenda: ${t.programada_en||''}</small>`);
+          .bindPopup(`<b>${esc(t.cliente||'Cliente')}</b><br>${esc(t.direccion || t.barrio || '')}<br>
+                      <small>Tipo: ${esc(t.tipo||'-')}</small><br>
+                      <small>Estado: ${esc(ESTADOS[est] || est)} · Técnico: ${esc(t.tecnico||'Sin asignar')}</small><br>
+                      ${t.programada_en ? `<small>Visita: ${esc(String(t.programada_en).slice(0,16))}</small><br>` : ''}
+                      ${t.url ? `<a class="pop-ot" href="${esc(t.url)}">Ver orden de trabajo →</a>` : ''}`);
         layerTickets.addLayer(m); bounds.push([t.lat,t.lng]);
       });
 
       (data.tecnicos || []).forEach(t=>{
         if (t.lat==null || t.lng==null) return;
         const m=L.marker([t.lat,t.lng],{icon:dotIcon('#198754')})
-          .bindPopup(`<b>${t.nombre || ('Tec #'+t.id)}</b><br><small>${t.ts || ''}</small>`)
+          .bindPopup(`<b>${esc(t.nombre || ('Técnico #'+t.id))}</b><br><small>Última posición GPS: ${esc(t.ts || 'sin fecha')}</small>`)
           .on('click',()=>verTrayectoria(t.id));
         layerTecnicos.addLayer(m); bounds.push([t.lat,t.lng]);
       });
 
-      qs('chipTickets').textContent=`Tickets: ${layerTickets.getLayers().length}`;
-      qs('chipTec').textContent=`Técnicos: ${layerTecnicos.getLayers().length}`;
+      const nT = layerTickets.getLayers().length, nTec = layerTecnicos.getLayers().length;
+      qs('chipTickets').textContent=`Tickets: ${nT}`;
+      qs('chipTec').textContent=`Técnicos: ${nTec}`;
+      const sinUb = data.sin_ubicacion || 0;
+      qs('chipSinUb').hidden = !sinUb;
+      qs('chipSinUb').textContent = `${sinUb} sin ubicación`;
 
-      // Centro preferido: 1) inyectado por backend; 2) sucursal por nombre; 3) bounds/centro promedio
-      if (Array.isArray(injectedCenter) && injectedCenter.length === 2) {
-        map.setView([injectedCenter[0], injectedCenter[1]], 13);
+      if (!nT && !nTec){
+        aviso(sinUb
+          ? `<i class="fa-solid fa-triangle-exclamation me-1"></i> Hay ${sinUb} ticket${sinUb>1?'s':''} sin ubicación. Para verlos en el mapa, pega la ubicación de Google Maps al crear el ticket o en la ficha del cliente.`
+          : `<i class="fa-solid fa-circle-info me-1"></i> Todavía no hay tickets con ubicación en esta sucursal.`);
       } else {
-        const suc = sucursales.find(s => s.nombre.toLowerCase() === String(currentSucursalName||'').toLowerCase());
-        if (suc) {
-          map.setView([suc.lat, suc.lng], 13);
-        } else if (bounds.length) {
-          map.fitBounds(bounds,{padding:[40,40]});
-        } else {
-          const avgLat = (sucursales[0].lat + sucursales[1].lat) / 2;
-          const avgLng = (sucursales[0].lng + sucursales[1].lng) / 2;
-          map.setView([avgLat, avgLng], 10);
-        }
+        aviso('');
       }
+
+      // El mapa siempre abre en la sucursal; los puntos no lo mueven.
+      // Para ver todos los puntos está el botón "Ver todos los puntos".
+      ultimosPuntos = bounds;
+      primeraCarga = false;
 
       aplicarVisibilidad();
     }catch(err){
@@ -259,11 +316,11 @@
     }
   }
 
-  // Versión con fallback: si el rango no trae puntos, reintenta sin filtros (backend amplía a 30 días)
+  // Trayectoria: si el rango no trae puntos, reintenta sin filtros (el servidor amplía a 30 días)
   async function verTrayectoria(tid){
     if (!tid){
-      const first = qs('tecSel').value || qs('tecSel').querySelector('option[value]')?.value;
-      if (!first) { toast('Elegí un técnico.'); return; }
+      const first = qs('tecSel').value || qs('tecSel').querySelector('option[value]:not([value=""])')?.value;
+      if (!first) { toast('Elige un técnico.'); return; }
       tid = first;
     }
 
@@ -276,16 +333,15 @@
 
     if (!Array.isArray(pts)) pts = [];
     if (!pts.length) {
-      const url2 = base; // deja al backend ampliar/ignorar sucursal
-      r = await fetch(url2, { headers: { "Accept": "application/json" }, cache: "no-store" });
+      r = await fetch(base, { headers: { "Accept": "application/json" }, cache: "no-store" });
       if(r.status === 401){ window.location = "{{ url_for('login') }}"; return; }
       pts = (r.ok ? await r.json() : []);
     }
 
     layerRutas.clearLayers();
 
-    if (!pts.length) {
-      toast('Sin posiciones para ese técnico. Ampliá fechas o verificá el envío de /gps.');
+    if (!Array.isArray(pts) || !pts.length) {
+      toast('Ese técnico todavía no tiene posiciones GPS registradas.');
       return;
     }
 
@@ -301,6 +357,38 @@
   }
 
   qs('btnLocate').addEventListener('click',()=>map.locate({setView:true,maxZoom:16}));
+  map.on('locationerror', () => toast('No se pudo obtener tu ubicación. Revisa el permiso del navegador.'));
+  qs('btnCentrar').addEventListener('click', centrarSucursal);
+  qs('btnVerTodo').addEventListener('click', () => {
+    const pts = ultimosPuntos.slice();
+    if (SUC.lat != null) pts.push([SUC.lat, SUC.lng]);
+    if (pts.length > 1) map.fitBounds(pts, { padding:[40,40], maxZoom: 16 });
+    else toast('No hay otros puntos para mostrar.');
+  });
+
+  // ----- Fijar la ubicación de la sucursal (solo administradores) -----
+  if (SUC.lat == null && ES_ADMIN){
+    setTimeout(() => { if (qs('mapAviso').hidden) aviso('<i class="fa-solid fa-thumbtack me-1"></i> Esta sucursal todavía no tiene ubicación. Toca <b>Fijar ubicación de la sucursal</b> para que su mapa abra en el lugar correcto.'); }, 1500);
+  }
+  const btnFijar = qs('btnFijarSuc');
+  if (btnFijar){
+    const modoFijar = (on) => { qs('mapCruz').hidden = !on; qs('mapFijar').hidden = !on; btnFijar.disabled = on; };
+    btnFijar.addEventListener('click', () => { aviso(''); modoFijar(true); });
+    qs('btnFijarNo').addEventListener('click', () => modoFijar(false));
+    qs('btnFijarOk').addEventListener('click', async () => {
+      const c = map.getCenter();
+      const datos = new URLSearchParams({ lat: c.lat.toFixed(7), lng: c.lng.toFixed(7) });
+      try {
+        const r = await fetch("{{ url_for('sucursal_fijar_ubicacion') }}", { method:'POST', body: datos,
+                                headers: { 'Accept':'application/json' } });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || 'No se pudo guardar.');
+        SUC.lat = c.lat; SUC.lng = c.lng;
+        renderSucursales(); modoFijar(false);
+        toast(`Ubicación de ${SUC.nombre} guardada. Su mapa va a abrir aquí.`);
+      } catch (e) { toast(e.message); }
+    });
+  }
 
   qs('btnExport').addEventListener('click',()=>{
     const estadoFiltro=qs('estadoSel').value;
@@ -308,8 +396,9 @@
       .filter(t=>t.lat!=null && t.lng!=null)
       .filter(t=>!estadoFiltro || String(t.estado||'').toLowerCase()===estadoFiltro)
       .map(t=>[t.cliente,t.direccion,t.tipo,t.prioridad,t.estado,t.tecnico,t.programada_en,t.lat,t.lng]);
-    let csv='Cliente,Direccion,Tipo,Prioridad,Estado,Tecnico,Programada,Lat,Lng\n';
-    rows.forEach(r=>{csv+=r.map(v=>`"${(v??'').toString().replace(/"/g,'""')}"`).join(',')+'\n';});
+    // Separador ";" para que Excel en español lo abra en columnas
+    let csv='\ufeffCliente;Direccion;Tipo;Prioridad;Estado;Tecnico;Programada;Lat;Lng\n';
+    rows.forEach(r=>{csv+=r.map(v=>`"${(v??'').toString().replace(/"/g,'""')}"`).join(';')+'\n';});
     const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a');
     a.href=URL.createObjectURL(blob); a.download=`tickets_${todayISO()}.csv`; a.click(); URL.revokeObjectURL(a.href);
   });
@@ -346,7 +435,7 @@
 
   qs('btnRuta').addEventListener('click', async (e)=>{
     const tid = qs('tecSel').value;
-    if(!tid){ toast('Elegí un técnico.'); return; }
+    if(!tid){ toast('Elige un técnico.'); return; }
     const btn = e.currentTarget;
     const html = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-route me-1 fa-spin"></i> Dibujando…';

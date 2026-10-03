@@ -179,7 +179,38 @@
     /* Notificaciones */
     #notifList li + li { border-top: 1px solid #f1f3f5; }
     #notifList li { font-size: .95rem; }
-    .notif-dropdown { min-width: 320px; max-height: 60vh; overflow: auto; }
+    .notif-dropdown { width:380px; max-width:calc(100vw - 24px); max-height:75vh; overflow:auto; padding-top:0; }
+    .notif-sec{
+      position:sticky; top:0; z-index:1; background:#fff;
+      font-size:12px; font-weight:600; color:var(--ink-faint);
+      padding:10px 16px 6px; border-bottom:1px solid #f1f3f5;
+    }
+    /* Resumen de pendientes */
+    .np-group + .np-group{ border-top:1px solid #f1f3f5; }
+    .np-head{
+      display:flex; align-items:center; gap:10px; padding:10px 16px 6px;
+      color:var(--ink); text-decoration:none; font-size:14px; font-weight:600;
+    }
+    .np-head:hover{ color:#0284C7; }
+    .np-head i{ width:18px; text-align:center; color:#0284C7; }
+    .np-count{
+      margin-left:auto; min-width:26px; text-align:center;
+      font-size:12.5px; font-weight:600; color:#0369A1; background:#E0F2FE; border-radius:999px; padding:1px 8px;
+    }
+    .np-hoy{ display:block; padding:0 16px 4px 44px; font-size:12px; color:#8A5A00; }
+    .np-item{
+      display:block; padding:6px 16px 6px 44px; text-decoration:none; color:var(--ink); line-height:1.3;
+    }
+    .np-item:hover{ background:var(--paper); color:var(--ink); }
+    .np-item strong{ display:block; font-size:13.5px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .np-item span{ font-size:12px; color:var(--ink-faint); }
+    .np-item .np-tag{ font-size:11px; font-weight:600; color:#0369A1; background:#E0F2FE; border-radius:4px; padding:0 5px; margin-right:4px; }
+    .np-more{ display:block; padding:4px 16px 10px 44px; font-size:12.5px; font-weight:500; color:#0284C7; text-decoration:none; }
+    .np-more:hover{ text-decoration:underline; }
+    .np-vacio{ padding:4px 16px 10px 44px; font-size:12.5px; color:var(--ink-faint); }
+    .np-cargando{ padding:12px 16px; font-size:13px; color:var(--ink-faint); }
+    .notif-vacio{ padding:12px 16px; font-size:13px; color:var(--ink-faint); }
+    #notifList:not(:empty) + .notif-vacio{ display:none; }
 
     /* ================= CONTENIDO ================= */
     .app-main{ min-height:100vh; display:flex; flex-direction:column; }
@@ -434,13 +465,18 @@
       <!-- Campana de notificaciones -->
       <div class="dropdown">
         <button class="tb-btn" type="button" id="notifDropdown" data-bs-toggle="dropdown"
-                aria-expanded="false" title="Notificaciones" aria-label="Notificaciones">
+                data-bs-auto-close="outside" aria-expanded="false" title="Notificaciones" aria-label="Notificaciones">
           <i class="fa-regular fa-bell"></i>
           <span id="notifBadge" class="badge rounded-pill bg-danger d-none">0</span>
         </button>
         <ul class="dropdown-menu dropdown-menu-end shadow notif-dropdown" aria-labelledby="notifDropdown">
-          <li class="dropdown-header fw-semibold text-dark">Notificaciones</li>
+          <!-- Resumen de lo pendiente en la sucursal -->
+          <li class="notif-sec">Pendientes en {{ g.sucursal_nombre or 'la sucursal' }}</li>
+          <li id="notifPend"><div class="np-cargando">Cargando…</div></li>
+
+          <li class="notif-sec">Avisos</li>
           <ul id="notifList" class="list-unstyled mb-0 px-0"></ul>
+          <li class="notif-vacio">No hay avisos nuevos.</li>
           <li><hr class="dropdown-divider"></li>
           <li class="px-3 pb-2">
             <button id="notifMarkRead" class="btn btn-sm btn-outline-secondary w-100">
@@ -674,7 +710,9 @@
   <script>
   (() => {
     // ========= Config =========
-    const API_BASE = document.body.dataset.notifApi || 'http://localhost:4000'; // se define con NOTIF_API_URL en .env
+    const API_BASE = document.body.dataset.notifApi || 'http://localhost:4000'; // sistema de reclamos (NOTIF_API_URL en .env)
+    const LOCAL_API = {{ url_for('api_notificaciones')|tojson }};               // avisos de SPYnet (asistencias e instalaciones)
+    const PEND_API  = {{ url_for('api_pendientes')|tojson }};                   // resumen de lo pendiente
     const SUCURSAL = {{ (g.sucursal_nombre or '""')|tojson }};
     const POLL_MS  = 8000;
 
@@ -684,14 +722,25 @@
     const toastBox    = document.getElementById('toastContainer');
     const btnMarkRead = document.getElementById('notifMarkRead');
     const pingEl      = document.getElementById('ping');
+    const pendBox     = document.getElementById('notifPend');
 
     // ========= Estado =========
     let lastId = 0;
-    let unreadCount = 0;
-    const rendered = new Map(); // id -> <li>
+    let unreadCount = 0;                 // no leídas del sistema de reclamos
+    let localUnread = 0;                 // no leídas de SPYnet
+    const rendered = new Map();          // id (reclamos) -> <li>
+    const localRendered = new Set();     // id (SPYnet)
 
     // ========= Persistencia (por sucursal) =========
     const LS_KEY = `notifState:${SUCURSAL || 'global'}`;
+    const LS_LOCAL = `notifLocal:${SUCURSAL || 'global'}`;
+    let localSeen = 0, localLast = 0;    // último aviso de SPYnet marcado como leído / recibido
+    try {
+      const l = JSON.parse(localStorage.getItem(LS_LOCAL) || '{}');
+      localSeen = Number(l.seen || 0); localLast = Number(l.last || 0);
+    } catch {}
+    const saveLocal = () => { try { localStorage.setItem(LS_LOCAL, JSON.stringify({ seen: localSeen, last: localLast })); } catch {} };
+
     function saveState() {
       try {
         const state = {
@@ -708,19 +757,22 @@
         if (!raw) return;
         const state = JSON.parse(raw);
         lastId = Number(state.lastId || 0);
-        setBadge(Number(state.unreadCount || 0));
+        unreadCount = Number(state.unreadCount || 0);
         if (notifList && typeof state.listHTML === 'string') {
           notifList.innerHTML = state.listHTML;
           notifList.querySelectorAll('li[data-id]').forEach(li => {
             const id = Number(li.dataset.id);
             if (id) rendered.set(id, li);
           });
+          notifList.querySelectorAll('li[data-lid]').forEach(li => localRendered.add(Number(li.dataset.lid)));
         }
+        pintarBadge();
       } catch {}
     }
 
     // ========= Utils =========
     const esc = (s) => String(s || '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+    const fechaCorta = (s) => { s = String(s || ''); return s.length >= 16 ? `${s.slice(8,10)}/${s.slice(5,7)} ${s.slice(11,16)}` : s; };
     const ding = () => {
       if (document.body.dataset.sonido !== '1') return;   // sonido desactivado en Mis preferencias
       if (pingEl) { try { pingEl.currentTime = 0; pingEl.play(); } catch {} return; }
@@ -735,15 +787,20 @@
         o.start(); o.stop(ctx.currentTime + 0.36);
       } catch {}
     };
-    const setBadge = (n) => {
-      unreadCount = Math.max(0, n);
+    // El número rojo suma los avisos sin leer de los dos sistemas
+    function pintarBadge() {
+      const total = Math.max(0, unreadCount) + Math.max(0, localUnread);
       if (!notifBadge) return;
-      if (unreadCount > 0) {
+      if (total > 0) {
         notifBadge.classList.remove('d-none');
-        notifBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+        notifBadge.textContent = total > 99 ? '99+' : total;
       } else {
         notifBadge.classList.add('d-none');
       }
+    }
+    const setBadge = (n) => {
+      unreadCount = Math.max(0, n);
+      pintarBadge();
       saveState();
     };
 
@@ -764,6 +821,23 @@
       saveState();
     };
 
+    // Aviso de SPYnet (nueva asistencia o instalación)
+    const upsertLocal = (n) => {
+      if (!notifList || !n || localRendered.has(n.id)) return;
+      const inst = /instal/i.test(n.titulo || '');
+      const li = document.createElement('li');
+      li.className = "px-3 py-2";
+      li.dataset.lid = n.id;
+      li.innerHTML = `
+        <div class="small text-muted">${esc(fechaCorta(n.creado_en))}</div>
+        <div class="fw-semibold"><i class="fa-solid ${inst ? 'fa-plug' : 'fa-ticket'} me-1" style="color:#0284C7"></i>${esc(n.titulo || 'Aviso')}</div>
+        <div class="text-wrap small">${esc(n.cuerpo || '')}</div>
+      `;
+      notifList.prepend(li);
+      localRendered.add(n.id);
+      saveState();
+    };
+
     const showToast = (n) => {
       if (!toastBox) return;
       const el = document.createElement('div');
@@ -773,7 +847,7 @@
         <div class="toast-header">
           <i class="fas fa-bell me-2"></i>
           <strong class="me-auto">${esc(n.opcion || n.titulo || 'Notificación')}</strong>
-          <small class="text-muted">${esc(n.created_at || n.hora || '')}</small>
+          <small class="text-muted">${esc(n.created_at || n.hora || fechaCorta(n.creado_en) || '')}</small>
           <button type="button" class="btn-close ms-2" data-bs-dismiss="toast"></button>
         </div>
         <div class="toast-body">${esc(n.telefono ? ('Tel: '+n.telefono) : (n.cuerpo || ''))}</div>
@@ -781,6 +855,61 @@
       toastBox.appendChild(el);
       setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 6000);
     };
+
+    // ========= Resumen de pendientes =========
+    function grupoHTML(icono, titulo, gr) {
+      const items = (gr.items || []).map(it => {
+        const cuando = it.visita
+          ? `${it.es_hoy ? '<span class="np-tag">Hoy</span>' : ''}${esc(fechaCorta(it.visita))}`
+          : 'Sin fecha';
+        return `<a class="np-item" href="${esc(it.url)}">
+                  <strong>${esc(it.cliente)}</strong>
+                  <span>${cuando} · ${esc(it.tecnico || 'Sin técnico')}${titulo.startsWith('Asist') ? ' · ' + esc(it.tipo) : ''}</span>
+                </a>`;
+      }).join('');
+      const mas = gr.total > (gr.items || []).length
+        ? `<a class="np-more" href="${esc(gr.url)}">Ver las ${gr.total}</a>` : '';
+      return `<div class="np-group">
+          <a class="np-head" href="${esc(gr.url)}"><i class="fa-solid ${icono}"></i>${titulo}<span class="np-count">${gr.total}</span></a>
+          ${gr.hoy ? `<span class="np-hoy">${gr.hoy} para hoy</span>` : ''}
+          ${gr.total ? items + mas : '<div class="np-vacio">Nada pendiente.</div>'}
+        </div>`;
+    }
+    async function cargarPendientes() {
+      if (!pendBox) return;
+      try {
+        const r = await fetch(PEND_API, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) throw new Error();
+        const j = await r.json();
+        pendBox.innerHTML = grupoHTML('fa-ticket', 'Asistencias pendientes', j.asistencias)
+                          + grupoHTML('fa-plug', 'Instalaciones pendientes', j.instalaciones);
+      } catch {
+        pendBox.innerHTML = '<div class="np-cargando">No se pudo cargar lo pendiente.</div>';
+      }
+    }
+
+    // ========= Avisos de SPYnet =========
+    async function cargarLocales(inicial) {
+      try {
+        const url = (inicial || !localLast) ? LOCAL_API : `${LOCAL_API}?since_id=${localLast}`;
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) return;
+        const arr = await r.json();
+        if (!Array.isArray(arr)) return;
+        arr.sort((a, b) => (a.id || 0) - (b.id || 0));
+        arr.forEach(n => {
+          const nuevo = !localRendered.has(n.id);
+          upsertLocal(n);
+          if (!inicial && nuevo && n.id > localLast) { showToast(n); ding(); }
+          localLast = Math.max(localLast, n.id || 0);
+        });
+        // Sin leer: lo recibido después del último "Marcar como leído"
+        localUnread = [...localRendered].filter(id => id > localSeen).length;
+        saveLocal();
+        pintarBadge();
+        if (!inicial && arr.length) cargarPendientes();
+      } catch {}
+    }
 
     // ========= Carga inicial desde API (solo no leídas) =========
     async function loadInitial() {
@@ -835,6 +964,9 @@
 
     // ========= Marcar como leído =========
     async function markAllAsRead() {
+      // Avisos de SPYnet
+      localSeen = localLast; localUnread = 0; saveLocal(); pintarBadge();
+      // Avisos del sistema de reclamos
       const ids = Array.from(rendered.keys());
       if (!ids.length) return;
       try {
@@ -853,11 +985,17 @@
     }
     btnMarkRead?.addEventListener('click', markAllAsRead);
 
+    // Al abrir la campanita, actualizar lo pendiente
+    document.getElementById('notifDropdown')?.addEventListener('show.bs.dropdown', cargarPendientes);
+
     // ========= Arranque =========
     restoreState();
     loadInitial();
     pollUnread();
-    setInterval(pollUnread, POLL_MS);
+    cargarLocales(true);
+    cargarPendientes();
+    setInterval(() => { pollUnread(); cargarLocales(false); }, POLL_MS);
+    setInterval(cargarPendientes, 60000);
     window.addEventListener('beforeunload', saveState);
   })();
   </script>
