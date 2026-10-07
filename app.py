@@ -418,11 +418,36 @@ _HEADER_MAP = {
     "user_pppoe": "pppoe",
     "direccion": "direccion",
     "domicilio": "direccion",
+    # --- Portugués (exportación del sistema anterior) ---
+    "nome": "nombre",
+    "nome_cliente": "nombre",
+    "bairro": "barrio",
+    "telefone": "telefono",
+    "telefone_1": "telefono",
+    "telefone1": "telefono",
+    "fone": "telefono",
+    "situacao": "situacion",
+    "status": "situacion",
+    "isento": "exonerado",
+    "vencimento": "vencimiento",
+    "dia_vencimento": "vencimiento",
+    "endereco": "direccion",
+    "logradouro": "direccion",
+    "cpf": "cedula",
+    "cpf_cnpj": "cedula",
+    "rg": "cedula",
+    "login": "pppoe",
+    "idprovedor": "external_id",
+    "id_provedor": "external_id",
+    "codigo": "external_id",
+    "cod": "external_id",
+    "id_cliente": "external_id",
+    "mensalidade": "valor",
 }
 
 def _parse_bool(v):
     s = (str(v or "")).strip().lower()
-    return 1 if s in ("1","si","sí","true","verdadero","x","s","y","yes") else 0
+    return 1 if s in ("1","si","sí","sim","true","verdadero","x","s","y","yes") else 0
 
 def _parse_date_to_iso(v):
     s = (str(v or "")).strip()
@@ -3221,14 +3246,43 @@ def clientes_importar():
 
     f = request.files.get("csvfile")
     if not f or f.filename == "":
-        flash("Seleccioná un archivo CSV.", "warning")
+        flash("Seleccioná un archivo CSV o Excel (.xlsx).", "warning")
         return redirect(url_for("clientes"))
 
-    text, enc = _try_decode(f)
-    delim = _guess_delimiter(text)
-    reader = csv.DictReader(io.StringIO(text), delimiter=delim)
+    nombre_arch = f.filename.lower()
+    if nombre_arch.endswith(".xls"):
+        flash("Ese archivo es de Excel antiguo (.xls). Ábrelo en Excel, toca Habilitar edición y "
+              "guárdalo como \"Libro de Excel (.xlsx)\" o \"CSV UTF-8\". Después impórtalo de nuevo.", "warning")
+        return redirect(url_for("clientes"))
+
+    if nombre_arch.endswith(".xlsx"):
+        # Excel: se convierte a filas igual que un CSV (primera fila con datos = encabezados)
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
+            filas = [[("" if v is None else str(v).strip()) for v in fila]
+                     for fila in wb.active.iter_rows(values_only=True)]
+            wb.close()
+        except Exception:
+            flash("No se pudo leer el archivo de Excel. Prueba guardarlo como CSV UTF-8.", "danger")
+            return redirect(url_for("clientes"))
+        filas = [r for r in filas if any(r)]
+        if not filas:
+            flash("El archivo de Excel está vacío.", "warning")
+            return redirect(url_for("clientes"))
+        # Números enteros que Excel guarda como 595983399215.0
+        filas = [[re.sub(r"^(\d+)\.0$", r"\1", v) for v in r] for r in filas]
+        enc, delim = "xlsx", "—"
+        si = io.StringIO()
+        csv.writer(si).writerows(filas)
+        text = si.getvalue()
+        reader = csv.DictReader(io.StringIO(text))
+    else:
+        text, enc = _try_decode(f)
+        delim = _guess_delimiter(text)
+        reader = csv.DictReader(io.StringIO(text), delimiter=delim)
     if not reader.fieldnames:
-        flash("No pude leer encabezados del CSV.", "danger")
+        flash("No pude leer los encabezados del archivo.", "danger")
         return redirect(url_for("clientes"))
 
     keymap, desconocidas = {}, []
@@ -3238,7 +3292,7 @@ def clientes_importar():
         if tk: keymap[h] = tk
         else: desconocidas.append(h)
     if not keymap:
-        flash("No reconocí columnas del CSV. Revisá los encabezados.", "danger")
+        flash("No reconocí las columnas del archivo. Revisá los encabezados.", "danger")
         return redirect(url_for("clientes"))
     if desconocidas:
         flash(f"Aviso: columnas ignoradas: {', '.join(desconocidas)}", "warning")
@@ -3304,8 +3358,14 @@ def clientes_importar():
             row = db.execute("SELECT id FROM clientes WHERE external_id=? AND sucursal_id=?",
                              (ext_id, sid)).fetchone()
         if not row and telefono:
-            row = db.execute("SELECT id FROM clientes WHERE telefono=? AND sucursal_id=?",
-                             (telefono, sid)).fetchone()
+            # Por teléfono solo se "adopta" un cliente cargado a mano (sin código del otro sistema).
+            # Así, dos clientes distintos que comparten teléfono (familia, negocio) no se mezclan.
+            if ext_id and "external_id" in cols:
+                row = db.execute("SELECT id FROM clientes WHERE telefono=? AND sucursal_id=? "
+                                 "AND IFNULL(external_id,'')=''", (telefono, sid)).fetchone()
+            else:
+                row = db.execute("SELECT id FROM clientes WHERE telefono=? AND sucursal_id=?",
+                                 (telefono, sid)).fetchone()
 
         if row:
             # Al actualizar, no borrar el plan si el CSV no trae esas columnas
