@@ -230,7 +230,7 @@
                 data-valor="{{ c.valor|default('', true) }}"
                 data-lat="{{ c.lat|default('', true) }}"
                 data-lng="{{ c.lng|default('', true) }}"
-              >{{ nombre_completo }}</option>
+              >{{ nombre_completo }}{% if c.inactivo %} — {{ (c.situacion or 'Inactivo')|capitalize }}{% endif %}</option>
             {% endfor %}
           </select>
           <div class="nt-error">Selecciona un cliente.</div>

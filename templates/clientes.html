@@ -65,6 +65,10 @@
   .cl-sub{ display:block; font-size:12.5px; color:var(--ink-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px; }
   .cl-muted{ color:var(--ink-faint); }
   .cl-num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .cl-coord{ display:inline-block; margin-top:2px; font-size:12px; color:var(--accent); text-decoration:none; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .cl-coord:hover{ text-decoration:underline; text-underline-offset:3px; }
+  .cl-coord.sin{ color:#B7C2D0; }
+  .cl-coord.sin:hover{ color:var(--accent); }
   .cl-pin{ font-size:12px; margin-left:4px; }
   .cl-pin.si{ color:#177A56; }
   .cl-pin.no{ color:#C3CBD6; }
@@ -198,6 +202,12 @@
                    aria-label="{{ 'Tiene ubicación' if tiene_ub else 'Sin ubicación' }}"></i>
                 {% if c.referencia or c.direccion %}
                   <span class="cl-sub" title="{{ c.direccion or c.referencia }}">{{ c.direccion or c.referencia }}</span>
+                {% endif %}
+                {% if tiene_ub %}
+                  <a class="cl-coord" href="https://www.google.com/maps?q={{ c.lat }},{{ c.lng }}" target="_blank" rel="noopener"
+                     title="Abrir en Google Maps">{{ '%.6f'|format(c.lat|float) }}, {{ '%.6f'|format(c.lng|float) }}</a>
+                {% else %}
+                  <a class="cl-coord sin" href="{{ url_for('clientes_editar', cid=c.id) }}#ubPegar" title="Cargar la ubicación">Sin coordenadas · cargar</a>
                 {% endif %}
               </td>
               <td class="cl-num">{{ c.telefono or '—' }}</td>

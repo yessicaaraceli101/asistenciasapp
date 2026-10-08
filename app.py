@@ -214,6 +214,26 @@ def _ensure_cliente_cols():
 
 _ensure_cliente_cols()
 
+def _reparar_activos():
+    """Una sola vez: clientes con situación 'Ativo'/'Activo' que quedaron inactivos por error al editarlos."""
+    try:
+        conn = get_db()
+        conn.execute("CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT)")
+        hecho = conn.execute("SELECT 1 FROM config WHERE clave='migr.activos_ativo'").fetchone()
+        if not hecho and {"activo", "situacion"} <= table_columns(conn, "clientes"):
+            n = conn.execute("""UPDATE clientes SET activo=1
+                                 WHERE IFNULL(activo,1)=0
+                                   AND lower(trim(IFNULL(situacion,''))) IN ('ativo','activo')""").rowcount
+            conn.execute("INSERT INTO config (clave, valor) VALUES ('migr.activos_ativo', ?)", (str(n),))
+            conn.commit()
+            if n:
+                print(f"Reparados {n} clientes 'Ativo' que habían quedado inactivos.")
+        conn.close()
+    except Exception as e:
+        print("Aviso: no se pudo revisar clientes activos:", e)
+
+_reparar_activos()
+
 
 # === Configuración: columnas de preferencias, técnicos y datos de la empresa ===
 def _ensure_config():
@@ -494,6 +514,12 @@ def _split_tipo_valor(raw_tipo_o_tv, raw_valor):
         if m:
             valor = m.group(1).strip()
     return tipo, (valor or None)
+
+def _es_activo(situacion):
+    """Activo salvo que la situación diga cancelado / baja / inactivo (también en portugués: Inativo).
+    Sin situación cargada, se considera activo."""
+    sit = (situacion or "").strip().lower()
+    return 0 if any(x in sit for x in ("cancel", "baja", "inactiv", "inativ")) else 1
 
 # ===========================
 #  AUTH: Registro / Forgot
@@ -1159,6 +1185,16 @@ def nuevo_ticket():
         })
         db.close()
 
+        # La ubicación pegada de Google Maps (exacta) queda también en el cliente, si no tenía.
+        # La aproximada (buscada por dirección) no se guarda en el cliente.
+        if cliente_id and lat is not None and lng is not None and request.form.get("ubic_origen") == "pegada":
+            db2 = get_db()
+            if {"lat", "lng"} <= table_columns(db2, "clientes"):
+                db2.execute("UPDATE clientes SET lat=?, lng=? WHERE id=? AND sucursal_id=? AND (lat IS NULL OR lng IS NULL)",
+                            (lat, lng, cliente_id, current_sucursal_id()))
+                db2.commit()
+            db2.close()
+
         push_notificacion(f"Nueva asistencia: {tipo}",
                           _cuerpo_aviso(cliente, tecnico_nombre, programada_en, falla))
         flash("Ticket registrado.", "success")
@@ -1169,16 +1205,20 @@ def nuevo_ticket():
 
     ccols = table_columns(db, "clientes")
     candidates = ["id","nombre","apellido","direccion","cedula","pppoe","telefono",
-                  "barrio","referencia","tipo_valor","valor","plan","tipo","lat","lng"]
+                  "barrio","referencia","tipo_valor","valor","plan","tipo","lat","lng",
+                  "activo","situacion"]
     select_cols = [c for c in candidates if c in ccols]
     if "id" not in select_cols: select_cols.insert(0, "id")
     if "nombre" not in select_cols: select_cols.insert(1, "nombre")
 
+    # Todos los clientes de la sucursal: los activos primero; los cancelados al final y marcados
+    # (un cancelado puede necesitar, por ejemplo, el retiro de equipos)
+    orden = "CASE WHEN IFNULL(activo,1)=1 THEN 0 ELSE 1 END, " if "activo" in ccols else ""
     sql = f"""
         SELECT {', '.join(select_cols)}
           FROM clientes
-         WHERE activo=1 AND sucursal_id=?
-      ORDER BY nombre COLLATE NOCASE ASC
+         WHERE sucursal_id=?
+      ORDER BY {orden}nombre COLLATE NOCASE ASC
     """
     clientes_rows = db.execute(sql, (current_sucursal_id(),)).fetchall()
 
@@ -1209,6 +1249,8 @@ def nuevo_ticket():
             "tipo": _txt(rd.get("tipo")) or "cliente",
             "lat": _txt(rd.get("lat")),
             "lng": _txt(rd.get("lng")),
+            "inactivo": rd.get("activo") == 0,
+            "situacion": _txt(rd.get("situacion")),
         })
 
     tecnicos = db.execute("""
@@ -2763,7 +2805,7 @@ def _cliente_form_data(cols):
     tipo        = request.form.get("tipo","").strip() or "cliente"
     valor       = request.form.get("valor","").strip() or None
     vencimiento = request.form.get("vencimiento","").strip()
-    activo      = 1 if any(x in situacion.lower() for x in ["activo","al día","al dia","en servicio","ok"]) else 0
+    activo      = _es_activo(situacion)
 
     data = {
         "external_id": external_id or None,
@@ -2781,10 +2823,19 @@ def _cliente_form_data(cols):
     # La dirección solo se toca si el formulario la trae (evita borrarla)
     if "direccion" in request.form:
         data["direccion"] = direccion or None
+    # Ubicación (coordenadas): solo si el formulario trae el campo; vacío = quitar la ubicación
+    if "lat" in request.form and "lng" in request.form:
+        la, lo = request.form.get("lat", type=float), request.form.get("lng", type=float)
+        if la is not None and lo is not None and -90 <= la <= 90 and -180 <= lo <= 180:
+            data["lat"], data["lng"] = round(la, 7), round(lo, 7)
+        elif not (request.form.get("lat") or "").strip():
+            data["lat"] = data["lng"] = None
     if "tipo" in cols: data["tipo"] = tipo
     if "valor" in cols: data["valor"] = valor
     if "tipo_valor" in cols and ("tipo" not in cols or "valor" not in cols):
         data["tipo_valor"] = f"{tipo} {valor}" if valor else tipo
+    if "megas" in request.form:
+        data["megas"] = (request.form.get("megas") or "").strip() or None
     if "vivienda" in request.form:
         data.update(_servicio_form_data(request.form))
 
@@ -2843,8 +2894,16 @@ def clientes_detalle(cid):
             ORDER BY datetime(fecha) DESC
             LIMIT 10
         """, (full_name, current_sucursal_id())).fetchall()
+    # Caja NAP y puerto del cliente
+    nap = None
+    try:
+        if "nap_id" in c.keys() and c["nap_id"]:
+            r = db.execute("SELECT id, nombre FROM cajas_nap WHERE id=?", (c["nap_id"],)).fetchone()
+            nap = dict(r) if r else None
+    except sqlite3.Error:
+        nap = None
     db.close()
-    return render_template("cliente_detalle.html", c=c, tickets=tickets)
+    return render_template("cliente_detalle.html", c=c, tickets=tickets, nap=nap)
 
 @app.route("/clientes/<int:cid>/editar", methods=["GET","POST"])
 def clientes_editar(cid):
@@ -3327,7 +3386,7 @@ def clientes_importar():
         tipo_final, valor_final = _split_tipo_valor(tipo_in or tv, valor_in)
         venc       = _parse_date_to_iso(norm.get("vencimiento"))
 
-        activo = 0 if situacion.lower() in ("inactivo","baja","suspendido","cancelado") else 1
+        activo = _es_activo(situacion)
         if not (ext_id or nombre or telefono):
             continue
 
