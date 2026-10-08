@@ -3302,6 +3302,8 @@ def clientes_importar():
     ins = upd = 0
     sid = current_sucursal_id()
     csv_trae_plan = bool({"tipo", "valor", "tipo_valor"} & set(keymap.values()))
+    columnas_archivo = set(keymap.values())
+    sin_nombre = 0
 
     for raw in reader:
         if not any((str(v or "").strip() for v in raw.values())):
@@ -3368,13 +3370,27 @@ def clientes_importar():
                                  (telefono, sid)).fetchone()
 
         if row:
-            # Al actualizar, no borrar el plan si el CSV no trae esas columnas
+            # Al actualizar, solo se tocan los datos que el archivo trae.
+            # Así, un archivo con solo "código + cédula + PPPoE" no borra el nombre, el teléfono, etc.
             if not csv_trae_plan:
                 for k in ("tipo", "valor", "tipo_valor"):
                     data.pop(k, None)
+            for campo in ("external_id", "nombre", "referencia", "barrio", "telefono",
+                          "situacion", "exonerado", "vencimiento"):
+                if campo not in columnas_archivo:
+                    data.pop(campo, None)
+            if "situacion" not in columnas_archivo:
+                data.pop("activo", None)
+            data.pop("sucursal_id", None)
+            if not data:
+                continue
             sets = ", ".join([f"{k}=?" for k in data.keys()])
             db.execute(f"UPDATE clientes SET {sets} WHERE id=?", list(data.values())+[row["id"]])
             upd += 1
+        elif not nombre:
+            # Cliente nuevo sin nombre (por ejemplo, un código que no existe): no se crea
+            sin_nombre += 1
+            continue
         else:
             qs = ", ".join(["?"]*len(data))
             db.execute(f"INSERT INTO clientes ({', '.join(data.keys())}) VALUES ({qs})", list(data.values()))
@@ -3382,6 +3398,8 @@ def clientes_importar():
 
     db.commit(); db.close()
     flash(f"Importación OK. Insertados {ins}, actualizados {upd}. (codificación {enc}, separador '{delim}')", "success")
+    if sin_nombre:
+        flash(f"{sin_nombre} fila(s) no se importaron: no coinciden con ningún cliente y no traen nombre.", "warning")
     return redirect(url_for("clientes"))
 
 # --- API datos para el mapa ---
@@ -3452,7 +3470,19 @@ def api_mapa_datos():
         pass   # todavía no existe la tabla de posiciones: el mapa funciona igual, sin técnicos
     db.close()
 
-    return jsonify({"tickets": tickets, "tecnicos": tecnicos, "sin_ubicacion": sin_ubicacion})
+    # Cajas NAP de la sucursal (con ocupación y alertas)
+    try:
+        db = get_db()
+        naps = [{"id": n["id"], "nombre": n["nombre"], "lat": n["lat"], "lng": n["lng"],
+                 "puertos": n["puertos"], "ocupados": n["ocupados"], "libres": n["libres"],
+                 "estado": n["estado"], "alerta": n["alerta"], "reclamos": n["reclamos"],
+                 "descripcion": n["descripcion"], "url": url_for("red_nap", nid=n["id"])}
+                for n in _naps(db, sid) if n["lat"] is not None and n["lng"] is not None]
+        db.close()
+    except sqlite3.Error:
+        naps = []
+
+    return jsonify({"tickets": tickets, "tecnicos": tecnicos, "sin_ubicacion": sin_ubicacion, "naps": naps})
 
 # --- Trayectoria de un técnico (por fecha) ---
 @app.route("/api/tecnico_trayectoria/<int:tid>", endpoint="api_tecnico_trayectoria")
@@ -4116,6 +4146,16 @@ def _ot_datos(db, t, sid):
         plan = m.group(1) if m else None
     c["plan_mostrar"] = plan
 
+    # Caja NAP y puerto del cliente (para la orden de trabajo)
+    c["nap_txt"] = None
+    if c.get("nap_id"):
+        try:
+            n = db.execute("SELECT nombre FROM cajas_nap WHERE id=?", (c["nap_id"],)).fetchone()
+            if n:
+                c["nap_txt"] = n["nombre"] + (f" · puerto {c['nap_puerto']}" if c.get("nap_puerto") else "")
+        except sqlite3.Error:
+            pass
+
     # Técnico: por tecnico_id o por nombre
     tec = None
     try:
@@ -4302,6 +4342,245 @@ def ordenes_trabajo():
 
     return render_template("ordenes_trabajo.html", ordenes=ordenes, vista=vista,
                            tecnico_f=tecnico_f, tecnicos=tecnicos, cuentas=cuentas)
+
+
+# ===========================
+#  Red: cajas NAP
+# ===========================
+# Cada caja NAP tiene ubicación y cantidad de puertos. Cada cliente puede estar
+# conectado a una caja y a un puerto (clientes.nap_id / clientes.nap_puerto).
+def _ensure_red():
+    try:
+        conn = get_db()
+        conn.execute("""CREATE TABLE IF NOT EXISTS cajas_nap (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sucursal_id INTEGER NOT NULL,
+            nombre TEXT NOT NULL,
+            lat REAL, lng REAL,
+            puertos INTEGER DEFAULT 16,
+            descripcion TEXT,
+            creado TEXT)""")
+        ccols = table_columns(conn, "clientes")
+        if ccols:
+            for c in ("nap_id", "nap_puerto"):
+                if c not in ccols:
+                    conn.execute(f"ALTER TABLE clientes ADD COLUMN {c} INTEGER")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print("Aviso: no se pudo preparar la tabla de cajas NAP:", e)
+
+_ensure_red()
+
+def _naps(db, sid, nap_id=None):
+    """Cajas de la sucursal con ocupación, reclamos recientes y estado (color)."""
+    acols = table_columns(db, "asistencias")
+    if "cliente_id" in acols:
+        reclamos = """(SELECT COUNT(*) FROM asistencias a JOIN clientes c2 ON c2.id = a.cliente_id
+                        WHERE c2.nap_id = n.id
+                          AND lower(IFNULL(a.estado,'pendiente')) IN ('pendiente','en_progreso')
+                          AND lower(IFNULL(a.tipo,'')) NOT LIKE 'instal%'
+                          AND datetime(a.fecha) >= datetime('now','localtime','-2 days'))"""
+    else:
+        reclamos = "0"
+    sql = f"""SELECT n.*,
+                     (SELECT COUNT(*) FROM clientes c WHERE c.nap_id = n.id) AS ocupados,
+                     {reclamos} AS reclamos
+                FROM cajas_nap n
+               WHERE n.sucursal_id = ?"""
+    params = [sid]
+    if nap_id:
+        sql += " AND n.id = ?"
+        params.append(nap_id)
+    sql += " ORDER BY n.nombre COLLATE NOCASE"
+    res = []
+    for r in db.execute(sql, params).fetchall():
+        d = dict(r)
+        d["puertos"] = int(d["puertos"] or 0)
+        d["libres"] = max(d["puertos"] - d["ocupados"], 0)
+        pct = (d["ocupados"] / d["puertos"]) if d["puertos"] else 1
+        d["estado"] = "llena" if d["libres"] == 0 else ("casi" if pct >= 0.75 else "ok")
+        d["alerta"] = (d["reclamos"] or 0) >= 2      # varios reclamos en la misma caja: posible falla
+        res.append(d)
+    return res
+
+@app.route("/red")
+def red():
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    db = get_db()
+    naps = _naps(db, current_sucursal_id())
+    db.close()
+    resumen = {
+        "cajas": len(naps),
+        "puertos": sum(n["puertos"] for n in naps),
+        "ocupados": sum(n["ocupados"] for n in naps),
+        "llenas": sum(1 for n in naps if n["estado"] == "llena"),
+        "alertas": sum(1 for n in naps if n["alerta"]),
+    }
+    resumen["libres"] = resumen["puertos"] - resumen["ocupados"]
+    return render_template("red.html", naps=naps, resumen=resumen,
+                           es_admin=session.get("rol") == "admin",
+                           editar=request.args.get("editar", type=int))
+
+@app.route("/red/nap/guardar", methods=["POST"])
+def red_nap_guardar():
+    """Crea una caja NAP o edita una existente (si viene id)."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    f = request.form
+    nid = f.get("id", type=int)
+    nombre = (f.get("nombre") or "").strip()
+    puertos = f.get("puertos", type=int) or 0
+    lat, lng = f.get("lat", type=float), f.get("lng", type=float)
+    descripcion = (f.get("descripcion") or "").strip() or None
+    sid = current_sucursal_id()
+
+    if not nombre:
+        flash("Escribe el nombre de la caja.", "warning")
+        return redirect(url_for("red"))
+    if not (1 <= puertos <= 128):
+        flash("La cantidad de puertos debe estar entre 1 y 128.", "warning")
+        return redirect(url_for("red"))
+    if (lat is None) != (lng is None):
+        lat = lng = None
+
+    db = get_db()
+    otra = db.execute("SELECT id FROM cajas_nap WHERE lower(nombre)=lower(?) AND sucursal_id=? AND id<>?",
+                      (nombre, sid, nid or 0)).fetchone()
+    if otra:
+        db.close()
+        flash(f"Ya existe una caja llamada {nombre} en esta sucursal.", "warning")
+        return redirect(url_for("red"))
+
+    if nid:
+        actual = db.execute("SELECT * FROM cajas_nap WHERE id=? AND sucursal_id=?", (nid, sid)).fetchone()
+        if not actual:
+            db.close()
+            flash("La caja ya no existe.", "warning")
+            return redirect(url_for("red"))
+        # No achicar por debajo de los puertos que ya están en uso
+        mayor = db.execute("SELECT MAX(nap_puerto) FROM clientes WHERE nap_id=?", (nid,)).fetchone()[0] or 0
+        if puertos < mayor:
+            db.close()
+            flash(f"No se puede dejar en {puertos} puertos: el puerto {mayor} está ocupado.", "warning")
+            return redirect(url_for("red_nap", nid=nid))
+        db.execute("UPDATE cajas_nap SET nombre=?, puertos=?, lat=?, lng=?, descripcion=? WHERE id=?",
+                   (nombre, puertos, lat, lng, descripcion, nid))
+        flash(f"Caja {nombre} actualizada.", "success")
+    else:
+        cur = db.execute("INSERT INTO cajas_nap (sucursal_id, nombre, lat, lng, puertos, descripcion, creado) "
+                         "VALUES (?,?,?,?,?,?,?)",
+                         (sid, nombre, lat, lng, puertos, descripcion, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        nid = cur.lastrowid
+        flash(f"Caja {nombre} creada. Ahora puedes asignarle clientes.", "success")
+    db.commit()
+    db.close()
+    return redirect(url_for("red_nap", nid=nid))
+
+@app.route("/red/nap/<int:nid>/eliminar", methods=["POST"])
+def red_nap_eliminar(nid):
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    if session.get("rol") != "admin":
+        flash("Solo un administrador puede eliminar cajas.", "warning")
+        return redirect(url_for("red"))
+    db = get_db()
+    n = db.execute("SELECT nombre FROM cajas_nap WHERE id=? AND sucursal_id=?", (nid, current_sucursal_id())).fetchone()
+    if n:
+        libres = db.execute("UPDATE clientes SET nap_id=NULL, nap_puerto=NULL WHERE nap_id=?", (nid,)).rowcount
+        db.execute("DELETE FROM cajas_nap WHERE id=?", (nid,))
+        db.commit()
+        flash(f"Caja {n['nombre']} eliminada." + (f" {libres} cliente(s) quedaron sin caja asignada." if libres else ""), "success")
+    db.close()
+    return redirect(url_for("red"))
+
+@app.route("/red/nap/<int:nid>")
+def red_nap(nid):
+    """Detalle de una caja: sus puertos y qué cliente está en cada uno."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    sid = current_sucursal_id()
+    db = get_db()
+    nap = _naps(db, sid, nid)
+    if not nap:
+        db.close()
+        flash("Caja no encontrada en esta sucursal.", "warning")
+        return redirect(url_for("red"))
+    nap = nap[0]
+    ccols = table_columns(db, "clientes")
+    acols = table_columns(db, "asistencias")
+    barrio = "barrio" if "barrio" in ccols else "NULL"
+    abiertos = ("""(SELECT COUNT(*) FROM asistencias a WHERE a.cliente_id = c.id
+                     AND lower(IFNULL(a.estado,'pendiente')) IN ('pendiente','en_progreso'))"""
+                if "cliente_id" in acols else "0")
+    conectados = {r["nap_puerto"]: dict(r) for r in db.execute(f"""
+        SELECT c.id, c.nombre, {barrio} AS barrio, c.telefono, c.nap_puerto, {abiertos} AS abiertos
+          FROM clientes c WHERE c.nap_id = ? ORDER BY c.nap_puerto""", (nid,)).fetchall()}
+    # Clientes para asignar (con la caja en la que están ahora, si tienen)
+    clientes = [dict(r) for r in db.execute(f"""
+        SELECT c.id, c.nombre, {barrio} AS barrio, c.nap_id, c.nap_puerto, n.nombre AS nap_nombre
+          FROM clientes c LEFT JOIN cajas_nap n ON n.id = c.nap_id
+         WHERE c.sucursal_id = ?
+         ORDER BY c.nombre COLLATE NOCASE""", (sid,)).fetchall()]
+    db.close()
+    puertos = [{"n": i, "cliente": conectados.get(i)} for i in range(1, nap["puertos"] + 1)]
+    sin_puerto = [c for p, c in conectados.items() if not p]
+    return render_template("red_nap.html", nap=nap, puertos=puertos, clientes=clientes,
+                           sin_puerto=sin_puerto, es_admin=session.get("rol") == "admin")
+
+@app.route("/red/nap/<int:nid>/asignar", methods=["POST"])
+def red_nap_asignar(nid):
+    """Conecta un cliente a un puerto de la caja (si estaba en otra caja, se mueve)."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    sid = current_sucursal_id()
+    cid = request.form.get("cliente_id", type=int)
+    puerto = request.form.get("puerto", type=int)
+    db = get_db()
+    nap = db.execute("SELECT * FROM cajas_nap WHERE id=? AND sucursal_id=?", (nid, sid)).fetchone()
+    cli = db.execute("SELECT id, nombre, nap_id, nap_puerto FROM clientes WHERE id=? AND sucursal_id=?",
+                     (cid, sid)).fetchone() if cid else None
+    if not nap or not cli:
+        db.close()
+        flash("Elige un cliente de la lista.", "warning")
+        return redirect(url_for("red_nap", nid=nid))
+    if not puerto or not (1 <= puerto <= (nap["puertos"] or 0)):
+        db.close()
+        flash("Elige un puerto válido.", "warning")
+        return redirect(url_for("red_nap", nid=nid))
+    ocupado = db.execute("SELECT nombre FROM clientes WHERE nap_id=? AND nap_puerto=? AND id<>?",
+                         (nid, puerto, cid)).fetchone()
+    if ocupado:
+        db.close()
+        flash(f"El puerto {puerto} ya está ocupado por {ocupado['nombre']}.", "warning")
+        return redirect(url_for("red_nap", nid=nid))
+    antes = None
+    if cli["nap_id"] and cli["nap_id"] != nid:
+        r = db.execute("SELECT nombre FROM cajas_nap WHERE id=?", (cli["nap_id"],)).fetchone()
+        antes = r["nombre"] if r else None
+    db.execute("UPDATE clientes SET nap_id=?, nap_puerto=? WHERE id=?", (nid, puerto, cid))
+    db.commit()
+    db.close()
+    flash(f"{cli['nombre']} conectado al puerto {puerto} de {nap['nombre']}."
+          + (f" (Se quitó de {antes}.)" if antes else ""), "success")
+    return redirect(url_for("red_nap", nid=nid))
+
+@app.route("/red/nap/<int:nid>/liberar", methods=["POST"])
+def red_nap_liberar(nid):
+    """Desconecta un cliente de la caja (el puerto queda libre)."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    cid = request.form.get("cliente_id", type=int)
+    db = get_db()
+    cli = db.execute("SELECT nombre, nap_puerto FROM clientes WHERE id=? AND nap_id=? AND sucursal_id=?",
+                     (cid, nid, current_sucursal_id())).fetchone()
+    if cli:
+        db.execute("UPDATE clientes SET nap_id=NULL, nap_puerto=NULL WHERE id=?", (cid,))
+        db.commit()
+        flash(f"Puerto {cli['nap_puerto']} liberado ({cli['nombre']} quedó sin caja).", "success")
+    db.close()
+    return redirect(url_for("red_nap", nid=nid))
 
 
 # ===========================

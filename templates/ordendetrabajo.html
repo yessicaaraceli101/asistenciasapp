@@ -398,7 +398,11 @@
         {% else %}
           <div class="ot-box"><span>Potencia Rx ONU (dBm)</span></div>
         {% endif %}
-        <div class="ot-box"><span>Caja NAP / puerto</span></div>
+        {% if c.nap_txt %}
+          <div class="ot-box lleno"><span>Caja NAP / puerto</span><strong>{{ c.nap_txt }}</strong></div>
+        {% else %}
+          <div class="ot-box"><span>Caja NAP / puerto</span></div>
+        {% endif %}
       </div>
       <div class="ot-checks">
         <span>Corte de fibra</span><span>Atenuación alta</span><span>Conector / acometida</span>

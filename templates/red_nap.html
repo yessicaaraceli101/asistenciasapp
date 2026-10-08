@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}{{ nap.nombre }} · Cajas NAP{% endblock %}
+
+{% block extra_head %}
+<style>
+  .rn, .rn-modal{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --line:#D9E0E8; --line-soft:#E8EDF2; --accent:#0284C7; --accent-hover:#0369A1; --danger:#C2362F;
+    color:var(--ink);
+  }
+  .rn{ max-width:1100px; margin:0 auto; padding:8px 0 40px; }
+  .rn-back{ display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--ink-soft); text-decoration:none; margin-bottom:10px; }
+  .rn-back:hover{ color:var(--accent); }
+  .rn-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
+  .rn-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 6px; }
+  .rn-meta{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:14px; color:var(--ink-soft); }
+  .rn-acc{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  .rn-btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; height:40px; padding:0 16px; border-radius:8px;
+    font-size:14px; font-weight:500; text-decoration:none; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--accent); background:var(--accent); color:#fff; }
+  .rn-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .rn-btn:disabled{ opacity:.7; cursor:progress; }
+  .rn-btn-ghost{ background:#fff; border-color:var(--line); color:var(--ink); }
+  .rn-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+
+  .rn-chip{ display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; border:1px solid transparent; font-size:12.5px; font-weight:500; }
+  .rn-chip::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .st-ok   { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
+  .st-casi { color:#8A5A00; background:#FFF7E6; border-color:#F5E0B3; }
+  .st-llena{ color:#C2362F; background:#FDF1F0; border-color:#F3CFCC; }
+
+  .rn-alert{ display:flex; gap:10px; padding:10px 14px; margin-bottom:16px; border-radius:8px; background:#FDF1F0; border:1px solid #F3CFCC; color:#8E2620; font-size:14px; }
+  .rn-desc{ font-size:14px; color:var(--ink-soft); margin:-6px 0 16px; }
+
+  .rn-panel{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 20px 20px; }
+  .rn-panel h2{ font-size:16px; font-weight:600; margin:0 0 4px; }
+  .rn-panel > p{ font-size:13px; color:var(--ink-faint); margin:0 0 14px; }
+
+  .rn-ports{ display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; }
+  .rn-port{ border:1px solid var(--line); border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; gap:6px; min-height:96px; }
+  .rn-port.libre{ border-style:dashed; background:#FAFBFD; }
+  .rn-port-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .rn-num{ font-size:12px; font-weight:600; color:var(--ink-soft); background:#EEF2F6; border-radius:4px; padding:1px 7px; font-variant-numeric:tabular-nums; }
+  .rn-port.ocupado .rn-num{ background:#E0F2FE; color:#0369A1; }
+  .rn-port a.rn-cli{ font-weight:600; font-size:14px; color:var(--ink); text-decoration:none; line-height:1.3; }
+  .rn-port a.rn-cli:hover{ color:var(--accent); text-decoration:underline; }
+  .rn-port small{ font-size:12.5px; color:var(--ink-faint); }
+  .rn-port .rn-tk{ font-size:12px; font-weight:600; color:#8A5A00; }
+  .rn-port-acc{ margin-top:auto; display:flex; gap:12px; }
+  .rn-link{ background:none; border:0; padding:0; font:inherit; font-size:13px; font-weight:500; color:var(--accent); cursor:pointer; }
+  .rn-link:hover{ text-decoration:underline; text-underline-offset:3px; }
+  .rn-link.danger{ color:var(--danger); }
+  .rn-libre-txt{ font-size:13px; color:var(--ink-faint); }
+
+  /* Modal asignar */
+  .rn-modal .modal-content{ border:1px solid var(--line); border-radius:12px; }
+  .rn-modal .modal-title{ font-weight:600; font-size:18px; }
+  .rn-modal label{ display:block; font-size:14px; font-weight:500; margin:12px 0 6px; }
+  .rn-modal input, .rn-modal select{ width:100%; padding:0 12px; height:42px; font:inherit; font-size:14px; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .rn-modal select[size]{ height:auto; padding:4px; }
+  .rn-modal select[size] option{ padding:6px 8px; border-radius:4px; }
+  .rn-modal input:focus, .rn-modal select:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .rn-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:6px; }
+  .rn-err{ font-size:13px; color:var(--danger); margin-top:8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set estados = {'ok':'Con lugar', 'casi':'Casi llena', 'llena':'Llena'} %}
+<div class="rn">
+  <a class="rn-back" href="{{ url_for('red') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver a cajas NAP</a>
+
+  <div class="rn-head">
+    <div>
+      <h1>{{ nap.nombre }}</h1>
+      <div class="rn-meta">
+        <span class="rn-chip st-{{ nap.estado }}">{{ estados[nap.estado] }}</span>
+        <span><strong>{{ nap.libres }}</strong> libre{{ 's' if nap.libres != 1 }} de {{ nap.puertos }} puertos</span>
+      </div>
+    </div>
+    <div class="rn-acc">
+      {% if nap.lat is not none %}
+        <a class="rn-btn rn-btn-ghost" href="{{ url_for('mapa', nap=nap.id) }}"><i class="fa-solid fa-location-dot"></i> Ver en el mapa</a>
+      {% endif %}
+      <a class="rn-btn rn-btn-ghost" href="{{ url_for('red', editar=nap.id) }}"><i class="fa-regular fa-pen-to-square"></i> Editar caja</a>
+      {% if nap.libres %}
+        <button type="button" class="rn-btn js-asig" data-puerto=""><i class="fa-solid fa-user-plus"></i> Conectar cliente</button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if nap.descripcion %}<p class="rn-desc">{{ nap.descripcion }}</p>{% endif %}
+
+  {% if nap.alerta %}
+    <div class="rn-alert" role="status">
+      <i class="fa-solid fa-bolt" aria-hidden="true" style="margin-top:3px"></i>
+      <span><strong>Posible falla en esta caja:</strong> {{ nap.reclamos }} clientes conectados aquí tienen reclamos abiertos de los últimos 2 días.
+      Antes de visitar casa por casa, conviene revisar la caja y la fibra que llega a ella.</span>
+    </div>
+  {% endif %}
+
+  <section class="rn-panel">
+    <h2>Puertos</h2>
+    <p>Cada recuadro es un puerto de la caja. Toca un puerto libre para conectar un cliente.</p>
+    <div class="rn-ports">
+      {% for p in puertos %}
+        {% set c = p.cliente %}
+        <div class="rn-port {{ 'ocupado' if c else 'libre' }}">
+          <div class="rn-port-top">
+            <span class="rn-num">Puerto {{ p.n }}</span>
+            {% if c and c.abiertos %}<span class="rn-tk"><i class="fa-solid fa-ticket"></i> {{ c.abiertos }} abierto{{ 's' if c.abiertos > 1 }}</span>{% endif %}
+          </div>
+          {% if c %}
+            <a class="rn-cli" href="{{ url_for('clientes_detalle', cid=c.id) }}">{{ c.nombre }}</a>
+            <small>{{ c.barrio or '' }}{% if c.barrio and c.telefono %} · {% endif %}{{ c.telefono or '' }}</small>
+            <div class="rn-port-acc">
+              <form method="post" action="{{ url_for('red_nap_liberar', nid=nap.id) }}"
+                    onsubmit="return confirm('¿Liberar el puerto {{ p.n }}? {{ c.nombre|replace("'", "") }} quedará sin caja asignada.')">
+                <input type="hidden" name="cliente_id" value="{{ c.id }}">
+                <button type="submit" class="rn-link danger">Liberar</button>
+              </form>
+            </div>
+          {% else %}
+            <span class="rn-libre-txt">Libre</span>
+            <div class="rn-port-acc">
+              <button type="button" class="rn-link js-asig" data-puerto="{{ p.n }}"><i class="fa-solid fa-plus"></i> Conectar cliente</button>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if sin_puerto %}
+      <p style="margin:16px 0 0;font-size:13px;color:var(--ink-faint)">
+        También conectados a esta caja, sin puerto indicado:
+        {% for c in sin_puerto %}<a href="{{ url_for('clientes_detalle', cid=c.id) }}">{{ c.nombre }}</a>{{ ', ' if not loop.last }}{% endfor %}.
+      </p>
+    {% endif %}
+  </section>
+</div>
+
+<!-- Modal: conectar cliente -->
+<div class="modal fade rn-modal" id="mAsig" tabindex="-1" aria-labelledby="mAsigTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('red_nap_asignar', nid=nap.id) }}" id="fAsig">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="mAsigTitle">Conectar cliente a {{ nap.nombre }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body pt-0">
+        <label for="asigPuerto" style="margin-top:0">Puerto</label>
+        <select id="asigPuerto" name="puerto" required>
+          {% for p in puertos if not p.cliente %}<option value="{{ p.n }}">Puerto {{ p.n }}</option>{% endfor %}
+        </select>
+
+        <label for="asigBuscar">Cliente</label>
+        <input type="search" id="asigBuscar" placeholder="Escribe el nombre o el barrio" autocomplete="off">
+        <select id="asigCliente" name="cliente_id" size="8" required style="margin-top:8px">
+          {% for c in clientes %}
+            <option value="{{ c.id }}" data-buscar="{{ [c.nombre, c.barrio]|select|join(' ')|lower }}"
+                    {% if c.nap_id == nap.id %}disabled{% endif %}>
+              {{ c.nombre }}{% if c.barrio %} · {{ c.barrio }}{% endif %}{% if c.nap_id == nap.id %} (ya está en esta caja){% elif c.nap_nombre %} — hoy en {{ c.nap_nombre }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+        <div class="rn-hint">Si el cliente ya está en otra caja, se mueve a esta.</div>
+        <div class="rn-err" id="asigErr" hidden></div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="rn-btn rn-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="rn-btn">Conectar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const mEl = $('mAsig'), modal = new bootstrap.Modal(mEl), form = $('fAsig');
+  const buscar = $('asigBuscar'), sel = $('asigCliente');
+  const opciones = [...sel.options];
+  const norm = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  buscar.addEventListener('input', () => {
+    const q = norm(buscar.value.trim());
+    let primera = null;
+    opciones.forEach(o => {
+      const ok = !q || norm(o.dataset.buscar).includes(q);
+      o.hidden = !ok;
+      if (ok && !o.disabled && !primera) primera = o;
+    });
+    if (primera && (sel.selectedOptions[0]?.hidden ?? true)) sel.value = primera.value;
+  });
+  buscar.addEventListener('keydown', e => { if (e.key === 'ArrowDown'){ e.preventDefault(); sel.focus(); } });
+
+  document.querySelectorAll('.js-asig').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.puerto) $('asigPuerto').value = b.dataset.puerto;
+    buscar.value = ''; opciones.forEach(o => o.hidden = false); sel.value = '';
+    $('asigErr').hidden = true;
+    form.querySelector('[type=submit]').disabled = false;
+    modal.show();
+  }));
+  mEl.addEventListener('shown.bs.modal', () => buscar.focus());
+  sel.addEventListener('dblclick', () => form.requestSubmit());
+
+  form.addEventListener('submit', e => {
+    if (!sel.value){ e.preventDefault(); $('asigErr').textContent = 'Elige un cliente de la lista.'; $('asigErr').hidden = false; return; }
+    form.querySelector('[type=submit]').disabled = true;
+  });
+})();
+</script>
+{% endblock %}

@@ -65,6 +65,9 @@
   .cl-sub{ display:block; font-size:12.5px; color:var(--ink-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px; }
   .cl-muted{ color:var(--ink-faint); }
   .cl-num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .cl-pin{ font-size:12px; margin-left:4px; }
+  .cl-pin.si{ color:#177A56; }
+  .cl-pin.no{ color:#C3CBD6; }
 
   .cl-status{
     display:inline-flex; align-items:center; gap:6px;
@@ -128,8 +131,8 @@
       <p>{{ total }} cliente{{ 's' if total != 1 }}{% if filtros_activos %} con estos filtros{% endif %}</p>
     </div>
     <div class="cl-head-actions">
-      <label class="cl-btn cl-btn-ghost mb-0" for="csvfile" tabindex="0">
-        <i class="fa-solid fa-file-import" aria-hidden="true"></i> Importar CSV
+      <label class="cl-btn cl-btn-ghost mb-0" for="csvfile" tabindex="0" title="Archivo Excel (.xlsx) o CSV">
+        <i class="fa-solid fa-file-import" aria-hidden="true"></i> Importar clientes
       </label>
       <a class="cl-btn" href="{{ url_for('clientes_nuevo') }}">
         <i class="fa-solid fa-plus" aria-hidden="true"></i> Nuevo cliente
@@ -138,7 +141,8 @@
   </div>
 
   <form id="importForm" action="{{ url_for('clientes_importar') }}" method="post" enctype="multipart/form-data" hidden>
-    <input type="file" id="csvfile" name="csvfile" accept=".csv">
+    <input type="file" id="csvfile" name="csvfile"
+           accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv">
   </form>
 
   <div class="cl-panel">
@@ -177,6 +181,7 @@
           {% for c in clientes %}
             {% set sit = (c.situacion or '')|lower %}
             {% set venc = (c.vencimiento or '')|string|trim %}
+            {% set tiene_ub = c.lat is not none and c.lng is not none %}
             <tr>
               <td class="cl-name">
                 <a href="{{ url_for('clientes_detalle', cid=c.id) }}">{{ c.nombre }}</a>
@@ -188,6 +193,9 @@
               </td>
               <td class="col-hide">
                 {{ c.barrio or '—' }}
+                <i class="fa-solid fa-location-dot cl-pin {{ 'si' if tiene_ub else 'no' }}"
+                   title="{{ 'Tiene ubicación en el mapa' if tiene_ub else 'Sin ubicación en el mapa' }}"
+                   aria-label="{{ 'Tiene ubicación' if tiene_ub else 'Sin ubicación' }}"></i>
                 {% if c.referencia or c.direccion %}
                   <span class="cl-sub" title="{{ c.direccion or c.referencia }}">{{ c.direccion or c.referencia }}</span>
                 {% endif %}
@@ -196,12 +204,12 @@
               <td class="col-hide cl-num">
                 {% if c.valor %}{{ c.valor }} Gs.{% else %}<span class="cl-muted">—</span>{% endif %}
                 {% if venc %}
-                  <span class="cl-sub">{% if venc.isdigit() and venc|int <= 31 %}Vence el día {{ venc }}{% else %}Vence {{ venc }}{% endif %}</span>
+                  <span class="cl-sub">{% if venc.isdigit() and venc|int <= 31 %}Vence el día {{ venc|int }}{% else %}Vence {{ venc }}{% endif %}</span>
                 {% endif %}
               </td>
               <td>
                 {% if c.situacion %}
-                  <span class="cl-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspend' in sit or 'deud' in sit %}st-warn{% else %}st-off{% endif %}">
+                  <span class="cl-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspen' in sit or 'bloq' in sit or 'deud' in sit %}st-warn{% else %}st-off{% endif %}">
                     {{ c.situacion|capitalize }}
                   </span>
                 {% else %}<span class="cl-muted">—</span>{% endif %}
@@ -230,7 +238,7 @@
                   Ningún cliente coincide con los filtros. <a href="{{ url_for('clientes') }}">Ver todos</a>
                 {% else %}
                   <i class="fa-regular fa-address-book" aria-hidden="true"></i>
-                  Todavía no hay clientes. <a href="{{ url_for('clientes_nuevo') }}">Crea el primero</a> o importa un CSV.
+                  Todavía no hay clientes. <a href="{{ url_for('clientes_nuevo') }}">Crea el primero</a> o importa un Excel.
                 {% endif %}
               </td>
             </tr>
@@ -283,7 +291,7 @@
 {% block extra_scripts %}
 <script>
 (() => {
-  // Importar CSV al elegir archivo (también con teclado)
+  // Importar clientes al elegir archivo (también con teclado)
   const file = document.getElementById('csvfile');
   file.addEventListener('change', () => { if (file.files.length) document.getElementById('importForm').submit(); });
   document.querySelector('label[for="csvfile"]').addEventListener('keydown', e => {

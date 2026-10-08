@@ -290,6 +290,8 @@
         </div>
         <input type="hidden" name="lat" id="lat">
         <input type="hidden" name="lng" id="lng">
+        <!-- De dónde salió la ubicación: "pegada" (exacta) se guarda también en el cliente -->
+        <input type="hidden" name="ubic_origen" id="ubic_origen">
       </div>
     </section>
 
@@ -509,8 +511,9 @@
     setGeoStatus('ok', `Ubicación cargada (${latEl.value}, ${lngEl.value})`);
     mostrarPrevia();
   }
+  const origenEl = document.getElementById('ubic_origen');
   function clearCoords(){
-    latEl.value = ''; lngEl.value = '';
+    latEl.value = ''; lngEl.value = ''; origenEl.value = '';
     setGeoStatus('', 'Sin ubicación');
     mostrarPrevia();
   }
@@ -540,6 +543,7 @@
         return;
       }
       setCoords(p[0], p[1]);
+      origenEl.value = 'pegada';
       pegarEl.value = '';
       pegarMsg.className = 'gm-msg ' + (MapaSelector.enParaguay(p[0], p[1]) ? 'ok' : 'error');
       pegarMsg.textContent = MapaSelector.enParaguay(p[0], p[1])
@@ -648,7 +652,7 @@
 
     // 1) Coordenadas guardadas del cliente
     const la = parseFloat(d.lat), lo = parseFloat(d.lng);
-    if (!isNaN(la) && !isNaN(lo)){ setCoords(la, lo); return; }
+    if (!isNaN(la) && !isNaN(lo)){ setCoords(la, lo); origenEl.value = 'cliente'; return; }
 
     // 2) Si no, geocodificar la dirección
     if (!dir) return;
@@ -657,7 +661,7 @@
     try {
       const res = await geocode(dir);
       if (token !== geocodeToken) return;
-      if (res.length) setCoords(res[0].lat, res[0].lon);
+      if (res.length){ setCoords(res[0].lat, res[0].lon); origenEl.value = 'aproximada'; }
       else setGeoStatus('', 'No se encontró la dirección. Pega la ubicación de Google Maps.');
     } catch {
       if (token === geocodeToken) setGeoStatus('', 'No se pudo buscar la dirección. Pega la ubicación de Google Maps.');

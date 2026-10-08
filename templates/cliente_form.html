@@ -6,7 +6,7 @@
   .cf{
     --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
     --surface:#fff; --line:#D9E0E8; --line-soft:#E8EDF2;
-    --accent:#0284C7; --accent-hover:#0369A1; --danger:#C2362F;
+    --accent:#0284C7; --accent-hover:#0369A1; --danger:#C2362F; --ok:#177A56;
     max-width:880px; margin:0 auto; padding:8px 0 40px; color:var(--ink);
   }
   .cf-back{ display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--ink-soft); text-decoration:none; margin-bottom:10px; }
@@ -61,17 +61,30 @@
   .cf-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
   .cf-actions{ display:flex; justify-content:flex-end; gap:8px; }
 
+  /* Ubicación */
+  .cf-ub-row{ display:flex; gap:8px; }
+  .cf-ub-row .cf-input{ flex:1; }
+  .cf-ub-estado{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:8px; font-size:13px; color:var(--ink-faint); }
+  .cf-ub-estado.ok{ color:var(--ok); }
+  .cf-ub-estado.error{ color:var(--danger); }
+  .cf-link{ background:none; border:0; padding:0; font:inherit; font-size:13px; font-weight:500; color:var(--accent); cursor:pointer; }
+  .cf-link.danger{ color:var(--danger); }
+  .cf-link:hover{ text-decoration:underline; text-underline-offset:3px; }
+  .cf-prev{ margin-top:10px; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .cf-prev iframe{ display:block; width:100%; height:240px; border:0; }
+
   @media (max-width:720px){
     .cf-grid{ grid-template-columns:1fr; }
     .s2, .s3, .s4, .s6{ grid-column:auto; }
     .cf-actions{ flex-direction:column-reverse; }
+    .cf-ub-row{ flex-direction:column; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
 {# Helper: valor de una columna o '' (nunca "None") #}
-{% macro v(campo) -%}{{ (cliente[campo] if cliente and cliente[campo] is not none else '')|default('', true) }}{%- endmacro %}
+{% macro v(campo) -%}{{ (cliente[campo] if cliente and campo in cliente.keys() and cliente[campo] is not none else '')|default('', true) }}{%- endmacro %}
 
 {# Tipo y valor: columnas separadas si existen; si no, se leen de tipo_valor #}
 {% set ns = namespace(tipo=v('tipo')|trim, valor=v('valor')|trim) %}
@@ -150,6 +163,27 @@
           <input class="cf-input" id="referencia" name="referencia" autocomplete="off"
                  placeholder="Ej.: frente a la plaza" value="{{ v('referencia') }}">
         </div>
+
+        <!-- Ubicación en el mapa -->
+        <div class="cf-field s6">
+          <label for="ubPegar">Ubicación de la casa</label>
+          <div class="cf-ub-row">
+            <input class="cf-input" id="ubPegar" autocomplete="off" spellcheck="false"
+                   placeholder="Pega el enlace de Google Maps o las coordenadas (ej.: -25.5949, -56.8732)"
+                   title="Google Maps: clic derecho sobre la casa y clic en los números, o Compartir → Copiar enlace">
+            <button type="button" class="cf-btn cf-btn-ghost" id="ubUsar">Usar</button>
+            <button type="button" class="cf-btn cf-btn-ghost" id="ubAqui" title="Usa la ubicación de este celular (estando en la casa)">
+              <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> Estoy en la casa
+            </button>
+          </div>
+          <div class="cf-ub-estado" id="ubEstado" aria-live="polite"></div>
+          <div class="cf-prev" id="ubPrev" hidden>
+            <iframe title="Vista previa de la ubicación" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+          </div>
+          <div class="cf-hint">Con la ubicación cargada, el cliente aparece en el Mapa y sus tickets ya la traen. Revisa en la vista previa que sea la casa correcta.</div>
+          <input type="hidden" name="lat" id="lat" value="{{ v('lat') }}">
+          <input type="hidden" name="lng" id="lng" value="{{ v('lng') }}">
+        </div>
       </div>
     </section>
 
@@ -171,6 +205,19 @@
           <datalist id="dlTipo"><option value="cliente"><option value="empresa"><option value="institución"></datalist>
         </div>
         <div class="cf-field s2">
+          <label for="megas">Megas</label>
+          {% set megas_val = v('megas') %}
+          <select class="cf-input" id="megas" name="megas">
+            <option value="">Sin dato</option>
+            {% for m in ['70 Mbps', '130 Mbps', '180 Mbps'] %}
+              <option value="{{ m }}" {{ 'selected' if megas_val == m }}>{{ m }}</option>
+            {% endfor %}
+            {% if megas_val and megas_val not in ['70 Mbps', '130 Mbps', '180 Mbps'] %}
+              <option value="{{ megas_val }}" selected>{{ megas_val }}</option>
+            {% endif %}
+          </select>
+        </div>
+        <div class="cf-field s2">
           <label for="valor">Plan (Gs.)</label>
           <input class="cf-input" id="valor" name="valor" inputmode="numeric" autocomplete="off"
                  placeholder="Ej.: 130.000" value="{{ valor_val }}">
@@ -181,7 +228,7 @@
                  placeholder="Día del mes o fecha" value="{{ v('vencimiento') }}">
           <div class="cf-hint">Ej.: 5 (vence el día 5 de cada mes)</div>
         </div>
-        <div class="cf-field s4">
+        <div class="cf-field s2">
           <label>&nbsp;</label>
           <label class="cf-check" for="exonerado">
             <input type="checkbox" id="exonerado" name="exonerado"
@@ -250,8 +297,9 @@
 {% block extra_scripts %}
 <script>
 (() => {
-  const form = document.getElementById('clienteForm');
-  const nombre = document.getElementById('nombre');
+  const $ = id => document.getElementById(id);
+  const form = $('clienteForm');
+  const nombre = $('nombre');
 
   form.addEventListener('submit', e => {
     if (!nombre.value.trim()){
@@ -260,19 +308,67 @@
       nombre.style.borderColor = '#C2362F';
       return;
     }
-    const btn = document.getElementById('btnGuardar');
+    const btn = $('btnGuardar');
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Guardando…';
   });
   nombre.addEventListener('input', () => nombre.style.borderColor = '');
 
   // Mostrar meses solo si el servicio es por tiempo, y datos del dueño solo si es alquilada
-  const ct = document.getElementById('contrato_tipo'), viv = document.getElementById('vivienda');
+  const ct = $('contrato_tipo'), viv = $('vivienda');
   const sync = () => {
-    document.getElementById('fMeses').hidden = ct.value !== 'temporal';
+    $('fMeses').hidden = ct.value !== 'temporal';
     document.querySelectorAll('.js-dueno').forEach(el => el.hidden = viv.value !== 'alquilada');
   };
   ct.addEventListener('change', sync); viv.addEventListener('change', sync); sync();
+
+  // ----- Ubicación de la casa -----
+  const lat = $('lat'), lng = $('lng'), estado = $('ubEstado'), prev = $('ubPrev'), pegar = $('ubPegar');
+  function pintar(clase, html){ estado.className = 'cf-ub-estado' + (clase ? ' ' + clase : ''); estado.innerHTML = html; }
+  function mostrar(){
+    const la = parseFloat(lat.value), lo = parseFloat(lng.value);
+    if (isNaN(la) || isNaN(lo)){
+      prev.hidden = true;
+      pintar('', '<i class="fa-regular fa-circle"></i> Sin ubicación');
+      return;
+    }
+    const fr = prev.querySelector('iframe'), src = MapaSelector.vistaGoogle(la, lo);
+    if (fr.dataset.src !== src){ fr.src = src; fr.dataset.src = src; }
+    prev.hidden = false;
+    const fuera = !MapaSelector.enParaguay(la, lo);
+    pintar(fuera ? 'error' : 'ok',
+      `<i class="fa-solid ${fuera ? 'fa-triangle-exclamation' : 'fa-circle-check'}"></i>
+       ${fuera ? 'Atención: queda fuera de Paraguay.' : 'Ubicación cargada'} (${la.toFixed(5)}, ${lo.toFixed(5)})
+       <button type="button" class="cf-link danger" id="ubQuitar">Quitar</button>`);
+    $('ubQuitar').addEventListener('click', () => { lat.value = ''; lng.value = ''; mostrar(); });
+  }
+  function poner(la, lo){ lat.value = Number(la).toFixed(7); lng.value = Number(lo).toFixed(7); mostrar(); }
+
+  async function usarPegado(){
+    const t = pegar.value.trim();
+    if (!t) return;
+    pintar('', '<i class="fa-solid fa-spinner fa-spin"></i> Leyendo ubicación…');
+    try {
+      const p = await MapaSelector.leerUbicacion(t);
+      if (!p){ pintar('error', '<i class="fa-solid fa-triangle-exclamation"></i> No se encontraron coordenadas. Copia los números del clic derecho en Google Maps o el enlace de "Compartir".'); return; }
+      poner(p[0], p[1]); pegar.value = '';
+    } catch { pintar('error', '<i class="fa-solid fa-triangle-exclamation"></i> No se pudo leer el enlace. Prueba copiando las coordenadas.'); }
+  }
+  pegar.addEventListener('paste', () => setTimeout(usarPegado, 0));
+  pegar.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); usarPegado(); } });
+  $('ubUsar').addEventListener('click', usarPegado);
+
+  $('ubAqui').addEventListener('click', () => {
+    if (!navigator.geolocation){ pintar('error', 'Este dispositivo no da su ubicación.'); return; }
+    pintar('', '<i class="fa-solid fa-spinner fa-spin"></i> Buscando tu ubicación…');
+    navigator.geolocation.getCurrentPosition(
+      p => { poner(p.coords.latitude, p.coords.longitude);
+             estado.insertAdjacentHTML('beforeend', ` <span style="color:var(--ink-faint)">· precisión ±${Math.round(p.coords.accuracy)} m</span>`); },
+      () => pintar('error', '<i class="fa-solid fa-triangle-exclamation"></i> No se pudo obtener la ubicación. Revisa el permiso del navegador.'),
+      { enableHighAccuracy: true, timeout: 15000 });
+  });
+
+  mostrar();
 })();
 </script>
 {% endblock %}

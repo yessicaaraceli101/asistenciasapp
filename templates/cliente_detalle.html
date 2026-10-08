@@ -26,6 +26,7 @@
   .cd-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
   .cd-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
   .cd-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
+  .cd-btn-sm{ height:34px; padding:0 12px; font-size:13px; }
 
   .cd-status{
     display:inline-flex; align-items:center; gap:6px;
@@ -39,7 +40,8 @@
 
   .cd-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
   .cd-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; }
-  .cd-card-head{ padding:16px 20px 0; display:flex; justify-content:space-between; align-items:baseline; }
+  .cd-card + .cd-card{ margin-top:16px; }
+  .cd-card-head{ padding:16px 20px 0; display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
   .cd-card-head h2{ font-size:16px; font-weight:600; margin:0; }
   .cd-card-head a{ font-size:13px; font-weight:500; color:var(--accent); text-decoration:none; }
 
@@ -55,9 +57,19 @@
   }
   .cd-copy:hover{ color:var(--accent); }
 
+  /* Mapa del cliente */
+  .cd-map{ padding:12px 20px 18px; }
+  .cd-map iframe{ display:block; width:100%; height:240px; border:1px solid var(--line); border-radius:8px; }
+  .cd-map-acc{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .cd-map-coord{ font-size:12.5px; color:var(--ink-faint); margin-top:8px; font-variant-numeric:tabular-nums; }
+  .cd-sin-ub{ padding:14px 20px 20px; font-size:14px; color:var(--ink-soft); }
+  .cd-sin-ub i{ color:#8A5A00; margin-right:4px; }
+
   .cd-tickets{ list-style:none; margin:0; padding:8px 0; }
   .cd-tickets li{ padding:12px 20px; border-top:1px solid var(--line-soft); }
   .cd-tickets li:first-child{ border-top:0; }
+  .cd-tickets a.cd-t{ color:inherit; text-decoration:none; display:block; }
+  .cd-tickets a.cd-t:hover strong{ color:var(--accent); }
   .cd-t-top{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .cd-t-top strong{ font-size:14px; font-weight:600; }
   .cd-t-meta{ font-size:12.5px; color:var(--ink-faint); margin-top:2px; }
@@ -80,7 +92,7 @@
 {% endblock %}
 
 {% block content %}
-{% macro campo(k) -%}{{ (c[k] if c[k] is not none else '')|default('', true)|string|trim }}{%- endmacro %}
+{% macro campo(k) -%}{{ (c[k] if k in c.keys() and c[k] is not none else '')|default('', true)|string|trim }}{%- endmacro %}
 {% set nombre = (campo('nombre') ~ ' ' ~ campo('apellido'))|trim %}
 {% set sit = campo('situacion')|lower %}
 
@@ -91,6 +103,7 @@
 {% endif %}
 {% set venc = campo('vencimiento') %}
 {% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Resuelto', 'cancelado':'Cancelado'} %}
+{% set lat, lng = campo('lat'), campo('lng') %}
 
 <div class="cd">
   <a class="cd-back" href="{{ url_for('clientes') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver a clientes</a>
@@ -100,7 +113,7 @@
       <h1>{{ nombre }}</h1>
       <div class="cd-meta">
         {% if campo('situacion') %}
-          <span class="cd-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspend' in sit or 'deud' in sit %}st-warn{% else %}st-off{% endif %}">{{ campo('situacion')|capitalize }}</span>
+          <span class="cd-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspen' in sit or 'bloq' in sit or 'deud' in sit %}st-warn{% else %}st-off{% endif %}">{{ campo('situacion')|capitalize }}</span>
         {% elif c['activo'] == 1 %}
           <span class="cd-status st-ok">Activo</span>
         {% else %}
@@ -123,7 +136,7 @@
   <div class="cd-grid">
 
     <div>
-      <section class="cd-card" style="margin-bottom:16px">
+      <section class="cd-card">
         <div class="cd-card-head"><h2>Datos del cliente</h2></div>
         <dl class="cd-dl">
           <div><dt>Cédula (CI)</dt><dd class="{{ 'empty' if not campo('cedula') }}">{{ campo('cedula') or '—' }}</dd></div>
@@ -144,17 +157,66 @@
         </dl>
       </section>
 
+      <!-- Ubicación en el mapa -->
       <section class="cd-card">
-        <div class="cd-card-head"><h2>Ubicación y servicio</h2></div>
+        <div class="cd-card-head">
+          <h2>Ubicación</h2>
+          {% if lat and lng %}<a href="{{ url_for('clientes_editar', cid=c['id']) }}">Cambiar</a>{% endif %}
+        </div>
+        {% if lat and lng %}
+          <div class="cd-map">
+            <iframe title="Ubicación de {{ nombre }}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+                    src="https://maps.google.com/maps?q={{ lat }},{{ lng }}&t=k&z=18&hl=es&output=embed"></iframe>
+            <div class="cd-map-acc">
+              <a class="cd-btn cd-btn-sm" href="https://www.google.com/maps/dir/?api=1&destination={{ lat }},{{ lng }}" target="_blank" rel="noopener">
+                <i class="fa-solid fa-route" aria-hidden="true"></i> Cómo llegar
+              </a>
+              <a class="cd-btn cd-btn-ghost cd-btn-sm" href="https://www.google.com/maps?q={{ lat }},{{ lng }}" target="_blank" rel="noopener">
+                <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir en Google Maps
+              </a>
+              <button type="button" class="cd-btn cd-btn-ghost cd-btn-sm js-copy" data-copy="{{ lat }}, {{ lng }}">
+                <i class="fa-regular fa-copy" aria-hidden="true"></i> Copiar coordenadas
+              </button>
+            </div>
+            <div class="cd-map-coord">{{ lat }}, {{ lng }}</div>
+          </div>
+        {% else %}
+          <div class="cd-sin-ub">
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            Este cliente no tiene ubicación: no aparece en el Mapa y sus tickets no la traen.
+            <div style="margin-top:10px">
+              <a class="cd-btn cd-btn-sm" href="{{ url_for('clientes_editar', cid=c['id']) }}#ubPegar">
+                <i class="fa-solid fa-location-dot" aria-hidden="true"></i> Cargar ubicación
+              </a>
+            </div>
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="cd-card">
+        <div class="cd-card-head"><h2>Dirección y servicio</h2></div>
         <dl class="cd-dl">
           <div><dt>Barrio</dt><dd class="{{ 'empty' if not campo('barrio') }}">{{ campo('barrio') or '—' }}</dd></div>
           <div><dt>Dirección</dt><dd class="{{ 'empty' if not campo('direccion') }}">{{ campo('direccion') or '—' }}</dd></div>
           <div class="full"><dt>Referencia</dt><dd class="{{ 'empty' if not campo('referencia') }}">{{ campo('referencia') or '—' }}</dd></div>
-          <div><dt>Plan</dt><dd class="{{ 'empty' if not ns.plan }}">{% if ns.plan %}{{ ns.plan }} Gs.{% else %}—{% endif %}</dd></div>
+          <div>
+            <dt>Plan</dt>
+            <dd class="{{ 'empty' if not ns.plan and not campo('megas') }}">
+              {% if ns.plan %}{{ ns.plan }} Gs.{% endif %}{% if ns.plan and campo('megas') %} · {% endif %}{{ campo('megas') }}
+              {% if not ns.plan and not campo('megas') %}—{% endif %}
+            </dd>
+          </div>
           <div>
             <dt>Vencimiento</dt>
             <dd class="{{ 'empty' if not venc }}">
-              {% if venc and venc.isdigit() and venc|int <= 31 %}Día {{ venc }} de cada mes{% else %}{{ venc or '—' }}{% endif %}
+              {% if venc and venc.isdigit() and venc|int <= 31 %}Día {{ venc|int }} de cada mes{% else %}{{ venc or '—' }}{% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Caja NAP</dt>
+            <dd class="{{ 'empty' if not nap }}">
+              {% if nap %}<a href="{{ url_for('red_nap', nid=nap.id) }}">{{ nap.nombre }}</a>{% if campo('nap_puerto') %} · puerto {{ campo('nap_puerto') }}{% endif %}
+              {% else %}—{% endif %}
             </dd>
           </div>
           <div><dt>N.º de serie ONU</dt><dd class="{{ 'empty' if not campo('onu_serie') }}">{{ campo('onu_serie') or '—' }}</dd></div>
@@ -166,7 +228,7 @@
           </div>
           <div><dt>Vivienda</dt><dd class="{{ 'empty' if not campo('vivienda') }}">{{ campo('vivienda')|capitalize or '—' }}</dd></div>
           {% if campo('vivienda') == 'alquilada' %}
-            <div>
+            <div class="full">
               <dt>Dueño de la casa</dt>
               <dd>{{ campo('dueno_nombre') or '—' }}
                 <span style="display:block;font-weight:400;font-size:13px;color:var(--ink-soft)">
@@ -174,14 +236,6 @@
                   {% if campo('dueno_ci') %} · CI {{ campo('dueno_ci') }}{% endif %}
                 </span>
               </dd>
-            </div>
-          {% endif %}
-          {% if campo('lat') and campo('lng') %}
-            <div class="full">
-              <dt>Ubicación en el mapa</dt>
-              <dd><a href="https://www.google.com/maps?q={{ campo('lat') }},{{ campo('lng') }}" target="_blank" rel="noopener">
-                {{ campo('lat') }}, {{ campo('lng') }} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:11px"></i>
-              </a></dd>
             </div>
           {% endif %}
         </dl>
@@ -198,16 +252,18 @@
           {% for t in tickets %}
             {% set est = (t['estado'] or 'pendiente')|lower %}
             <li>
-              <div class="cd-t-top">
-                <strong>{{ t['tipo'] or 'Ticket' }}</strong>
-                <span class="cd-status t-{{ est if est in etiquetas else 'pendiente' }}">{{ etiquetas.get(est, 'Pendiente') }}</span>
-              </div>
-              <div class="cd-t-meta">
-                {{ (t['fecha'] or '')|string|truncate(16, true, '') }}
-                {% if t['tecnico'] %} · {{ t['tecnico'] }}{% endif %}
-                {% if t['prioridad'] %} · Señal {{ t['prioridad']|lower }}{% endif %}
-              </div>
-              {% if t['problema'] %}<div class="cd-t-desc">{{ t['problema'] }}</div>{% endif %}
+              <a class="cd-t" href="{{ url_for('tickets_ot', tid=t['id']) }}">
+                <div class="cd-t-top">
+                  <strong>{{ t['tipo'] or 'Ticket' }}</strong>
+                  <span class="cd-status t-{{ est if est in etiquetas else 'pendiente' }}">{{ etiquetas.get(est, 'Pendiente') }}</span>
+                </div>
+                <div class="cd-t-meta">
+                  {{ (t['fecha'] or '')|string|truncate(16, true, '') }}
+                  {% if t['tecnico'] %} · {{ t['tecnico'] }}{% endif %}
+                  {% if t['prioridad'] %} · Prioridad {{ t['prioridad']|lower }}{% endif %}
+                </div>
+                {% if t['problema'] %}<div class="cd-t-desc">{{ t['problema'] }}</div>{% endif %}
+              </a>
             </li>
           {% endfor %}
         </ul>
@@ -226,10 +282,11 @@
 {% block extra_scripts %}
 <script>
   document.querySelectorAll('.js-copy').forEach(btn => btn.addEventListener('click', async () => {
+    const original = btn.innerHTML;
     try {
       await navigator.clipboard.writeText(btn.dataset.copy);
-      btn.innerHTML = '<i class="fa-solid fa-check"></i>';
-      setTimeout(() => btn.innerHTML = '<i class="fa-regular fa-copy"></i>', 1500);
+      btn.innerHTML = '<i class="fa-solid fa-check"></i>' + (btn.classList.contains('cd-btn') ? ' Copiado' : '');
+      setTimeout(() => btn.innerHTML = original, 1500);
     } catch {}
   }));
 </script>

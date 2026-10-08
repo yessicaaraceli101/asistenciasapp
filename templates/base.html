@@ -338,6 +338,10 @@
              dict(l='Mañana', u=url_for('agenda', dia=nav.manana)),
              dict(l='Esta semana', u=url_for('agenda', desde=nav.lunes, hasta=nav.domingo)),
            ]) }}
+        {{ nav_group('red', 'fa-solid fa-network-wired', 'Red', ['red', 'red_nap'], [
+             dict(l='Cajas NAP', u=url_for('red')),
+             dict(l='Ver en el mapa', u=url_for('mapa')),
+           ]) }}
         {{ nav_group('mapa', 'fa-solid fa-map-location-dot', 'Mapa', ['mapa'], [
              dict(l='Tickets y técnicos', u=url_for('mapa')),
              dict(l='Reporte PDF de hoy', u=url_for('mapa_export_pdf')),
