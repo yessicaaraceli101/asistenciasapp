@@ -93,6 +93,8 @@
   transition:background .15s; flex-shrink:0;
 }
 .btn-nav:hover{ background:#eff6ff; }
+.btn-nav:disabled{ opacity:.4; cursor:not-allowed; }
+.btn-apply:disabled{ opacity:.75; cursor:progress; }
 
 .form-check-label{ font-size:.85rem; color:#475569; font-weight:600; }
 
@@ -226,7 +228,7 @@
         <span style="color:#94a3b8;font-size:.85rem;">→</span>
         <input type="date" class="form-control" id="inpHasta" style="width:145px;" value="{{ hasta if range_mode else '' }}" {{ '' if range_mode else 'disabled' }}>
 
-        <button class="btn-apply" id="btnAplicar"><i class="bi bi-funnel"></i> Aplicar</button>
+        <button type="button" class="btn-apply" id="btnAplicar"><i class="bi bi-funnel"></i> Aplicar</button>
       </form>
 
       <button type="button" class="btn-nav" id="btnNext"><i class="bi bi-chevron-right"></i></button>
@@ -264,7 +266,7 @@
           <div class="ag-body">
             <div class="ag-top">
               <span class="ag-tipo">{{ e['tipo'] or 'Asistencia' }}</span>
-              <span class="ag-prioridad">· {{ e['prioridad'] or 'Media' }}</span>
+              {% if e['prioridad'] %}<span class="ag-prioridad">· Prioridad {{ e['prioridad']|lower }}</span>{% endif %}
 
               {% if st == 'pendiente' %}
                 <span class="chip chip-warn"><i class="bi bi-hourglass-split"></i> Pendiente</span>
@@ -305,6 +307,11 @@
 <script>
 const fmt = n => String(n).padStart(2,'0');
 function toISO(d){ return `${d.getFullYear()}-${fmt(d.getMonth()+1)}-${fmt(d.getDate())}`; }
+// "2026-10-08" -> fecha LOCAL (new Date("2026-10-08") la toma en UTC y en Paraguay queda un día antes)
+function desdeISO(v){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date();
+}
 
 const form     = document.getElementById('formFiltros');
 const selEst   = document.getElementById('selEstado');
@@ -313,28 +320,50 @@ const inpDia   = document.getElementById('inpDia');
 const chkRango = document.getElementById('chkRango');
 const inpDesde = document.getElementById('inpDesde');
 const inpHasta = document.getElementById('inpHasta');
+const btnAplicar = document.getElementById('btnAplicar');
 
-function gotoAgenda({dia=null, desde=null, hasta=null}){
-  const p = new URLSearchParams();
-  if(chkRango.checked || (desde && hasta)){
-    p.set('desde', desde ?? inpDesde.value);
-    p.set('hasta', hasta ?? inpHasta.value);
-  } else {
-    p.set('dia', dia ?? inpDia.value);
+// Aviso corto debajo de los filtros
+function avisar(msg){
+  let el = document.getElementById('agAviso');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'agAviso';
+    el.setAttribute('role', 'alert');
+    el.style.cssText = 'margin:-4px 0 10px;padding:8px 12px;border-radius:10px;background:#FFF7E6;border:1px solid #F5E0B3;color:#8A5A00;font-size:.85rem;font-weight:600';
+    document.querySelector('.filters-row').after(el);
   }
-  if(selEst.value) p.set('estado', selEst.value);
-  if(selTec.value) p.set('tecnico_id', selTec.value);
+  el.textContent = msg;
+  el.hidden = !msg;
+}
+
+function gotoAgenda({dia=null}){
+  const p = new URLSearchParams();
+  if (chkRango.checked){
+    const d1 = inpDesde.value, d2 = inpHasta.value;
+    if (!d1 || !d2){ avisar('Completa las dos fechas del rango (desde y hasta).'); (d1 ? inpHasta : inpDesde).focus(); return; }
+    if (d1 > d2){ avisar('La fecha "desde" no puede ser posterior a "hasta".'); inpDesde.focus(); return; }
+    p.set('desde', d1);
+    p.set('hasta', d2);
+  } else {
+    p.set('dia', dia || inpDia.value || toISO(new Date()));
+  }
+  if (selEst.value) p.set('estado', selEst.value);
+  if (selTec.value) p.set('tecnico_id', selTec.value);
+  avisar('');
+  // Se nota que está trabajando
+  btnAplicar.disabled = true;
+  btnAplicar.innerHTML = '<i class="bi bi-arrow-repeat"></i> Aplicando…';
   window.location.search = p.toString();
 }
 
 document.getElementById('btnPrev').addEventListener('click', () => {
-  if(chkRango.checked) return;
-  const d = new Date(inpDia.value); d.setDate(d.getDate()-1);
+  if (chkRango.checked) return;
+  const d = desdeISO(inpDia.value); d.setDate(d.getDate() - 1);
   gotoAgenda({dia: toISO(d)});
 });
 document.getElementById('btnNext').addEventListener('click', () => {
-  if(chkRango.checked) return;
-  const d = new Date(inpDia.value); d.setDate(d.getDate()+1);
+  if (chkRango.checked) return;
+  const d = desdeISO(inpDia.value); d.setDate(d.getDate() + 1);
   gotoAgenda({dia: toISO(d)});
 });
 
@@ -342,24 +371,34 @@ chkRango.addEventListener('change', () => {
   const on = chkRango.checked;
   inpDesde.disabled = inpHasta.disabled = !on;
   inpDia.disabled = on;
-  if(on && !inpDesde.value && !inpHasta.value){
-    const now = new Date();
-    const d1 = new Date(now.getFullYear(), now.getMonth(), 1);
-    const d2 = new Date(now.getFullYear(), now.getMonth()+1, 0);
-    inpDesde.value = toISO(d1);
-    inpHasta.value = toISO(d2);
+  document.getElementById('btnPrev').disabled = document.getElementById('btnNext').disabled = on;
+  if (on){
+    // Por defecto: el mes actual
+    if (!inpDesde.value || !inpHasta.value){
+      const now = new Date();
+      inpDesde.value = inpDesde.value || toISO(new Date(now.getFullYear(), now.getMonth(), 1));
+      inpHasta.value = inpHasta.value || toISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    }
   }
   gotoAgenda({});
 });
 
-[selEst, selTec, inpDia, inpDesde, inpHasta].forEach(el => {
-  if(el) el.addEventListener('change', () => gotoAgenda({}));
-});
+// Los selectores y fechas aplican solos al cambiar; "Aplicar" vuelve a cargar con lo que haya
+[selEst, selTec, inpDia].forEach(el => el && el.addEventListener('change', () => gotoAgenda({})));
+// En el rango se espera a tener las dos fechas
+[inpDesde, inpHasta].forEach(el => el && el.addEventListener('change', () => {
+  if (inpDesde.value && inpHasta.value) gotoAgenda({});
+}));
 
-document.getElementById('btnAplicar').addEventListener('click', e => {
-  e.preventDefault();
-  gotoAgenda({});
+btnAplicar.addEventListener('click', e => { e.preventDefault(); gotoAgenda({}); });
+form.addEventListener('submit', e => { e.preventDefault(); gotoAgenda({}); });   // Enter dentro de los filtros
+window.addEventListener('pageshow', () => {
+  btnAplicar.disabled = false;
+  btnAplicar.innerHTML = '<i class="bi bi-funnel"></i> Aplicar';
 });
+if (chkRango.checked){
+  document.getElementById('btnPrev').disabled = document.getElementById('btnNext').disabled = true;
+}
 
 function baseName(){
   const qs = new URLSearchParams(location.search);

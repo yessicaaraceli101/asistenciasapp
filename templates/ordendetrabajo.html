@@ -151,6 +151,11 @@
   <div class="ot-toolbar">
     <a class="back" href="{{ url_for('ordenes_trabajo') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver a órdenes de trabajo</a>
     <button type="button" class="ot-btn" id="btnCopiar" data-url="{{ ot_url }}"><i class="fa-regular fa-copy" aria-hidden="true"></i> Copiar enlace</button>
+    {% if diag_url %}
+    <button type="button" class="ot-btn" id="btnDiag" data-url="{{ diag_url }}" title="Enlace para que el técnico cargue el diagnóstico desde el celular">
+      <i class="fa-solid fa-stethoscope" aria-hidden="true"></i> Enlace del técnico
+    </button>
+    {% endif %}
     <button type="button" class="ot-btn" id="btnPdf" disabled>
       <i class="fa-regular fa-file-pdf" aria-hidden="true"></i> Descargar PDF
     </button>
@@ -165,6 +170,11 @@
       <ul class="dropdown-menu dropdown-menu-end shadow-sm">
         <li><a class="dropdown-item" href="{{ wa_url }}" target="_blank" rel="noopener">
           <i class="fa-regular fa-message me-2 text-secondary"></i>Enviar solo el mensaje de texto</a></li>
+        {% if wa_diag_url %}
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="{{ wa_diag_url }}" target="_blank" rel="noopener">
+          <i class="fa-solid fa-stethoscope me-2" style="color:#177A56"></i>Enviar el diagnóstico completado</a></li>
+        {% endif %}
       </ul>
     </div>
     <button type="button" class="ot-btn primary" onclick="window.print()">
@@ -371,6 +381,22 @@
       <div class="ot-problem">{{ t.problema or 'Sin descripción.' }}</div>
     </section>
 
+    {% if t.falla or t.cambio or t.megas or t.trabajo_realizado %}
+    <!-- Diagnóstico que cargó el técnico -->
+    <section class="ot-sec">
+      <h2>Diagnóstico del técnico{% if t.diag_completado %} <span style="font-weight:400;color:var(--ink-faint)">· {{ t.diag_completado[8:10] }}/{{ t.diag_completado[5:7] }} {{ t.diag_completado[11:16] }}</span>{% endif %}</h2>
+      <dl class="ot-dl">
+        <div class="s2"><dt>Falla</dt><dd>{{ val(t.falla) }}</dd></div>
+        <div class="s2"><dt>Cambio</dt><dd>{{ val(t.cambio) }}</dd></div>
+        <div><dt>Señal</dt><dd>{{ dbm(t.senal) if t.senal else '—' }}</dd></div>
+        <div><dt>Megas</dt><dd>{% if t.megas %}{{ t.megas }}{% if 'mb' not in (t.megas|string|lower) %} Mbps{% endif %}{% else %}—{% endif %}</dd></div>
+        {% if t.trabajo_realizado %}<div class="s4"><dt>Trabajo realizado</dt><dd style="font-weight:400;white-space:pre-wrap">{{ t.trabajo_realizado }}</dd></div>{% endif %}
+        {% if t.diag_por %}<div class="s2"><dt>Diagnóstico cargado por</dt><dd>{{ t.diag_por }}</dd></div>{% endif %}
+        {% if t.resuelto_por %}<div class="s2"><dt>Cerrado como resuelto por</dt><dd>{{ t.resuelto_por }}{% if t.resuelto_en %} · {{ t.resuelto_en[8:10] }}/{{ t.resuelto_en[5:7] }} {{ t.resuelto_en[11:16] }}{% endif %}</dd></div>{% endif %}
+      </dl>
+    </section>
+    {% endif %}
+
     {% if t.senal or foto_senal %}
     <!-- Señal medida por el técnico -->
     <section class="ot-sec">
@@ -469,6 +495,16 @@
   if (qr && window.QRCode){
     new QRCode(qr, { text: qr.dataset.url, width: 192, height: 192, correctLevel: QRCode.CorrectLevel.M });
   }
+
+  // Copiar el enlace de diagnóstico para el técnico
+  const bDiag = document.getElementById('btnDiag');
+  bDiag?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(bDiag.dataset.url);
+      bDiag.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Enlace copiado';
+    } catch { window.open(bDiag.dataset.url, '_blank'); }
+    setTimeout(() => bDiag.innerHTML = '<i class="fa-solid fa-stethoscope" aria-hidden="true"></i> Enlace del técnico', 1800);
+  });
 
   // Copiar enlace de la OT
   const btn = document.getElementById('btnCopiar');

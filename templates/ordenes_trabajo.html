@@ -82,6 +82,10 @@
   }
   .ots-icon:hover{ background:#EEF2F6; color:var(--ink); }
   .ots-icon.wa:hover{ background:#E8F7EE; color:#178A45; }
+  .ots-icon.wa.listo{ color:#1FA855; background:#E8F7EE; }       /* tiene diagnóstico para enviar */
+  .ots-icon.wa.listo:hover{ background:#D3F1DF; color:#178A45; }
+  .ots-dx{ margin-top:4px; }
+  .ots-dx i{ color:#177A56; margin-right:3px; }
   .ots-icon.danger:hover{ background:#FDF1F0; color:var(--danger); }
   .ots-icon:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
 
@@ -166,7 +170,13 @@
               <td class="col-hide ots-date">
                 {% if visita %}{{ visita[:10] }}<span class="ots-sub">{{ visita[11:16] }}</span>{% else %}<span class="ots-muted">Sin programar</span>{% endif %}
               </td>
-              <td><span class="ots-status st-{{ est if est in etiquetas else 'pendiente' }}">{{ etiquetas.get(est, 'Pendiente') }}</span></td>
+              <td>
+                <span class="ots-status st-{{ est if est in etiquetas else 'pendiente' }}">{{ etiquetas.get(est, 'Pendiente') }}</span>
+                {% if t.diag_completado %}
+                  <span class="ots-sub ots-dx"><i class="fa-solid fa-stethoscope" aria-hidden="true"></i>
+                    {% if t.resuelto_por %}Baja: {{ t.resuelto_por }}{% else %}Diagnóstico: {{ t.diag_por or 'cargado' }}{% endif %}</span>
+                {% endif %}
+              </td>
               <td>
                 <div class="ots-actions">
                   <a class="ots-icon" href="{{ url_for('tickets_ot', tid=t.id) }}" title="Ver OT" aria-label="Ver {{ o.ot_num }}">
@@ -175,10 +185,17 @@
                   <a class="ots-icon" href="{{ url_for('tickets_ot', tid=t.id, imprimir=1) }}" target="_blank" rel="noopener" title="Imprimir" aria-label="Imprimir {{ o.ot_num }}">
                     <i class="fa-solid fa-print" aria-hidden="true"></i>
                   </a>
-                  <a class="ots-icon wa" href="{{ o.wa_url }}" target="_blank" rel="noopener"
-                     title="{{ 'Enviar a ' ~ o.tec.nombre if o.tec_tiene_tel else 'Enviar por WhatsApp' }}" aria-label="Enviar {{ o.ot_num }} por WhatsApp">
-                    <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
-                  </a>
+                  {% if o.wa_diag_url %}
+                    <a class="ots-icon wa listo" href="{{ o.wa_diag_url }}" target="_blank" rel="noopener"
+                       title="Enviar el diagnóstico completado por WhatsApp" aria-label="Enviar el diagnóstico de {{ o.ot_num }} por WhatsApp">
+                      <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
+                    </a>
+                  {% else %}
+                    <a class="ots-icon wa" href="{{ o.wa_url }}" target="_blank" rel="noopener"
+                       title="{{ 'Enviar la orden a ' ~ o.tec.nombre if o.tec_tiene_tel else 'Enviar la orden por WhatsApp' }}" aria-label="Enviar {{ o.ot_num }} por WhatsApp">
+                      <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
+                    </a>
+                  {% endif %}
                   {% if es_admin %}
                     <button type="button" class="ots-icon danger js-borrar" title="Eliminar" aria-label="Eliminar {{ o.ot_num }}"
                             data-action="{{ url_for('tickets_borrar', tid=t.id) }}" data-num="{{ o.ot_num }}"

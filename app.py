@@ -6,6 +6,7 @@ import os
 import requests
 import csv, re, unicodedata
 import json
+import secrets
 from docx import Document
 from fpdf import FPDF
 from werkzeug.utils import secure_filename
@@ -265,7 +266,9 @@ def _ensure_config():
         if acols:
             for c, tipo in (("dispositivos", "TEXT"), ("repetidor", "INTEGER"), ("repetidor_cant", "INTEGER"),
                             ("falla", "TEXT"), ("cambio", "TEXT"), ("senal", "TEXT"), ("megas", "TEXT"),
-                            ("diagnostico", "TEXT"), ("senal_foto", "TEXT")):
+                            ("diagnostico", "TEXT"), ("senal_foto", "TEXT"),
+                            ("diag_token", "TEXT"), ("diag_completado", "TEXT"), ("trabajo_realizado", "TEXT"),
+                            ("diag_por", "TEXT"), ("resuelto_por", "TEXT"), ("resuelto_en", "TEXT")):
                 if c not in acols:
                     conn.execute(f"ALTER TABLE asistencias ADD COLUMN {c} {tipo}")
         conn.execute("CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT)")
@@ -671,6 +674,7 @@ def login_view():
                 break
 
         if winner:
+            volver_a = session.get("volver_a")          # se guarda antes de limpiar la sesión
             session.clear()
             session["usuario_id"] = col(winner, "id")
             session["usuario"]    = col(winner, "usuario")
@@ -689,6 +693,10 @@ def login_view():
             session["notif_sonido"] = 0 if col(winner, "notif_sonido", 1) == 0 else 1
 
             session.permanent = bool(request.form.get("recordarme"))
+
+            # Venía de un enlace (por ejemplo, el del diagnóstico): volver ahí
+            if volver_a and volver_a.startswith("/") and not volver_a.startswith("//"):
+                return redirect(volver_a)
 
             # Sucursal predeterminada: entrar directo sin elegir
             pred = col(winner, "sucursal_pred")
@@ -1156,7 +1164,7 @@ def nuevo_ticket():
         repetidor_cant = (request.form.get("repetidor_cant", type=int) or 1) if repetidor == 1 else None
 
         db = get_db()
-        insert_row(db, "asistencias", {
+        nuevo_tid = insert_row(db, "asistencias", {
             "dispositivos": ", ".join(dispositivos) or None,
             "repetidor": repetidor,
             "repetidor_cant": repetidor_cant,
@@ -1197,6 +1205,9 @@ def nuevo_ticket():
 
         push_notificacion(f"Nueva asistencia: {tipo}",
                           _cuerpo_aviso(cliente, tecnico_nombre, programada_en, falla))
+        if nuevo_tid:
+            flash("Ticket registrado. Envíaselo al técnico por WhatsApp: el mensaje incluye el enlace para que complete el diagnóstico.", "success")
+            return redirect(url_for("tickets_ot", tid=nuevo_tid))
         flash("Ticket registrado.", "success")
         return redirect(url_for("tickets"))
 
@@ -3048,8 +3059,12 @@ def agenda():
         sql += " AND a.estado = ?"
         params.append(estado_f)
     if tecnico_f and "tecnico_id" in acols:
-        sql += " AND a.tecnico_id = ?"
-        params.append(tecnico_f)
+        # Por código del técnico o, si el ticket no lo tiene, por su nombre
+        sql += """ AND (a.tecnico_id = ?
+                     OR (a.tecnico_id IS NULL AND lower(IFNULL(a.tecnico,'')) =
+                         lower(IFNULL((SELECT nombre FROM tecnicos WHERE id = ?), '-'))))"""
+        tid_f = int(tecnico_f) if str(tecnico_f).isdigit() else tecnico_f   # el código llega como texto
+        params += [tid_f, tid_f]
 
     sql += " ORDER BY date(COALESCE(a.programada_en, a.fecha)) ASC, time(COALESCE(a.programada_en, a.fecha)) ASC"
     eventos = db.execute(sql, params).fetchall()
@@ -3119,6 +3134,10 @@ def tickets_cambiar_estado(tid):
 
     db.execute("UPDATE asistencias SET estado=? WHERE id=? AND sucursal_id=?",
                (nuevo, tid, current_sucursal_id()))
+    if nuevo == "resuelto" and {"resuelto_por", "resuelto_en"} <= acols:
+        db.execute("UPDATE asistencias SET resuelto_por=?, resuelto_en=? WHERE id=? AND sucursal_id=?",
+                   (session.get("nombre") or session.get("usuario"), datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    tid, current_sucursal_id()))
 
     # Instalación realizada: el cliente que esperaba la instalación pasa a activo
     if nuevo == "resuelto" and "cliente_id" in acols:
@@ -4254,24 +4273,186 @@ def _ot_datos(db, t, sid):
         lineas.append(f"Referencia: {c['referencia']}")
     if maps_url:
         lineas.append(f"Ubicación: {maps_url}")
-    lineas += ["", f"*Problema:* {t.get('problema') or '-'}"]
 
-    # Diagnóstico de asistencia (solo lo que esté cargado)
-    dx = [("Falla", t.get("falla")), ("Cambio", t.get("cambio")),
-          ("Señal", _con_unidad(t.get("senal"), "dBm", "dbm")),
-          ("Megas", _con_unidad(t.get("megas"), "Mbps", "mb"))]
-    dx = [f"{k}: {v}" for k, v in dx if v]
-    if dx:
-        lineas += ["", "*Diagnóstico de Asistencia*"] + dx
-
+    # Enlace para que el técnico complete el diagnóstico (sin emojis: algunos WhatsApp los muestran como "?")
+    diag_url = _diag_url(db, t)
+    if diag_url:
+        lineas += ["", "*Completar diagnóstico al terminar:*", diag_url]
     lineas += ["", f"OT completa: {ot_url}"]
     texto = quote("\n".join(lineas))
 
     tel_tec = _tel_whatsapp(tec.get("telefono") or tec.get("celular") or "")
     wa_url = f"https://wa.me/{tel_tec}?text={texto}" if tel_tec else f"https://wa.me/?text={texto}"
 
-    return dict(c=c, tec=tec, ot_num=ot_num, maps_url=maps_url, ot_url=ot_url,
+    # Si el técnico ya completó el diagnóstico: mensaje con ese resumen (para reenviarlo)
+    wa_diag_url = None
+    if t.get("diag_completado"):
+        wa_diag_url = "https://wa.me/?text=" + quote(_texto_diagnostico(t))
+
+    return dict(c=c, tec=tec, ot_num=ot_num, maps_url=maps_url, ot_url=ot_url, diag_url=diag_url, wa_diag_url=wa_diag_url,
                 wa_url=wa_url, tec_tiene_tel=bool(tel_tec), direccion=direccion)
+
+# ===========================
+#  Diagnóstico del técnico (enlace por WhatsApp, sin usuario)
+# ===========================
+def _url_publica(endpoint, **kw):
+    """URL completa para mandar por WhatsApp (usa APP_URL del .env si está definida)."""
+    base = os.getenv("APP_URL", "").strip().rstrip("/")
+    return (base + url_for(endpoint, **kw)) if base else url_for(endpoint, _external=True, **kw)
+
+def _diag_url(db, t):
+    """Enlace secreto del ticket para que el técnico cargue el diagnóstico desde el celular."""
+    try:
+        token = t.get("diag_token")
+        if not token:
+            token = secrets.token_urlsafe(12)
+            db.execute("UPDATE asistencias SET diag_token=? WHERE id=?", (token, t["id"]))
+            db.commit()
+            t["diag_token"] = token
+        return _url_publica("diag_tecnico", token=token)
+    except sqlite3.Error:
+        return None
+
+def _texto_diagnostico(t):
+    """Resumen que el técnico manda a la oficina por WhatsApp (sin emojis)."""
+    def u(v, unidad, clave):
+        v = str(v or "").strip()
+        return (v if clave in v.lower() else f"{v} {unidad}") if v else "-"
+    def fh(v):
+        v = str(v or "")
+        return f"{v[8:10]}/{v[5:7]} {v[11:16]}" if len(v) >= 16 else v
+    est = (t.get("estado") or "pendiente").lower()
+    filas = [
+        f"*Diagnóstico de Asistencia - OT-{int(t['id']):06d}*",
+        f"Tipo: {t.get('tipo') or 'Ticket'}",
+        f"Cliente: {t.get('cliente') or '-'}",
+    ]
+    if t.get("direccion"):
+        filas.append(f"Dirección: {t['direccion']}")
+    filas += [
+        "",
+        f"Falla: {t.get('falla') or '-'}",
+        f"Cambio: {t.get('cambio') or '-'}",
+        f"Señal: {u(t.get('senal'), 'dBm', 'dbm')}",
+        f"Megas: {u(t.get('megas'), 'Mbps', 'mb')}",
+    ]
+    if t.get("trabajo_realizado"):
+        filas.append(f"Trabajo realizado: {t['trabajo_realizado']}")
+    filas.append("")
+    if est == "resuelto":
+        filas.append("Estado: *RESUELTO*")
+        if t.get("resuelto_por"):
+            filas.append(f"Dado de baja por: *{t['resuelto_por']}*" + (f" ({fh(t.get('resuelto_en'))})" if t.get("resuelto_en") else ""))
+    else:
+        filas.append("Estado: *PENDIENTE* (todavía no quedó solucionado)")
+    filas.append(f"Técnico: {t.get('diag_por') or t.get('tecnico') or '-'}")
+    return "\n".join(filas)
+
+@app.route("/d/<token>", methods=["GET", "POST"])
+def diag_tecnico(token):
+    """Página para el técnico (sin iniciar sesión): carga el diagnóstico del ticket."""
+    from urllib.parse import quote
+    # Hay que iniciar sesión: así queda registrado quién cargó el diagnóstico y quién cerró
+    if "usuario" not in session and "usuario_id" not in session:
+        session["volver_a"] = request.path
+        flash("Inicia sesión con tu usuario para cargar el diagnóstico.", "info")
+        return redirect(url_for("login"))
+    session.pop("volver_a", None)
+    quien = session.get("nombre") or session.get("usuario") or "Usuario"
+
+    db = get_db()
+    row = db.execute("SELECT * FROM asistencias WHERE diag_token=?", (token,)).fetchone() if token else None
+    if not row:
+        db.close()
+        return render_template("diag_tecnico.html", t=None, quien=quien), 404
+    t = dict(row)
+    sid = t.get("sucursal_id")
+    error = None
+
+    if request.method == "POST":
+        f = request.form
+        senal = (f.get("senal") or "").strip().replace(",", ".").replace(" ", "")
+        senal = re.sub(r"(?i)dbm", "", senal)
+        if senal and not re.fullmatch(r"-?\d{1,2}(\.\d{1,2})?", senal):
+            error = "La señal debe ser un número, por ejemplo -18.5"
+        elif senal and not senal.startswith("-") and float(senal) > 0:
+            senal = "-" + senal
+        megas = re.sub(r"(?i)\s*mbps?$", "", (f.get("megas") or "").strip())
+
+        cambios = {
+            "falla": (f.get("falla") or "").strip() or None,
+            "cambio": (f.get("cambio") or "").strip() or None,
+            "senal": senal or None,
+            "megas": megas or None,
+            "trabajo_realizado": (f.get("trabajo_realizado") or "").strip() or None,
+        }
+        foto = request.files.get("senal_foto")
+        if not error and foto and foto.filename:
+            if not allowed_file(foto.filename):
+                error = "La foto debe ser JPG, PNG o GIF."
+            else:
+                ext = foto.filename.rsplit(".", 1)[1].lower()
+                nombre = f"senal_{t['id']}_{int(datetime.now().timestamp())}.{ext}"
+                foto.save(os.path.join(SENAL_UPLOAD_FOLDER, nombre))
+                cambios["senal_foto"] = nombre
+
+        if not error:
+            resuelto = f.get("resuelto") == "1"
+            ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if resuelto:
+                cambios["estado"] = "resuelto"
+                if (t.get("estado") or "").lower() != "resuelto":
+                    cambios["resuelto_por"] = quien
+                    cambios["resuelto_en"] = ahora
+            elif (t.get("estado") or "pendiente").lower() == "resuelto":
+                # Lo destildó: vuelve a quedar abierto
+                cambios["estado"] = "en_progreso"
+                cambios["resuelto_por"] = cambios["resuelto_en"] = None
+            cambios["diag_completado"] = ahora
+            cambios["diag_por"] = quien
+            # Si el ticket no tenía técnico y quien lo carga es técnico, queda asignado a él
+            if not (t.get("tecnico") or "").strip() and session.get("rol") == "tecnico":
+                cambios["tecnico"] = quien
+            t.update(cambios)
+            cambios["diagnostico"] = _texto_diagnostico(t).replace("*", "")
+            acols = table_columns(db, "asistencias")
+            cambios = {k: v for k, v in cambios.items() if k in acols}
+            db.execute(f"UPDATE asistencias SET {', '.join(k + '=?' for k in cambios)} WHERE id=?",
+                       list(cambios.values()) + [t["id"]])
+            # Instalación terminada: el cliente que esperaba la instalación pasa a activo
+            if resuelto and t.get("cliente_id") and str(t.get("tipo") or "").lower().startswith("instal"):
+                db.execute("""UPDATE clientes SET activo=1, situacion='activo'
+                               WHERE id=? AND lower(IFNULL(situacion,'')) LIKE 'pendiente%'""", (t["cliente_id"],))
+            db.commit()
+            push_notificacion(f"Diagnóstico completado: {t.get('cliente') or 'cliente'}",
+                              " · ".join(x for x in [
+                                  quien, f"Falla: {t['falla']}" if t.get("falla") else None,
+                                  f"Señal: {t['senal']} dBm" if t.get("senal") else None,
+                                  "Resuelto" if resuelto else None] if x),
+                              sucursal_id=sid)
+
+            # WhatsApp de vuelta a la oficina (teléfono de la sucursal o de la empresa)
+            suc = db.execute("SELECT * FROM sucursales WHERE id=?", (sid,)).fetchone()
+            empresa = get_empresa(db)
+            tel_ofi = _tel_whatsapp((suc["telefono"] if suc and "telefono" in suc.keys() else "") or empresa.get("telefono") or "")
+            texto = quote(_texto_diagnostico(t))
+            wa_url = f"https://wa.me/{tel_ofi}?text={texto}" if tel_ofi else f"https://wa.me/?text={texto}"
+            db.close()
+            return render_template("diag_tecnico.html", t=t, listo=True, wa_url=wa_url, quien=quien,
+                                   resumen=_texto_diagnostico(t).replace("*", ""), tiene_tel=bool(tel_ofi))
+
+    # Datos del cliente para orientar al técnico
+    c = {}
+    if t.get("cliente_id"):
+        r = db.execute("SELECT * FROM clientes WHERE id=?", (t["cliente_id"],)).fetchone()
+        c = dict(r) if r else {}
+    lat = t.get("lat") or c.get("lat")
+    lng = t.get("lng") or c.get("lng")
+    db.close()
+    return render_template("diag_tecnico.html", t=t, c=c, error=error, listo=False, quien=quien,
+                           c_wa=_tel_whatsapp(c.get("telefono") or ""),
+                           como_llegar=(f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}" if lat and lng else None))
+
 
 @app.route("/tickets/<int:tid>/ot")
 def tickets_ot(tid):

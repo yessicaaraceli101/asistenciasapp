@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0284C7">
+<title>{% if t %}Diagnóstico · OT-{{ '%06d'|format(t.id) }}{% else %}Enlace no válido{% endif %} · SPYnet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+  :root{
+    --ink:#0F1B2D; --soft:#4A5668; --faint:#7A8699; --line:#D9E0E8; --line-soft:#E8EDF2;
+    --paper:#F3F6F9; --accent:#0284C7; --accent-d:#0369A1; --ok:#177A56; --ok-bg:#EDF8F3;
+    --warn:#8A5A00; --warn-bg:#FFF7E6; --danger:#C2362F; --wa:#1FA855;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ font-family:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+        background:var(--paper); color:var(--ink); -webkit-font-smoothing:antialiased; font-size:15px; }
+  a{ color:var(--accent); }
+
+  /* Barra superior */
+  .top{ position:sticky; top:0; z-index:10; background:linear-gradient(180deg,#0284C7,#0369A1); color:#fff;
+        padding:calc(10px + env(safe-area-inset-top)) 16px 10px; box-shadow:0 2px 10px rgba(3,105,161,.25); }
+  .top-in{ max-width:600px; margin:0 auto; display:flex; align-items:center; gap:10px; }
+  .top img{ width:34px; height:34px; border-radius:50%; background:#fff; object-fit:cover; flex-shrink:0; }
+  .top-tit{ flex:1; min-width:0; line-height:1.2; }
+  .top-tit strong{ display:block; font-size:16px; font-weight:600; }
+  .top-tit span{ font-size:12.5px; opacity:.85; }
+  .yo{ display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.16); border-radius:999px;
+       padding:5px 10px 5px 6px; font-size:12.5px; font-weight:500; white-space:nowrap; max-width:46%; }
+  .yo i{ width:22px; height:22px; border-radius:50%; background:#fff; color:var(--accent); display:grid; place-items:center; font-size:11px; }
+  .yo b{ font-weight:500; overflow:hidden; text-overflow:ellipsis; }
+
+  .wrap{ max-width:600px; margin:0 auto; padding:14px 14px 110px; }
+
+  .card{ background:#fff; border:1px solid var(--line); border-radius:14px; margin-bottom:12px; overflow:hidden; }
+  .card-h{ display:flex; align-items:center; gap:10px; padding:14px 16px 0; }
+  .card-h .ico{ width:32px; height:32px; border-radius:9px; display:grid; place-items:center; background:#E0F2FE; color:var(--accent-d); font-size:15px; flex-shrink:0; }
+  .card-h h2{ margin:0; font-size:15.5px; font-weight:600; }
+  .card-b{ padding:12px 16px 16px; }
+
+  /* Cliente */
+  .cli{ display:flex; align-items:center; gap:12px; padding:16px; }
+  .avatar{ width:48px; height:48px; border-radius:50%; background:#E0F2FE; color:var(--accent-d); display:grid; place-items:center;
+           font-size:18px; font-weight:700; flex-shrink:0; }
+  .cli h1{ margin:0; font-size:19px; font-weight:700; line-height:1.2; }
+  .cli .sub{ font-size:13px; color:var(--faint); margin-top:2px; }
+  .chip{ display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid transparent; }
+  .chip-pend{ color:var(--warn); background:var(--warn-bg); border-color:#F5E0B3; }
+  .chip-ok{ color:var(--ok); background:var(--ok-bg); border-color:#C9EBDC; }
+  .chip-prog{ color:var(--accent-d); background:#EAF6FD; border-color:#C4E4F7; }
+
+  .acciones{ display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid var(--line-soft); }
+  .acciones a{ display:flex; flex-direction:column; align-items:center; gap:4px; padding:11px 4px; text-decoration:none;
+               color:var(--ink); font-size:12.5px; font-weight:500; }
+  .acciones a + a{ border-left:1px solid var(--line-soft); }
+  .acciones a i{ font-size:18px; }
+  .acciones a:active{ background:var(--paper); }
+  .acciones .off{ color:#C3CBD6; pointer-events:none; }
+  .c-tel i{ color:var(--accent); } .c-wa i{ color:var(--wa); } .c-map i{ color:#E5484D; }
+
+  .datos{ display:grid; grid-template-columns:auto 1fr; gap:8px 12px; padding:4px 16px 16px; font-size:14px; }
+  .datos dt{ color:var(--faint); display:flex; align-items:center; gap:7px; font-weight:400; white-space:nowrap; }
+  .datos dt i{ width:16px; text-align:center; color:#9AA5B4; }
+  .datos dd{ margin:0; font-weight:500; word-break:break-word; }
+  .problema{ margin:0 16px 16px; padding:11px 13px; border-radius:10px; background:var(--warn-bg); border:1px solid #F5E0B3;
+             color:#5C3D00; font-size:14px; white-space:pre-wrap; display:flex; gap:10px; }
+  .problema i{ color:var(--warn); margin-top:3px; }
+
+  .aviso{ display:flex; gap:10px; align-items:flex-start; padding:11px 13px; border-radius:10px; font-size:13.5px; margin-bottom:12px; }
+  .aviso.info{ background:#EAF6FD; border:1px solid #C4E4F7; color:#0B4A6F; }
+  .aviso.error{ background:#FDF1F0; border:1px solid #F3CFCC; color:#8E2620; }
+  .aviso i{ margin-top:2px; }
+
+  /* Campos */
+  .campo{ margin-bottom:14px; }
+  .campo label{ display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; margin-bottom:6px; }
+  .campo label i{ width:18px; text-align:center; color:var(--accent); }
+  .campo label .opt{ font-weight:400; color:var(--faint); font-size:12.5px; }
+  .inp{ width:100%; height:48px; padding:0 14px; font:inherit; font-size:16px; color:var(--ink);
+        border:1px solid var(--line); border-radius:11px; background:#fff; -webkit-appearance:none; }
+  textarea.inp{ height:auto; min-height:96px; padding:12px 14px; resize:vertical; line-height:1.5; }
+  .inp:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .inp::placeholder{ color:#9AA5B4; }
+  .fila{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .unidad{ position:relative; }
+  .unidad .inp{ padding-right:58px; font-variant-numeric:tabular-nums; }
+  .unidad span{ position:absolute; right:14px; top:50%; transform:translateY(-50%); color:var(--faint); font-size:14px; pointer-events:none; }
+  .rapidas{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .rapidas button{ border:1px solid var(--line); background:#fff; border-radius:999px; padding:5px 11px; font:inherit; font-size:12.5px; color:var(--soft); cursor:pointer; }
+  .rapidas button:active, .rapidas button.on{ border-color:var(--accent); color:var(--accent-d); background:#F0F9FF; }
+
+  /* Foto */
+  .foto{ position:relative; display:flex; align-items:center; gap:12px; padding:14px; border:1.5px dashed #B7C2D0; border-radius:12px;
+         background:#FAFBFD; cursor:pointer; }
+  .foto input{ position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .foto .fi{ width:44px; height:44px; border-radius:10px; background:#E0F2FE; color:var(--accent-d); display:grid; place-items:center; font-size:19px; flex-shrink:0; }
+  .foto strong{ display:block; font-size:14px; }
+  .foto small{ color:var(--faint); font-size:12.5px; }
+  .foto img{ width:64px; height:64px; object-fit:cover; border-radius:8px; margin-left:auto; display:none; }
+
+  /* ¿Quedó solucionado? */
+  .seg{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .seg input{ position:absolute; opacity:0; pointer-events:none; }
+  .seg label{ display:flex; align-items:center; justify-content:center; gap:8px; height:50px; border:1.5px solid var(--line);
+              border-radius:11px; font-weight:600; font-size:15px; color:var(--soft); cursor:pointer; margin:0; }
+  .seg input:checked + label.si{ border-color:var(--ok); background:var(--ok-bg); color:var(--ok); }
+  .seg input:checked + label.no{ border-color:#B7C2D0; background:#F1F4F7; color:var(--ink); }
+  .seg input:focus-visible + label{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* Barra para guardar */
+  .barra{ position:fixed; left:0; right:0; bottom:0; z-index:10; background:#fff; border-top:1px solid var(--line);
+          padding:10px 14px calc(10px + env(safe-area-inset-bottom)); box-shadow:0 -4px 16px rgba(15,27,45,.06); }
+  .barra-in{ max-width:600px; margin:0 auto; }
+  .btn{ display:flex; align-items:center; justify-content:center; gap:10px; width:100%; height:52px; border-radius:12px;
+        font:inherit; font-size:16px; font-weight:600; border:1px solid transparent; cursor:pointer; text-decoration:none; }
+  .btn-p{ background:var(--accent); color:#fff; }
+  .btn-p:active{ background:var(--accent-d); }
+  .btn-p:disabled{ opacity:.75; }
+  .btn-wa{ background:var(--wa); color:#fff; }
+  .btn-wa:active{ background:#178A45; }
+  .btn-g{ background:#fff; color:var(--ink); border-color:var(--line); }
+  .btn + .btn{ margin-top:8px; }
+
+  /* Listo */
+  .exito{ text-align:center; padding:26px 18px 20px; }
+  .exito .ok{ width:68px; height:68px; border-radius:50%; background:var(--ok-bg); color:var(--ok); display:grid; place-items:center;
+              font-size:32px; margin:0 auto 10px; }
+  .exito h1{ font-size:21px; margin:0 0 4px; }
+  .exito p{ margin:0; color:var(--soft); font-size:14px; }
+  .burbuja{ background:#E7FFDB; border-radius:12px 12px 12px 3px; padding:12px 14px; white-space:pre-wrap; font-size:14.5px; line-height:1.55;
+            box-shadow:0 1px 1px rgba(0,0,0,.08); margin:0; font-family:inherit; }
+  .reg{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--faint); padding:0 16px 14px; }
+  .reg i{ color:var(--ok); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="">
+    <div class="top-tit">
+      <strong>{% if t %}OT-{{ '%06d'|format(t.id) }}{% else %}SPYnet{% endif %}</strong>
+      <span>{% if t %}Diagnóstico de asistencia{% else %}Diagnóstico{% endif %}</span>
+    </div>
+    {% if quien %}
+      <div class="yo" title="Sesión iniciada"><i class="fa-solid fa-user"></i><b>{{ quien }}</b></div>
+    {% endif %}
+  </div>
+</header>
+
+<main class="wrap">
+
+{% if not t %}
+  <div class="card exito">
+    <div class="ok" style="background:#F1F4F7;color:var(--faint)"><i class="fa-solid fa-link-slash"></i></div>
+    <h1>Enlace no válido</h1>
+    <p>Este enlace no existe o el ticket fue eliminado. Pide a la oficina que te lo envíe de nuevo.</p>
+  </div>
+
+{% elif listo %}
+  <section class="card exito">
+    <div class="ok"><i class="fa-solid fa-check"></i></div>
+    <h1>Diagnóstico guardado</h1>
+    <p>Quedó cargado en el sistema y la oficina recibió el aviso.</p>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><span class="ico"><i class="fa-brands fa-whatsapp"></i></span><h2>Resumen para la oficina</h2></div>
+    <div class="card-b"><pre class="burbuja">{{ resumen }}</pre></div>
+    <div class="reg"><i class="fa-solid fa-circle-check"></i> Registrado por {{ quien }}{% if t.resuelto_por %} · cerrado como resuelto{% endif %}</div>
+  </section>
+
+  <div class="barra"><div class="barra-in">
+    <a class="btn btn-wa" href="{{ wa_url }}"><i class="fa-brands fa-whatsapp" style="font-size:20px"></i> Enviar a la oficina por WhatsApp</a>
+    <a class="btn btn-g" href="{{ request.path }}"><i class="fa-regular fa-pen-to-square"></i> Corregir algo</a>
+  </div></div>
+  {% if not tiene_tel %}<p style="text-align:center;font-size:12.5px;color:var(--faint)">WhatsApp te va a pedir que elijas a quién enviarlo.</p>{% endif %}
+
+{% else %}
+  {% set est = (t.estado or 'pendiente')|lower %}
+  <!-- Cliente -->
+  <section class="card">
+    <div class="cli">
+      <div class="avatar">{{ (t.cliente or '?')[:1]|upper }}</div>
+      <div style="min-width:0">
+        <h1>{{ t.cliente or 'Cliente' }}</h1>
+        <div class="sub">
+          {{ t.tipo or 'Ticket' }} ·
+          <span class="chip {{ 'chip-ok' if est == 'resuelto' else ('chip-prog' if est == 'en_progreso' else 'chip-pend') }}">
+            {{ {'resuelto':'Resuelto','en_progreso':'En progreso','cancelado':'Cancelado'}.get(est, 'Pendiente') }}
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="acciones">
+      <a class="c-tel {{ '' if c.telefono else 'off' }}" href="{{ 'tel:' ~ c.telefono if c.telefono else '#' }}"><i class="fa-solid fa-phone"></i>Llamar</a>
+      <a class="c-wa {{ '' if c_wa else 'off' }}" href="{{ 'https://wa.me/' ~ c_wa if c_wa else '#' }}"><i class="fa-brands fa-whatsapp"></i>WhatsApp</a>
+      <a class="c-map {{ '' if como_llegar else 'off' }}" href="{{ como_llegar or '#' }}" target="_blank" rel="noopener"><i class="fa-solid fa-location-dot"></i>Cómo llegar</a>
+    </div>
+  </section>
+
+  <section class="card">
+    <dl class="datos" style="padding-top:16px">
+      {% if t.direccion or c.barrio %}<dt><i class="fa-solid fa-house"></i>Dirección</dt><dd>{{ t.direccion or '' }}{% if c.barrio and c.barrio not in (t.direccion or '') %} · {{ c.barrio }}{% endif %}</dd>{% endif %}
+      {% if c.referencia %}<dt><i class="fa-solid fa-signs-post"></i>Referencia</dt><dd>{{ c.referencia }}</dd>{% endif %}
+      {% if t.pppoe or c.pppoe %}<dt><i class="fa-solid fa-user-lock"></i>PPPoE</dt><dd>{{ t.pppoe or c.pppoe }}</dd>{% endif %}
+      {% if c.telefono %}<dt><i class="fa-solid fa-phone"></i>Teléfono</dt><dd>{{ c.telefono }}</dd>{% endif %}
+    </dl>
+    {% if t.problema %}<div class="problema"><i class="fa-solid fa-triangle-exclamation"></i><span>{{ t.problema }}</span></div>{% endif %}
+  </section>
+
+  {% if error %}<div class="aviso error"><i class="fa-solid fa-circle-exclamation"></i><span>{{ error }}</span></div>{% endif %}
+  {% if t.diag_completado %}
+    <div class="aviso info"><i class="fa-solid fa-circle-info"></i>
+      <span>Ya lo cargó {{ t.diag_por or 'alguien' }} el {{ t.diag_completado[8:10] }}/{{ t.diag_completado[5:7] }} a las {{ t.diag_completado[11:16] }}. Si guardas de nuevo, se actualiza con tu nombre.</span>
+    </div>
+  {% endif %}
+
+  <!-- Diagnóstico -->
+  <form method="post" enctype="multipart/form-data" id="fDiag">
+    <section class="card">
+      <div class="card-h"><span class="ico"><i class="fa-solid fa-stethoscope"></i></span><h2>Diagnóstico</h2></div>
+      <div class="card-b">
+        <div class="campo">
+          <label for="falla"><i class="fa-solid fa-plug-circle-exclamation"></i> Falla</label>
+          <input class="inp" id="falla" name="falla" list="dlFalla" value="{{ t.falla or '' }}" placeholder="¿Qué problema encontraste?" autocomplete="off">
+          <datalist id="dlFalla">
+            <option value="Sin internet"><option value="Internet lento"><option value="Cortes intermitentes">
+            <option value="LOS en rojo"><option value="Fibra cortada"><option value="Conector dañado">
+            <option value="Router dañado"><option value="Router reseteado / sin configuración">
+            <option value="Poca cobertura WiFi"><option value="Sin energía en el equipo">
+          </datalist>
+          <div class="rapidas" data-para="falla">
+            {% for o in ['Sin internet', 'LOS en rojo', 'Fibra cortada', 'Internet lento', 'Router dañado'] %}<button type="button">{{ o }}</button>{% endfor %}
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="cambio"><i class="fa-solid fa-screwdriver-wrench"></i> Cambio</label>
+          <input class="inp" id="cambio" name="cambio" list="dlCambio" value="{{ t.cambio or '' }}" placeholder="¿Qué cambiaste o hiciste?" autocomplete="off">
+          <datalist id="dlCambio">
+            <option value="Ninguno"><option value="Cambio de router"><option value="Cambio de ONU">
+            <option value="Cambio de conector"><option value="Cambio de patchcord"><option value="Cambio de fuente">
+            <option value="Empalme de fibra"><option value="Cambio de fibra drop"><option value="Reconfiguración del router">
+          </datalist>
+          <div class="rapidas" data-para="cambio">
+            {% for o in ['Ninguno', 'Cambio de conector', 'Cambio de router', 'Empalme de fibra', 'Reconfiguración del router'] %}<button type="button">{{ o }}</button>{% endfor %}
+          </div>
+        </div>
+
+        <div class="fila">
+          <div class="campo">
+            <label for="senal"><i class="fa-solid fa-signal"></i> Señal</label>
+            <div class="unidad">
+              <input class="inp" id="senal" name="senal" inputmode="decimal" value="{{ t.senal or '' }}" placeholder="-18.5" autocomplete="off">
+              <span>dBm</span>
+            </div>
+          </div>
+          <div class="campo">
+            <label for="megas"><i class="fa-solid fa-gauge-high"></i> Megas</label>
+            <div class="unidad">
+              <input class="inp" id="megas" name="megas" inputmode="decimal" value="{{ t.megas or '' }}" placeholder="130" autocomplete="off">
+              <span>Mbps</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label><i class="fa-solid fa-camera"></i> Foto del medidor <span class="opt">(opcional)</span></label>
+          <label class="foto" for="senal_foto" style="font-weight:400">
+            <input type="file" id="senal_foto" name="senal_foto" accept="image/*" capture="environment">
+            <span class="fi"><i class="fa-solid fa-camera"></i></span>
+            <span>
+              <strong id="fotoTxt">{{ 'Cambiar la foto' if t.senal_foto else 'Sacar o elegir una foto' }}</strong>
+              <small>{{ 'Ya hay una cargada; la nueva la reemplaza.' if t.senal_foto else 'Del medidor de potencia o de la ONU' }}</small>
+            </span>
+            <img id="fotoPrev" alt="">
+          </label>
+        </div>
+
+        <div class="campo" style="margin-bottom:0">
+          <label for="trabajo_realizado"><i class="fa-solid fa-clipboard-list"></i> Trabajo realizado <span class="opt">(opcional)</span></label>
+          <textarea class="inp" id="trabajo_realizado" name="trabajo_realizado" placeholder="Qué se hizo, materiales usados, observaciones…">{{ t.trabajo_realizado or '' }}</textarea>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h"><span class="ico" style="background:var(--ok-bg);color:var(--ok)"><i class="fa-solid fa-flag-checkered"></i></span><h2>¿Quedó solucionado?</h2></div>
+      <div class="card-b">
+        <div class="seg" role="radiogroup" aria-label="¿Quedó solucionado?">
+          <input type="radio" name="resuelto" id="resSi" value="1" {{ 'checked' if est == 'resuelto' }}>
+          <label class="si" for="resSi"><i class="fa-solid fa-circle-check"></i> Sí, resuelto</label>
+          <input type="radio" name="resuelto" id="resNo" value="0" {{ 'checked' if est != 'resuelto' }}>
+          <label class="no" for="resNo"><i class="fa-solid fa-clock"></i> Todavía no</label>
+        </div>
+        <div style="font-size:12.5px;color:var(--faint);margin-top:8px">
+          Si eliges <b>Sí</b>, el ticket se cierra a tu nombre ({{ quien }}).
+        </div>
+      </div>
+    </section>
+
+    <div class="barra"><div class="barra-in">
+      <button class="btn btn-p" type="submit" id="btnGuardar"><i class="fa-solid fa-floppy-disk"></i> Guardar diagnóstico</button>
+    </div></div>
+  </form>
+{% endif %}
+</main>
+
+<script>
+(() => {
+  // Opciones rápidas: completan el campo con un toque
+  document.querySelectorAll('.rapidas').forEach(box => {
+    const inp = document.getElementById(box.dataset.para);
+    const marcar = () => box.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.textContent === inp.value));
+    box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { inp.value = b.textContent; marcar(); }));
+    inp.addEventListener('input', marcar); marcar();
+  });
+  // La señal de fibra siempre es negativa: "18.5" -> "-18.5"
+  const senal = document.getElementById('senal');
+  senal?.addEventListener('blur', () => {
+    const v = senal.value.trim().replace(',', '.');
+    if (/^\d+(\.\d+)?$/.test(v) && parseFloat(v) > 0) senal.value = '-' + v;
+  });
+  // Vista previa de la foto
+  const foto = document.getElementById('senal_foto'), prev = document.getElementById('fotoPrev');
+  foto?.addEventListener('change', () => {
+    const f = foto.files[0];
+    if (!f){ prev.style.display = 'none'; return; }
+    if (f.size > 16 * 1024 * 1024){ alert('La foto pesa más de 16 MB.'); foto.value = ''; return; }
+    prev.src = URL.createObjectURL(f); prev.style.display = 'block';
+    document.getElementById('fotoTxt').textContent = 'Foto lista';
+  });
+  document.getElementById('fDiag')?.addEventListener('submit', () => {
+    const b = document.getElementById('btnGuardar');
+    b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando…';
+  });
+})();
+</script>
+</body>
+</html>
