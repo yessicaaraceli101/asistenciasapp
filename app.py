@@ -268,7 +268,8 @@ def _ensure_config():
                             ("falla", "TEXT"), ("cambio", "TEXT"), ("senal", "TEXT"), ("megas", "TEXT"),
                             ("diagnostico", "TEXT"), ("senal_foto", "TEXT"),
                             ("diag_token", "TEXT"), ("diag_completado", "TEXT"), ("trabajo_realizado", "TEXT"),
-                            ("diag_por", "TEXT"), ("resuelto_por", "TEXT"), ("resuelto_en", "TEXT")):
+                            ("diag_por", "TEXT"), ("resuelto_por", "TEXT"), ("resuelto_en", "TEXT"),
+                            ("ubic_origen", "TEXT")):
                 if c not in acols:
                     conn.execute(f"ALTER TABLE asistencias ADD COLUMN {c} {tipo}")
         conn.execute("CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT)")
@@ -1105,113 +1106,8 @@ def menu():
 
     return render_template("menu.html", stats=stats, recientes=recientes)
 
-@app.route("/nuevo_ticket", methods=["GET", "POST"])
-def nuevo_ticket():
-    if "usuario" not in session and "usuario_id" not in session:
-        return redirect(url_for("login"))
-
-    # ----- POST: guardar ticket -----
-    if request.method == "POST":
-        cliente        = (request.form.get("cliente") or "").strip()
-        cliente_id     = request.form.get("cliente_id") or None
-        direccion      = (request.form.get("direccion") or "").strip()
-        tipo           = request.form.get("tipo") or "Soporte"
-        prioridad      = request.form.get("prioridad") or "Media"
-        tecnico_nombre = (request.form.get("tecnico") or "").strip()
-        tecnico_id     = request.form.get("tecnico_id") or None
-        problema       = (request.form.get("problema") or "").strip()
-        cedula         = (request.form.get("cedula") or "").strip()
-        pppoe          = (request.form.get("pppoe") or "").strip()
-        canal          = (request.form.get("canal") or "web").strip()
-        estado         = (request.form.get("estado") or "pendiente").strip()
-        programada_local = (request.form.get("programada_local") or "").strip()
-        programada_en  = programada_local.replace("T", " ") if programada_local else None
-
-        # Diagnóstico de asistencia
-        falla       = (request.form.get("falla") or "").strip() or None
-        cambio      = (request.form.get("cambio") or "").strip() or None
-        senal       = (request.form.get("senal") or "").strip() or None
-        megas       = (request.form.get("megas") or "").strip() or None
-        diagnostico = (request.form.get("diagnostico") or "").strip() or None
-        if not (falla or cambio or senal or megas):
-            diagnostico = None   # el resumen vacío no se guarda
-
-        if not cliente:
-            flash("Selecciona un cliente.", "warning")
-            return redirect(url_for("nuevo_ticket"))
-
-        # Coordenadas del formulario
-        lat = request.form.get("lat", type=float)
-        lng = request.form.get("lng", type=float)
-
-        # Si no llegaron coordenadas, intentamos geocodificar en el servidor
-        if (lat is None or lng is None) and direccion:
-            glat, glng = _try_geocode_server(direccion)
-            if glat is not None and glng is not None:
-                lat, lng = glat, glng
-
-        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Dispositivos conectados al WiFi (TV, cámaras…) y repetidor
-        dispositivos = [d.strip() for d in request.form.getlist("dispositivos") if d.strip()]
-        otro = (request.form.get("dispositivo_otro") or "").strip()
-        if "Otro" in dispositivos:
-            dispositivos.remove("Otro")
-            if otro:
-                dispositivos.append(otro)
-        rep = request.form.get("repetidor")
-        repetidor = 1 if rep == "si" else (0 if rep == "no" else None)
-        repetidor_cant = (request.form.get("repetidor_cant", type=int) or 1) if repetidor == 1 else None
-
-        db = get_db()
-        nuevo_tid = insert_row(db, "asistencias", {
-            "dispositivos": ", ".join(dispositivos) or None,
-            "repetidor": repetidor,
-            "repetidor_cant": repetidor_cant,
-            "cliente": cliente,
-            "direccion": direccion,
-            "tipo": tipo,
-            "prioridad": prioridad,
-            "tecnico": tecnico_nombre,
-            "problema": problema,
-            "fecha": fecha,
-            "pppoe": pppoe,
-            "cliente_id": cliente_id,
-            "cedula": cedula,
-            "programada_en": programada_en,
-            "estado": estado,
-            "canal": canal,
-            "tecnico_id": tecnico_id,
-            "sucursal_id": current_sucursal_id(),
-            "lat": lat,
-            "lng": lng,
-            "falla": falla,
-            "cambio": cambio,
-            "senal": senal,
-            "megas": megas,
-            "diagnostico": diagnostico,
-        })
-        db.close()
-
-        # La ubicación pegada de Google Maps (exacta) queda también en el cliente, si no tenía.
-        # La aproximada (buscada por dirección) no se guarda en el cliente.
-        if cliente_id and lat is not None and lng is not None and request.form.get("ubic_origen") == "pegada":
-            db2 = get_db()
-            if {"lat", "lng"} <= table_columns(db2, "clientes"):
-                db2.execute("UPDATE clientes SET lat=?, lng=? WHERE id=? AND sucursal_id=? AND (lat IS NULL OR lng IS NULL)",
-                            (lat, lng, cliente_id, current_sucursal_id()))
-                db2.commit()
-            db2.close()
-
-        push_notificacion(f"Nueva asistencia: {tipo}",
-                          _cuerpo_aviso(cliente, tecnico_nombre, programada_en, falla))
-        if nuevo_tid:
-            flash("Ticket registrado. Envíaselo al técnico por WhatsApp: el mensaje incluye el enlace para que complete el diagnóstico.", "success")
-            return redirect(url_for("tickets_ot", tid=nuevo_tid))
-        flash("Ticket registrado.", "success")
-        return redirect(url_for("tickets"))
-
-    # ----- GET: mostrar formulario -----
+def _datos_form_ticket():
+    """Clientes (con sus datos) y técnicos de la sucursal para el formulario de ticket."""
     db = get_db()
 
     ccols = table_columns(db, "clientes")
@@ -1272,6 +1168,119 @@ def nuevo_ticket():
     """, (current_sucursal_id(),)).fetchall()
     db.close()
 
+    return clientes, tecnicos
+
+@app.route("/nuevo_ticket", methods=["GET", "POST"])
+def nuevo_ticket():
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+
+    # ----- POST: guardar ticket -----
+    if request.method == "POST":
+        cliente        = (request.form.get("cliente") or "").strip()
+        cliente_id     = request.form.get("cliente_id") or None
+        direccion      = (request.form.get("direccion") or "").strip()
+        tipo           = request.form.get("tipo") or "Soporte"
+        prioridad      = request.form.get("prioridad") or "Media"
+        tecnico_nombre = (request.form.get("tecnico") or "").strip()
+        tecnico_id     = request.form.get("tecnico_id") or None
+        problema       = (request.form.get("problema") or "").strip()
+        cedula         = (request.form.get("cedula") or "").strip()
+        pppoe          = (request.form.get("pppoe") or "").strip()
+        canal          = (request.form.get("canal") or "web").strip()
+        estado         = (request.form.get("estado") or "pendiente").strip()
+        programada_local = (request.form.get("programada_local") or "").strip()
+        programada_en  = programada_local.replace("T", " ") if programada_local else None
+
+        # Diagnóstico de asistencia
+        falla       = (request.form.get("falla") or "").strip() or None
+        cambio      = (request.form.get("cambio") or "").strip() or None
+        senal       = (request.form.get("senal") or "").strip() or None
+        megas       = (request.form.get("megas") or "").strip() or None
+        diagnostico = (request.form.get("diagnostico") or "").strip() or None
+        if not (falla or cambio or senal or megas):
+            diagnostico = None   # el resumen vacío no se guarda
+
+        if not cliente:
+            flash("Selecciona un cliente.", "warning")
+            return redirect(url_for("nuevo_ticket"))
+
+        # Coordenadas del formulario
+        lat = request.form.get("lat", type=float)
+        lng = request.form.get("lng", type=float)
+
+        # Si no llegaron coordenadas, intentamos geocodificar en el servidor
+        ubic_origen = (request.form.get("ubic_origen") or "").strip() or None
+        if (lat is None or lng is None) and direccion:
+            glat, glng = _try_geocode_server(direccion)
+            if glat is not None and glng is not None:
+                lat, lng = glat, glng
+                ubic_origen = "aproximada"
+
+        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Dispositivos conectados al WiFi (TV, cámaras…) y repetidor
+        dispositivos = [d.strip() for d in request.form.getlist("dispositivos") if d.strip()]
+        otro = (request.form.get("dispositivo_otro") or "").strip()
+        if "Otro" in dispositivos:
+            dispositivos.remove("Otro")
+            if otro:
+                dispositivos.append(otro)
+        rep = request.form.get("repetidor")
+        repetidor = 1 if rep == "si" else (0 if rep == "no" else None)
+        repetidor_cant = (request.form.get("repetidor_cant", type=int) or 1) if repetidor == 1 else None
+
+        db = get_db()
+        nuevo_tid = insert_row(db, "asistencias", {
+            "dispositivos": ", ".join(dispositivos) or None,
+            "repetidor": repetidor,
+            "repetidor_cant": repetidor_cant,
+            "cliente": cliente,
+            "direccion": direccion,
+            "tipo": tipo,
+            "prioridad": prioridad,
+            "tecnico": tecnico_nombre,
+            "problema": problema,
+            "fecha": fecha,
+            "pppoe": pppoe,
+            "cliente_id": cliente_id,
+            "cedula": cedula,
+            "programada_en": programada_en,
+            "estado": estado,
+            "canal": canal,
+            "tecnico_id": tecnico_id,
+            "sucursal_id": current_sucursal_id(),
+            "lat": lat,
+            "lng": lng,
+            "ubic_origen": ubic_origen,
+            "falla": falla,
+            "cambio": cambio,
+            "senal": senal,
+            "megas": megas,
+            "diagnostico": diagnostico,
+        })
+        db.close()
+
+        # La ubicación pegada de Google Maps (exacta) queda también en el cliente, si no tenía.
+        # La aproximada (buscada por dirección) no se guarda en el cliente.
+        if cliente_id and lat is not None and lng is not None and request.form.get("ubic_origen") == "pegada":
+            db2 = get_db()
+            if {"lat", "lng"} <= table_columns(db2, "clientes"):
+                db2.execute("UPDATE clientes SET lat=?, lng=? WHERE id=? AND sucursal_id=? AND (lat IS NULL OR lng IS NULL)",
+                            (lat, lng, cliente_id, current_sucursal_id()))
+                db2.commit()
+            db2.close()
+
+        push_notificacion(f"Nueva asistencia: {tipo}",
+                          _cuerpo_aviso(cliente, tecnico_nombre, programada_en, falla))
+        if nuevo_tid:
+            flash("Ticket registrado. Envíaselo al técnico por WhatsApp: el mensaje incluye el enlace para que complete el diagnóstico.", "success")
+            return redirect(url_for("tickets_ot", tid=nuevo_tid))
+        flash("Ticket registrado.", "success")
+        return redirect(url_for("tickets"))
+
+    # ----- GET: mostrar formulario -----
+    clientes, tecnicos = _datos_form_ticket()
     return render_template("nuevo_ticket.html", clientes=clientes, tecnicos=tecnicos)
 
 @app.route("/tickets")
@@ -3155,47 +3164,105 @@ def tickets_cambiar_estado(tid):
     return redirect(request.referrer or url_for("agenda"))
 
 # ---------- Editar ticket (modal de la lista de tickets) ----------
-@app.route("/tickets/<int:tid>/editar", methods=["POST"])
+@app.route("/tickets/<int:tid>/editar", methods=["GET", "POST"])
 def tickets_editar(tid):
+    """Editar un ticket con los mismos datos de Nuevo ticket. Solo administradores."""
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
-
-    tipo      = (request.form.get("tipo") or "").strip()
-    prioridad = (request.form.get("prioridad") or "").strip() or None
-    tecnico   = (request.form.get("tecnico") or "").strip() or None
-    estado    = (request.form.get("estado") or "pendiente").strip().lower()
-
-    if not tipo:
-        flash("El tipo del ticket es obligatorio.", "error")
-        return redirect(request.referrer or url_for("tickets"))
-    if estado not in ESTADOS_VALIDOS:
-        estado = "pendiente"
+    volver = request.referrer or url_for("tickets")
+    if session.get("rol") != "admin":
+        flash("Solo un administrador puede editar tickets.", "warning")
+        return redirect(volver if request.method == "POST" else url_for("tickets_ot", tid=tid))
 
     db = get_db()
     sid = current_sucursal_id()
+    row = db.execute("SELECT * FROM asistencias WHERE id=? AND sucursal_id=?", (tid, sid)).fetchone()
+    if not row:
+        db.close()
+        flash("Ticket no encontrado en esta sucursal.", "warning")
+        return redirect(url_for("tickets"))
+    t = dict(row)
     acols = table_columns(db, "asistencias")
 
-    data = {"tipo": tipo, "prioridad": prioridad, "tecnico": tecnico, "estado": estado}
-    # Mantener tecnico_id sincronizado para que la Agenda muestre el técnico correcto
-    if "tecnico_id" in acols:
-        t = db.execute(
-            "SELECT id FROM tecnicos WHERE lower(nombre)=lower(?) AND sucursal_id=?",
-            (tecnico or "", sid)
-        ).fetchone()
-        data["tecnico_id"] = t["id"] if t else None
-    data = {k: v for k, v in data.items() if k in acols}
+    if request.method == "GET":
+        db.close()
+        clientes, tecnicos = _datos_form_ticket()
+        return render_template("nuevo_ticket.html", clientes=clientes, tecnicos=tecnicos, t=t, modo="editar")
 
-    sets = ", ".join(f"{k}=?" for k in data)
-    cur = db.execute(f"UPDATE asistencias SET {sets} WHERE id=? AND sucursal_id=?",
-                     list(data.values()) + [tid, sid])
+    f = request.form
+    estado = (f.get("estado") or t.get("estado") or "pendiente").strip().lower()
+    if estado not in ESTADOS_VALIDOS:
+        estado = "pendiente"
+
+    if "cliente" in f:
+        # ---- Formulario completo ----
+        cliente = (f.get("cliente") or "").strip()
+        if not cliente:
+            db.close()
+            flash("Selecciona un cliente.", "warning")
+            return redirect(url_for("tickets_editar", tid=tid))
+        dispositivos = [d.strip() for d in f.getlist("dispositivos") if d.strip()]
+        otro = (f.get("dispositivo_otro") or "").strip()
+        if "Otro" in dispositivos:
+            dispositivos.remove("Otro")
+            if otro:
+                dispositivos.append(otro)
+        rep = f.get("repetidor")
+        repetidor = 1 if rep == "si" else (0 if rep == "no" else None)
+        prog = (f.get("programada_local") or "").strip()
+        tecnico_id = f.get("tecnico_id", type=int)
+        tecnico = (f.get("tecnico") or "").strip() or None
+        if tecnico_id:
+            r = db.execute("SELECT nombre FROM tecnicos WHERE id=? AND sucursal_id=?", (tecnico_id, sid)).fetchone()
+            tecnico = r["nombre"] if r else tecnico
+        data = {
+            "cliente": cliente,
+            "cliente_id": f.get("cliente_id", type=int),
+            "cedula": (f.get("cedula") or "").strip() or None,
+            "pppoe": (f.get("pppoe") or "").strip() or None,
+            "direccion": (f.get("direccion") or "").strip() or None,
+            "tipo": (f.get("tipo") or "").strip() or t.get("tipo"),
+            "prioridad": (f.get("prioridad") or "").strip() or None,
+            "tecnico": tecnico,
+            "tecnico_id": tecnico_id,
+            "programada_en": prog.replace("T", " ") if prog else None,
+            "dispositivos": ", ".join(dispositivos) or None,
+            "repetidor": repetidor,
+            "repetidor_cant": (f.get("repetidor_cant", type=int) or 1) if repetidor == 1 else None,
+            "problema": (f.get("problema") or "").strip() or None,
+            "estado": estado,
+        }
+        la, lo = f.get("lat", type=float), f.get("lng", type=float)
+        if la is not None and lo is not None:
+            data["lat"], data["lng"] = la, lo
+            data["ubic_origen"] = (f.get("ubic_origen") or "").strip() or t.get("ubic_origen")
+        elif not (f.get("lat") or "").strip():
+            data["lat"] = data["lng"] = None
+    else:
+        # ---- Edición rápida (ventana de la lista de tickets) ----
+        tecnico = (f.get("tecnico") or "").strip() or None
+        data = {"tipo": (f.get("tipo") or "").strip() or t.get("tipo"),
+                "prioridad": (f.get("prioridad") or "").strip() or None,
+                "tecnico": tecnico, "estado": estado}
+        if "tecnico_id" in acols:
+            r = db.execute("SELECT id FROM tecnicos WHERE lower(nombre)=lower(?) AND sucursal_id=?",
+                           (tecnico or "", sid)).fetchone()
+            data["tecnico_id"] = r["id"] if r else None
+
+    # Quién lo cerró (si pasa a resuelto) o reabrir
+    if estado == "resuelto" and (t.get("estado") or "").lower() != "resuelto":
+        data["resuelto_por"] = session.get("nombre") or session.get("usuario")
+        data["resuelto_en"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    elif estado != "resuelto" and (t.get("estado") or "").lower() == "resuelto":
+        data["resuelto_por"] = data["resuelto_en"] = None
+
+    data = {k: v for k, v in data.items() if k in acols}
+    db.execute(f"UPDATE asistencias SET {', '.join(k + '=?' for k in data)} WHERE id=? AND sucursal_id=?",
+               list(data.values()) + [tid, sid])
     db.commit()
     db.close()
-
-    if cur.rowcount:
-        flash("Ticket actualizado.", "success")
-    else:
-        flash("Ticket no encontrado en esta sucursal.", "warning")
-    return redirect(request.referrer or url_for("tickets"))
+    flash("Ticket actualizado.", "success")
+    return redirect(url_for("tickets_ot", tid=tid) if "cliente" in f else volver)
 
 @app.route("/tickets/<int:tid>/asignar", methods=["POST"])
 def tickets_asignar(tid):
@@ -3236,6 +3303,9 @@ def tickets_eliminar(tid):
     """Elimina definitivamente un ticket SOLO si su estado es 'resuelto' en la sucursal actual."""
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
+    if session.get("rol") != "admin":
+        flash("Solo un administrador puede eliminar tickets.", "warning")
+        return redirect(url_for("tickets"))
 
     db = get_db()
     acols = table_columns(db, "asistencias")
@@ -3298,6 +3368,9 @@ def tickets_eliminar_resueltos():
     """Elimina todos los tickets en estado 'resuelto' de la sucursal actual."""
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
+    if session.get("rol") != "admin":
+        flash("Solo un administrador puede eliminar tickets.", "warning")
+        return redirect(url_for("tickets"))
 
     db = get_db()
     acols = table_columns(db, "asistencias")
@@ -4204,6 +4277,15 @@ def _con_unidad(valor, unidad, clave):
         return ""
     return v if clave in v.lower() else f"{v} {unidad}"
 
+def _mejor_ubicacion(t, c):
+    """(lat, lng, aproximada). Primero la del cliente (la que se cargó a mano o en la casa),
+    después la del ticket; la del ticket es aproximada si se buscó por la dirección."""
+    if c.get("lat") is not None and c.get("lng") is not None:
+        return c["lat"], c["lng"], False
+    if t.get("lat") is not None and t.get("lng") is not None:
+        return t["lat"], t["lng"], (t.get("ubic_origen") or "aproximada") not in ("pegada", "cliente", "tecnico")
+    return None, None, False
+
 def _ot_datos(db, t, sid):
     """Arma los datos de la OT de un ticket: cliente, técnico, mapa y mensaje de WhatsApp."""
     from urllib.parse import quote
@@ -4247,9 +4329,8 @@ def _ot_datos(db, t, sid):
     tec = dict(tec) if tec else {}
 
     ot_num = f"OT-{int(t['id']):06d}"
-    lat = t.get("lat") or c.get("lat")
-    lng = t.get("lng") or c.get("lng")
-    maps_url = f"https://www.google.com/maps?q={lat},{lng}" if lat and lng else None
+    lat, lng, _aprox = _mejor_ubicacion(t, c)
+    maps_url = f"https://www.google.com/maps?q={lat},{lng}" if lat is not None and lng is not None else None
     ot_url = url_for("tickets_ot", tid=t["id"], _external=True)
     direccion = t.get("direccion") or c.get("direccion") or ""
 
@@ -4396,6 +4477,15 @@ def diag_tecnico(token):
                 foto.save(os.path.join(SENAL_UPLOAD_FOLDER, nombre))
                 cambios["senal_foto"] = nombre
 
+        casa_lat, casa_lng = f.get("casa_lat", type=float), f.get("casa_lng", type=float)
+        if not error and casa_lat is not None and casa_lng is not None \
+                and -90 <= casa_lat <= 90 and -180 <= casa_lng <= 180:
+            cambios["lat"], cambios["lng"] = round(casa_lat, 7), round(casa_lng, 7)
+            cambios["ubic_origen"] = "tecnico"
+            if t.get("cliente_id"):
+                db.execute("UPDATE clientes SET lat=?, lng=? WHERE id=?",
+                           (cambios["lat"], cambios["lng"], t["cliente_id"]))
+
         if not error:
             resuelto = f.get("resuelto") == "1"
             ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -4446,12 +4536,12 @@ def diag_tecnico(token):
     if t.get("cliente_id"):
         r = db.execute("SELECT * FROM clientes WHERE id=?", (t["cliente_id"],)).fetchone()
         c = dict(r) if r else {}
-    lat = t.get("lat") or c.get("lat")
-    lng = t.get("lng") or c.get("lng")
+    lat, lng, ub_aprox = _mejor_ubicacion(t, c)
     db.close()
     return render_template("diag_tecnico.html", t=t, c=c, error=error, listo=False, quien=quien,
+                           ub_aprox=ub_aprox, tiene_ub=lat is not None,
                            c_wa=_tel_whatsapp(c.get("telefono") or ""),
-                           como_llegar=(f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}" if lat and lng else None))
+                           como_llegar=(f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}" if lat is not None and lng is not None else None))
 
 
 @app.route("/tickets/<int:tid>/ot")

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Nuevo ticket{% endblock %}
+{% block title %}{% if modo == 'editar' %}Editar ticket OT-{{ '%06d'|format(t.id) }}{% else %}Nuevo ticket{% endif %}{% endblock %}
 
 {% block extra_head %}
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
@@ -172,15 +172,27 @@
 {% endblock %}
 
 {% block content %}
+{% set editar = modo == 'editar' %}
+{% set tt = t if editar else {} %}
+{% set disp_guardados = (tt.dispositivos or '').split(', ') if tt.dispositivos else [] %}
+{% set disp_fijos = ['Televisor', 'Cámaras', 'Celulares', 'Computadora', 'Consola de juegos'] %}
+{% set disp_otros = disp_guardados|reject('in', disp_fijos)|list %}
 <div class="nt">
 
   <div class="nt-head">
-    <h1>Nuevo ticket</h1>
-    <p>Registra una asistencia técnica o un reclamo de un cliente.
-       ¿Es una conexión nueva? <a href="{{ url_for('instalaciones_nueva') }}">Registrar instalación</a></p>
+    {% if editar %}
+      <a href="{{ url_for('tickets_ot', tid=tt.id) }}" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--ink-soft);text-decoration:none;margin-bottom:8px">
+        <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver a la orden de trabajo</a>
+      <h1>Editar ticket OT-{{ '%06d'|format(tt.id) }}</h1>
+      <p>Creado el {{ (tt.fecha or '')|string|truncate(16, true, '') }}. Solo los administradores pueden editar tickets.</p>
+    {% else %}
+      <h1>Nuevo ticket</h1>
+      <p>Registra una asistencia técnica o un reclamo de un cliente.
+         ¿Es una conexión nueva? <a href="{{ url_for('instalaciones_nueva') }}">Registrar instalación</a></p>
+    {% endif %}
   </div>
 
-  <form method="POST" action="{{ url_for('nuevo_ticket') }}" id="form-ticket" novalidate>
+  <form method="POST" action="{{ url_for('tickets_editar', tid=tt.id) if editar else url_for('nuevo_ticket') }}" id="form-ticket" novalidate data-editar="{{ 1 if editar else 0 }}">
 
     <!-- ============ 1. Cliente ============ -->
     <section class="nt-section">
@@ -195,7 +207,7 @@
             {% for c in clientes %}
               {% set nombre_completo = (c.nombre|default('') ~ (' ' ~ c.apellido if c.apellido is defined and c.apellido else ''))|trim %}
               <option
-                value="{{ nombre_completo }}"
+                value="{{ nombre_completo }}" {{ 'selected' if editar and tt.cliente_id and c.id == tt.cliente_id }}
                 data-id="{{ c.id|default('') }}"
                 data-cedula="{{ c.cedula|default('', true) }}"
                 data-pppoe="{{ c.pppoe|default('', true) }}"
@@ -243,7 +255,7 @@
       <div class="nt-section-body">
         <div class="nt-field">
           <label for="direccion">Dirección</label>
-          <input type="text" id="direccion" name="direccion" class="nt-input" placeholder="Calle, número, referencia" autocomplete="off">
+          <input type="text" id="direccion" name="direccion" class="nt-input" placeholder="Calle, número, referencia" autocomplete="off" value="{{ tt.direccion or '' }}">
           <div class="nt-loc-status" id="geoStatus">
             <i class="fa-regular fa-circle" aria-hidden="true"></i>
             <span>Sin ubicación</span>
@@ -265,10 +277,10 @@
           <a href="#" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir en Google Maps</a>
         </div>
         </div>
-        <input type="hidden" name="lat" id="lat">
-        <input type="hidden" name="lng" id="lng">
+        <input type="hidden" name="lat" id="lat" value="{{ tt.lat if tt.lat is not none else '' }}">
+        <input type="hidden" name="lng" id="lng" value="{{ tt.lng if tt.lng is not none else '' }}">
         <!-- De dónde salió la ubicación: "pegada" (exacta) se guarda también en el cliente -->
-        <input type="hidden" name="ubic_origen" id="ubic_origen">
+        <input type="hidden" name="ubic_origen" id="ubic_origen" value="{{ tt.ubic_origen or '' }}">
       </div>
     </section>
 
@@ -280,19 +292,19 @@
       <div class="nt-section-body nt-grid">
         <div class="nt-field">
           <label for="tipo">Tipo</label>
+          {% set tipos = ['Reparación', 'Cambio de router', 'Otro'] %}
           <select id="tipo" name="tipo">
-            <option>Reparación</option>
-            <option>Cambio de router</option>
-            <option>Otro</option>
+            {% for x in tipos %}<option {{ 'selected' if tt.tipo == x }}>{{ x }}</option>{% endfor %}
+            {% if tt.tipo and tt.tipo not in tipos %}<option selected>{{ tt.tipo }}</option>{% endif %}
           </select>
         </div>
 
         <div class="nt-field">
           <label for="prioridad">Prioridad</label>
           <select id="prioridad" name="prioridad">
-            <option>Alta</option>
-            <option selected>Media</option>
-            <option>Baja</option>
+            {% for x in ['Alta', 'Media', 'Baja'] %}
+              <option {{ 'selected' if (tt.prioridad or 'Media') == x }}>{{ x }}</option>
+            {% endfor %}
           </select>
         </div>
 
@@ -302,7 +314,7 @@
             <select id="tecnico_id_select">
               <option value="">Sin asignar</option>
               {% for t in tecnicos %}
-                <option value="{{ t.id }}">{{ t.nombre }}</option>
+                <option value="{{ t.id }}" {{ 'selected' if editar and (tt.tecnico_id == t.id or (not tt.tecnico_id and (tt.tecnico or '')|lower == (t.nombre or '')|lower)) }}>{{ t.nombre }}</option>
               {% endfor %}
             </select>
             <input type="hidden" name="tecnico_id" id="tecnico_id">
@@ -319,7 +331,8 @@
 
         <div class="nt-field">
           <label for="programada_local">Fecha y hora de la visita <span class="opt">(opcional)</span></label>
-          <input type="datetime-local" id="programada_local" name="programada_local" class="nt-input">
+          <input type="datetime-local" id="programada_local" name="programada_local" class="nt-input"
+                 value="{{ (tt.programada_en or '')|string|truncate(16, true, '')|replace(' ', 'T') }}">
           <div class="nt-hint">Si la completas, el ticket aparece en la Agenda.</div>
         </div>
 
@@ -327,10 +340,11 @@
           <label>Dispositivos conectados al WiFi <span class="opt">(marca los que tenga)</span></label>
           <div class="nt-checks">
             {% for d in ['Televisor', 'Cámaras', 'Celulares', 'Computadora', 'Consola de juegos', 'Otro'] %}
-              <label class="nt-check"><input type="checkbox" name="dispositivos" value="{{ d }}" {% if d == 'Otro' %}id="chkOtro"{% endif %}><span>{{ d }}</span></label>
+              <label class="nt-check"><input type="checkbox" name="dispositivos" value="{{ d }}" {% if d == 'Otro' %}id="chkOtro"{% endif %}
+                {{ 'checked' if (d in disp_guardados) or (d == 'Otro' and disp_otros) }}><span>{{ d }}</span></label>
             {% endfor %}
           </div>
-          <input class="nt-input" id="dispositivo_otro" name="dispositivo_otro" autocomplete="off" hidden
+          <input class="nt-input" id="dispositivo_otro" name="dispositivo_otro" autocomplete="off" hidden value="{{ disp_otros|join(', ') }}"
                  placeholder="¿Qué otro dispositivo? Ej.: impresora, alarma, parlante" style="margin-top:10px;max-width:420px">
         </div>
 
@@ -338,30 +352,44 @@
           <label>¿Tiene repetidor de WiFi?</label>
           <div class="d-flex align-items-center gap-3 flex-wrap">
             <div class="nt-seg" role="radiogroup" aria-label="¿Tiene repetidor?">
-              <input type="radio" name="repetidor" id="repNo" value="no"><label for="repNo">No</label>
-              <input type="radio" name="repetidor" id="repSi" value="si"><label for="repSi">Sí</label>
+              <input type="radio" name="repetidor" id="repNo" value="no" {{ 'checked' if tt.repetidor == 0 }}><label for="repNo">No</label>
+              <input type="radio" name="repetidor" id="repSi" value="si" {{ 'checked' if tt.repetidor == 1 }}><label for="repSi">Sí</label>
             </div>
             <div class="d-flex align-items-center gap-2" id="bloqueRep" hidden>
               <label for="repetidor_cant" style="margin:0;font-weight:400;color:var(--ink-soft)">Cantidad</label>
-              <input class="nt-input" type="number" id="repetidor_cant" name="repetidor_cant" min="1" max="10" value="1" style="width:80px">
+              <input class="nt-input" type="number" id="repetidor_cant" name="repetidor_cant" min="1" max="10" value="{{ tt.repetidor_cant or 1 }}" style="width:80px">
             </div>
           </div>
         </div>
 
         <div class="nt-field full">
           <label for="problema">Descripción del problema</label>
-          <textarea id="problema" name="problema" placeholder="Qué reporta el cliente, qué se observó, qué hay que llevar…"></textarea>
+          <textarea id="problema" name="problema" placeholder="Qué reporta el cliente, qué se observó, qué hay que llevar…">{{ tt.problema or '' }}</textarea>
         </div>
+
+        {% if editar %}
+        <div class="nt-field">
+          <label for="estado">Estado</label>
+          <select id="estado" name="estado">
+            {% for k, v in [('pendiente','Pendiente'), ('en_progreso','En progreso'), ('resuelto','Resuelto'), ('cancelado','Cancelado')] %}
+              <option value="{{ k }}" {{ 'selected' if (tt.estado or 'pendiente')|lower == k }}>{{ v }}</option>
+            {% endfor %}
+          </select>
+          {% if tt.resuelto_por %}<div class="nt-hint">Cerrado por {{ tt.resuelto_por }}{% if tt.resuelto_en %} el {{ tt.resuelto_en[8:10] }}/{{ tt.resuelto_en[5:7] }} {{ tt.resuelto_en[11:16] }}{% endif %}.</div>{% endif %}
+        </div>
+        {% endif %}
       </div>
     </section>
 
+    {% if not editar %}
     <input type="hidden" name="canal" value="web">
     <input type="hidden" name="estado" value="pendiente">
+    {% endif %}
 
     <div class="nt-actions">
-      <a href="{{ url_for('tickets') }}" class="nt-btn nt-btn-ghost">Cancelar</a>
+      <a href="{{ url_for('tickets_ot', tid=tt.id) if editar else url_for('tickets') }}" class="nt-btn nt-btn-ghost">Cancelar</a>
       <button class="nt-btn" type="submit" id="btnGuardar">
-        <i class="fa-solid fa-check" aria-hidden="true"></i> Guardar ticket
+        <i class="fa-solid fa-check" aria-hidden="true"></i> {{ 'Guardar cambios' if editar else 'Guardar ticket' }}
       </button>
     </div>
   </form>
@@ -378,6 +406,8 @@
 
   // ---------- Referencias ----------
   const $ = id => document.getElementById(id);
+  const EDITAR = document.getElementById('form-ticket').dataset.editar === '1';
+  const TXT_GUARDAR = EDITAR ? 'Guardar cambios' : 'Guardar ticket';
   const form        = $('form-ticket');
   const fieldCli    = $('fieldCliente');
   const clientCard  = $('clientCard');
@@ -468,7 +498,7 @@
 
   // ---------- Fecha mínima: ahora ----------
   (() => {
-    const dt = $('programada_local'); if (!dt) return;
+    const dt = $('programada_local'); if (!dt || EDITAR) return;   // al editar se permiten visitas pasadas
     const d = new Date(), p = n => String(n).padStart(2, '0');
     dt.min = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
   })();
@@ -483,7 +513,7 @@
     clearCoords();
   }
 
-  async function fillFromOption(op){
+  async function fillFromOption(op, conservar){
     if (!op || !op.value){ limpiarCliente(); return; }
     fieldCli.classList.remove('invalid');
     const d = op.dataset;
@@ -505,7 +535,13 @@
     clientCard.classList.add('show');
 
     const dir = (d.direccion || '').trim() || [d.barrio, d.referencia].filter(Boolean).join(' - ');
-    direccionEl.value = dir;
+    if (conservar){
+      // Editar: se mantienen la dirección y la ubicación que ya tenía el ticket
+      if (!direccionEl.value) direccionEl.value = dir;
+      if (latEl.value && lngEl.value){ setCoords(latEl.value, lngEl.value); return; }
+    } else {
+      direccionEl.value = dir;
+    }
     clearCoords();
 
     // 1) Coordenadas guardadas del cliente
@@ -541,7 +577,8 @@
 
   // Si al volver atrás quedó un cliente elegido, rellenar
   const sel = $('cliente');
-  if (sel.value) fillFromOption(sel.options[sel.selectedIndex]);
+  if (sel.value) fillFromOption(sel.options[sel.selectedIndex], EDITAR);
+  else if (EDITAR && latEl.value && lngEl.value) setCoords(latEl.value, lngEl.value);
 
   // Preseleccionar cliente desde la ficha: /nuevo_ticket?cliente_id=123
   const preId = new URLSearchParams(location.search).get('cliente_id');
@@ -565,6 +602,7 @@
   // ---------- Dispositivos y repetidor ----------
   const chkOtro = $('chkOtro'), otroEl = $('dispositivo_otro');
   chkOtro.addEventListener('change', () => { otroEl.hidden = !chkOtro.checked; if (chkOtro.checked) otroEl.focus(); });
+  otroEl.hidden = !chkOtro.checked;
   const syncRep = () => { $('bloqueRep').hidden = !$('repSi').checked; };
   document.querySelectorAll('input[name=repetidor]').forEach(r => r.addEventListener('change', syncRep));
   syncRep();
@@ -584,7 +622,7 @@
   window.addEventListener('pageshow', () => {
     const btn = $('btnGuardar');
     btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Guardar ticket';
+    btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> ' + TXT_GUARDAR;
   });
 })();
 </script>

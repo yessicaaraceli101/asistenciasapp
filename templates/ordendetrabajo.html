@@ -181,6 +181,7 @@
       <i class="fa-solid fa-print" aria-hidden="true"></i> Imprimir
     </button>
     {% if session.get('rol') == 'admin' %}
+      <a class="ot-btn" href="{{ url_for('tickets_editar', tid=t.id) }}"><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i> Editar</a>
       <button type="button" class="ot-btn danger" data-bs-toggle="modal" data-bs-target="#mBorrarOT">
         <i class="fa-regular fa-trash-can" aria-hidden="true"></i> Eliminar
       </button>

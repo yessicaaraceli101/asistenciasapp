@@ -108,6 +108,8 @@
   .tk-table tbody tr:hover{ background:#FAFBFD; }
 
   .tk-client strong{ display:block; font-weight:600; }
+  .tk-client strong a{ color:var(--ink); text-decoration:none; }
+  .tk-client strong a:hover{ color:var(--accent); text-decoration:underline; text-underline-offset:3px; }
   .tk-client small{ display:block; font-size:12.5px; color:var(--ink-faint); white-space:nowrap; }
   .tk-muted{ color:var(--ink-faint); }
   .tk-date{ white-space:nowrap; font-variant-numeric:tabular-nums; }
@@ -125,6 +127,7 @@
   .st-en_progreso{ color:#0369A1; background:#EAF6FD; border-color:#C4E4F7; }
   .st-resuelto   { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
   .st-cancelado  { color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+  .tk-baja{ display:block; font-size:12px; color:var(--ink-faint); margin-top:4px; white-space:nowrap; }
 
   /* Acciones */
   .tk-actions{ display:flex; justify-content:flex-end; align-items:center; gap:4px; }
@@ -140,27 +143,10 @@
   .tk-icon{
     width:32px; height:32px; border-radius:6px;
     display:inline-grid; place-items:center;
-    background:none; border:0; color:var(--ink-faint); cursor:pointer;
+    background:none; border:0; color:var(--ink-faint); cursor:pointer; text-decoration:none;
   }
   .tk-icon:hover{ background:#FDF1F0; color:var(--danger); }
-  .tk-icon.edit:hover{ background:#EEF2F6; color:var(--ink); }
-
-  /* Campos del modal de edición */
-  .tk-field + .tk-field{ margin-top:14px; }
-  .tk-field label{ display:block; font-size:14px; font-weight:500; color:var(--ink); margin-bottom:6px; }
-  .tk-field input, .tk-field select{
-    width:100%; height:42px; padding:0 12px;
-    font:inherit; font-size:14px; color:var(--ink);
-    border:1px solid var(--line); border-radius:8px; background:#fff;
-  }
-  .tk-field input:focus, .tk-field select:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
-  .tk-field-row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
-  .tk-field-row .tk-field + .tk-field{ margin-top:0; }
-  .tk-edit-client{
-    padding:10px 12px; margin-bottom:16px; border-radius:8px;
-    background:#F7F9FC; border:1px solid var(--line-soft); font-size:14px; color:var(--ink);
-  }
-  .tk-edit-client small{ display:block; color:var(--ink-faint); font-size:12.5px; }
+  .tk-icon.edit:hover, .tk-icon.ver:hover{ background:#EEF2F6; color:var(--ink); }
 
   .tk-empty{ padding:40px 16px; text-align:center; color:var(--ink-soft); }
   .tk-empty i{ display:block; font-size:26px; color:var(--ink-faint); margin-bottom:8px; }
@@ -181,6 +167,7 @@
 {% endblock %}
 
 {% block content %}
+{% set es_admin = session.get('rol') == 'admin' %}
 {% set ns = namespace(pendiente=0, en_progreso=0, resuelto=0, cancelado=0) %}
 {% for t in tickets or [] %}
   {% set e = (t.get('estado') or 'pendiente')|lower %}
@@ -190,9 +177,6 @@
   {% else %}{% set ns.pendiente = ns.pendiente + 1 %}{% endif %}
 {% endfor %}
 {% set total = (tickets or [])|length %}
-{% set tecnicos = (tickets or [])|map(attribute='tecnico')|select|unique|sort|list %}
-{% set tipos = ((tickets or [])|map(attribute='tipo')|select|list + ['Instalación','Reparación','Soporte','Otro'])|unique|list %}
-{% set senales = ((tickets or [])|map(attribute='prioridad')|select|list + ['Alta','Media','Baja'])|unique|list %}
 {% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Resuelto', 'cancelado':'Cancelado'} %}
 
 <div class="tk">
@@ -243,7 +227,7 @@
       </div>
       <span class="tk-result" id="tkResult" aria-live="polite"></span>
       <span class="spacer"></span>
-      {% if ns.resuelto %}
+      {% if ns.resuelto and es_admin %}
         <form method="post" action="{{ url_for('tickets_eliminar_resueltos') }}" class="js-confirm"
               data-title="¿Eliminar todos los resueltos?"
               data-body="Se eliminarán {{ ns.resuelto }} ticket{{ 's' if ns.resuelto != 1 }} en estado resuelto. Esta acción no se puede deshacer."
@@ -264,7 +248,7 @@
             <th scope="col">Cliente</th>
             <th scope="col" class="col-hide">Barrio</th>
             <th scope="col">Tipo</th>
-            <th scope="col" class="col-hide">Señal</th>
+            <th scope="col" class="col-hide">Prioridad</th>
             <th scope="col" class="col-hide">Técnico</th>
             <th scope="col">Estado</th>
             <th scope="col" class="col-hide">Fecha</th>
@@ -279,7 +263,7 @@
             <tr data-estado="{{ est }}"
                 data-search="{{ [t.get('cliente'), t.get('cedula'), t.get('pppoe'), barrio, t.get('tipo'), t.get('tecnico'), t.get('prioridad')]|select|join(' ')|lower }}">
               <td class="tk-client">
-                <strong>{{ t.get('cliente') or '—' }}</strong>
+                <strong><a href="{{ url_for('tickets_ot', tid=t['id']) }}" title="Ver la orden de trabajo">{{ t.get('cliente') or '—' }}</a></strong>
                 <small>
                   CI {{ t.get('cedula') or '—' }}
                   {% if t.get('pppoe') %}· PPPoE {{ t.get('pppoe') }}{% endif %}
@@ -293,6 +277,7 @@
                 <span class="tk-status st-{{ est if est in etiquetas else 'pendiente' }}">
                   {{ etiquetas.get(est, 'Pendiente') }}
                 </span>
+                {% if est == 'resuelto' and t.get('resuelto_por') %}<span class="tk-baja">por {{ t.get('resuelto_por') }}</span>{% endif %}
               </td>
               <td class="tk-date col-hide">
                 {{ fecha[:10] }}
@@ -300,20 +285,19 @@
               </td>
               <td>
                 <div class="tk-actions">
-                  <button type="button" class="tk-icon edit js-edit" title="Editar" aria-label="Editar ticket de {{ t.get('cliente') }}"
-                          data-action="{{ url_for('tickets_editar', tid=t['id']) }}"
-                          data-cliente="{{ t.get('cliente') or '' }}"
-                          data-fecha="{{ fecha[:16] }}"
-                          data-tipo="{{ t.get('tipo') or '' }}"
-                          data-prioridad="{{ t.get('prioridad') or '' }}"
-                          data-tecnico="{{ t.get('tecnico') or '' }}"
-                          data-estado="{{ est }}">
-                    <i class="fa-regular fa-pen-to-square" aria-hidden="true"></i>
-                  </button>
+                  {% if es_admin %}
+                    <a class="tk-icon edit" href="{{ url_for('tickets_editar', tid=t['id']) }}" title="Editar" aria-label="Editar ticket de {{ t.get('cliente') }}">
+                      <i class="fa-regular fa-pen-to-square" aria-hidden="true"></i>
+                    </a>
+                  {% else %}
+                    <a class="tk-icon ver" href="{{ url_for('tickets_ot', tid=t['id']) }}" title="Ver orden de trabajo" aria-label="Ver ticket de {{ t.get('cliente') }}">
+                      <i class="fa-regular fa-file-lines" aria-hidden="true"></i>
+                    </a>
+                  {% endif %}
                   {% if est != 'resuelto' %}
                     <form method="post" action="{{ url_for('tickets_cambiar_estado', tid=t['id']) }}" class="js-confirm"
                           data-title="¿Marcar como resuelto?"
-                          data-body="El ticket de {{ t.get('cliente') }} pasará a estado resuelto."
+                          data-body="El ticket de {{ t.get('cliente') }} pasará a estado resuelto a tu nombre."
                           data-confirm="Marcar como resuelto"
                           data-variant="primary">
                       <input type="hidden" name="estado" value="resuelto">
@@ -321,7 +305,7 @@
                         <i class="fa-regular fa-circle-check" aria-hidden="true"></i> Resolver
                       </button>
                     </form>
-                  {% else %}
+                  {% elif es_admin %}
                     <form method="post" action="{{ url_for('tickets_eliminar', tid=t['id']) }}" class="js-confirm"
                           data-title="¿Eliminar este ticket?"
                           data-body="Se eliminará el ticket resuelto de {{ t.get('cliente') }}. Esta acción no se puede deshacer."
@@ -350,58 +334,6 @@
         </tbody>
       </table>
     </div>
-  </div>
-</div>
-
-<!-- Modal: editar ticket -->
-<div class="modal fade tk-modal" id="tkEdit" tabindex="-1" aria-labelledby="tkEditTitle" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <form class="modal-content" id="tkEditForm" method="post" action="">
-      <div class="modal-header border-0">
-        <h5 class="modal-title" id="tkEditTitle">Editar ticket</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-      </div>
-      <div class="modal-body" style="color:inherit">
-        <div class="tk-edit-client">
-          <strong id="tkEditCliente"></strong>
-          <small id="tkEditFecha"></small>
-        </div>
-
-        <div class="tk-field-row" style="margin-top:0">
-          <div class="tk-field">
-            <label for="tkEditTipo">Tipo</label>
-            <input id="tkEditTipo" name="tipo" list="dlTipos" required autocomplete="off">
-          </div>
-          <div class="tk-field">
-            <label for="tkEditPrioridad">Señal</label>
-            <input id="tkEditPrioridad" name="prioridad" list="dlSenales" autocomplete="off">
-          </div>
-        </div>
-
-        <div class="tk-field-row">
-          <div class="tk-field">
-            <label for="tkEditTecnico">Técnico</label>
-            <input id="tkEditTecnico" name="tecnico" list="dlTecnicos" autocomplete="off">
-          </div>
-          <div class="tk-field">
-            <label for="tkEditEstado">Estado</label>
-            <select id="tkEditEstado" name="estado">
-              {% for val, label in etiquetas.items() %}
-                <option value="{{ val }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-
-        <datalist id="dlTipos">{% for x in tipos %}<option value="{{ x }}">{% endfor %}</datalist>
-        <datalist id="dlSenales">{% for x in senales %}<option value="{{ x }}">{% endfor %}</datalist>
-        <datalist id="dlTecnicos">{% for x in tecnicos %}<option value="{{ x }}">{% endfor %}</datalist>
-      </div>
-      <div class="modal-footer border-0">
-        <button type="button" class="tk-btn tk-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
-        <button type="submit" class="tk-btn">Guardar cambios</button>
-      </div>
-    </form>
   </div>
 </div>
 
@@ -490,28 +422,6 @@
   });
   modalEl.addEventListener('shown.bs.modal', () => okBtn.focus());
   modalEl.addEventListener('hidden.bs.modal', () => { formPendiente = null; });
-
-  // ===== Editar ticket =====
-  const editEl   = document.getElementById('tkEdit');
-  const editModal = new bootstrap.Modal(editEl);
-  const editForm = document.getElementById('tkEditForm');
-  document.querySelectorAll('.js-edit').forEach(btn => btn.addEventListener('click', () => {
-    const d = btn.dataset;
-    editForm.action = d.action;
-    document.getElementById('tkEditCliente').textContent = d.cliente;
-    document.getElementById('tkEditFecha').textContent   = d.fecha ? 'Creado el ' + d.fecha : '';
-    document.getElementById('tkEditTipo').value      = d.tipo;
-    document.getElementById('tkEditPrioridad').value = d.prioridad;
-    document.getElementById('tkEditTecnico').value   = d.tecnico;
-    document.getElementById('tkEditEstado').value    = d.estado;
-    editForm.querySelector('[type=submit]').disabled = false;
-    editModal.show();
-  }));
-  editEl.addEventListener('shown.bs.modal', () => document.getElementById('tkEditTipo').focus());
-  editForm.addEventListener('submit', e => {
-    if (!editForm.checkValidity()) return;
-    editForm.querySelector('[type=submit]').disabled = true;
-  });
 })();
 </script>
 {% endblock %}
