@@ -1171,10 +1171,29 @@ def _datos_form_ticket():
 
     return clientes, tecnicos
 
+def _desde_agenda():
+    """Los tickets y las instalaciones nuevas solo se registran desde la Agenda."""
+    return (request.values.get("origen") or "") == "agenda"
+
+def _a_la_agenda():
+    """Lleva a la Agenda con un aviso (mantiene el cliente si venía de su ficha)."""
+    flash("Los tickets y las instalaciones nuevas se registran desde la Agenda: elige el día y toca "
+          "Nuevo ticket o Nueva instalación.", "info")
+    return redirect(url_for("agenda", cliente_id=request.values.get("cliente_id", type=int)))
+
+def _fecha_agenda():
+    """?fecha=AAAA-MM-DD (de hoy en adelante) -> 'AAAA-MM-DDT08:00' para la visita."""
+    fecha = (request.args.get("fecha") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha) and fecha >= date.today().isoformat():
+        return f"{fecha}T08:00"
+    return ""
+
 @app.route("/nuevo_ticket", methods=["GET", "POST"])
 def nuevo_ticket():
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
+    if not _desde_agenda():
+        return _a_la_agenda()
 
     # ----- POST: guardar ticket -----
     if request.method == "POST":
@@ -1204,7 +1223,7 @@ def nuevo_ticket():
 
         if not cliente:
             flash("Selecciona un cliente.", "warning")
-            return redirect(url_for("nuevo_ticket"))
+            return redirect(url_for("nuevo_ticket", origen="agenda"))
 
         # Coordenadas del formulario
         lat = request.form.get("lat", type=float)
@@ -1282,7 +1301,7 @@ def nuevo_ticket():
 
     # ----- GET: mostrar formulario -----
     clientes, tecnicos = _datos_form_ticket()
-    return render_template("nuevo_ticket.html", clientes=clientes, tecnicos=tecnicos)
+    return render_template("nuevo_ticket.html", clientes=clientes, tecnicos=tecnicos, fecha_pre=_fecha_agenda())
 
 @app.route("/tickets")
 def tickets():
@@ -1623,6 +1642,8 @@ def instalaciones_nueva():
     """Registrar una instalación: con un cliente nuevo o uno existente."""
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
+    if not _desde_agenda():
+        return _a_la_agenda()
 
     sid = current_sucursal_id()
 
@@ -1639,11 +1660,11 @@ def instalaciones_nueva():
         if servicio["vivienda"] == "alquilada" and not (servicio["dueno_nombre"] and servicio["dueno_telefono"]):
             db.close()
             flash("Si la casa es alquilada, carga el nombre y el teléfono del dueño.", "warning")
-            return redirect(url_for("instalaciones_nueva"))
+            return redirect(url_for("instalaciones_nueva", origen="agenda"))
         if servicio["contrato_tipo"] == "temporal" and not servicio["contrato_meses"]:
             db.close()
             flash("Indica por cuántos meses es el servicio.", "warning")
-            return redirect(url_for("instalaciones_nueva"))
+            return redirect(url_for("instalaciones_nueva", origen="agenda"))
 
         if modo == "existente":
             cid = f.get("cliente_id", type=int)
@@ -1651,7 +1672,7 @@ def instalaciones_nueva():
             if not row:
                 db.close()
                 flash("Selecciona un cliente.", "warning")
-                return redirect(url_for("instalaciones_nueva"))
+                return redirect(url_for("instalaciones_nueva", origen="agenda"))
             cli = dict(row)
             direccion = (f.get("direccion_existente") or cli.get("direccion") or "").strip()
             # Guardar la ubicación en el cliente si todavía no la tenía
@@ -1676,7 +1697,7 @@ def instalaciones_nueva():
             if not nombre or not telefono:
                 db.close()
                 flash("Para un cliente nuevo, el nombre y el teléfono son obligatorios.", "warning")
-                return redirect(url_for("instalaciones_nueva"))
+                return redirect(url_for("instalaciones_nueva", origen="agenda"))
 
             existente = None
             if cedula and "cedula" in ccols:

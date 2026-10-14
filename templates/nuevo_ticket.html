@@ -188,7 +188,7 @@
     {% else %}
       <h1>Nuevo ticket</h1>
       <p>Registra una asistencia técnica o un reclamo de un cliente.
-         ¿Es una conexión nueva? <a href="{{ url_for('instalaciones_nueva') }}">Registrar instalación</a></p>
+         ¿Es una conexión nueva? <a href="{{ url_for('instalaciones_nueva', origen='agenda', fecha=(fecha_pre[:10] if fecha_pre else None)) }}">Registrar instalación</a></p>
     {% endif %}
   </div>
 
@@ -332,8 +332,8 @@
         <div class="nt-field">
           <label for="programada_local">Fecha y hora de la visita <span class="opt">(opcional)</span></label>
           <input type="datetime-local" id="programada_local" name="programada_local" class="nt-input"
-                 value="{{ (tt.programada_en or '')|string|truncate(16, true, '')|replace(' ', 'T') }}">
-          <div class="nt-hint">Si la completas, el ticket aparece en la Agenda.</div>
+                 value="{{ (tt.programada_en or '')|string|truncate(16, true, '')|replace(' ', 'T') if editar else (fecha_pre or '') }}">
+          <div class="nt-hint">{% if fecha_pre and not editar %}Fecha tomada de la Agenda. Ajusta la hora si hace falta.{% else %}Si la completas, el ticket aparece en la Agenda.{% endif %}</div>
         </div>
 
         <div class="nt-field full">
@@ -382,6 +382,7 @@
     </section>
 
     {% if not editar %}
+    <input type="hidden" name="origen" value="agenda">
     <input type="hidden" name="canal" value="web">
     <input type="hidden" name="estado" value="pendiente">
     {% endif %}

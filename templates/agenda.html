@@ -56,6 +56,12 @@
 }
 .btn-new-alt:hover{ background:#eff6ff; color:#1d4ed8; }
 
+.ag-guia{
+  display:flex; gap:10px; align-items:flex-start; padding:10px 14px; margin-bottom:1rem;
+  background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; color:#1e3a8a; font-size:.88rem;
+}
+.ag-guia i{ font-size:1rem; margin-top:1px; }
+
 /* ── panel de filtros ── */
 .ag-filters{
   background:#fff; border:1px solid #dbeafe;
@@ -183,6 +189,8 @@
 
 {# Si se está mirando un día (no un rango), los botones "nuevo" llevan esa fecha #}
 {% set fecha_nueva = dia if (not range_mode and dia) else None %}
+{# Si viene de la ficha de un cliente, los botones "nuevo" lo llevan ya elegido #}
+{% set cli_pre = (request.args.get('cliente_id') or '0')|int or None %}
 
 <div class="container page">
 
@@ -191,9 +199,15 @@
     <h2 class="ag-title"><i class="bi bi-calendar3" style="font-size:.85em;vertical-align:-.05em;"></i> Agenda</h2>
     <div class="ag-actions">
       <a class="btn-back" href="{{ url_for('menu') }}"><i class="bi bi-arrow-left"></i> Volver</a>
-      <a class="btn-new-alt" href="{{ url_for('instalaciones_nueva', fecha=fecha_nueva) }}"><i class="bi bi-plug"></i> Nueva instalación</a>
-      <a class="btn-new"  href="{{ url_for('nuevo_ticket') }}"><i class="bi bi-plus-lg"></i> Nuevo ticket</a>
+      <a class="btn-new-alt" href="{{ url_for('instalaciones_nueva', fecha=fecha_nueva, origen='agenda', cliente_id=cli_pre) }}"><i class="bi bi-plug"></i> Nueva instalación</a>
+      <a class="btn-new"  href="{{ url_for('nuevo_ticket', fecha=fecha_nueva, origen='agenda', cliente_id=cli_pre) }}"><i class="bi bi-plus-lg"></i> Nuevo ticket</a>
     </div>
+  </div>
+
+  <div class="ag-guia">
+    <i class="bi bi-info-circle"></i>
+    <span>{% if cli_pre %}Elige el día de la visita y toca <b>Nuevo ticket</b> o <b>Nueva instalación</b>: el cliente ya va elegido.
+          {% else %}Para registrar un ticket o una instalación, elige el día con las flechas o el calendario y toca <b>Nuevo ticket</b> o <b>Nueva instalación</b>.{% endif %}</span>
   </div>
 
   <!-- filtros -->
@@ -253,8 +267,8 @@
       <i class="bi bi-calendar2-week"></i>
       <p>No hay eventos programados para este período.</p>
       <div class="ag-empty-actions">
-        <a class="btn-new-alt" href="{{ url_for('instalaciones_nueva', fecha=fecha_nueva) }}"><i class="bi bi-plug"></i> Nueva instalación</a>
-        <a class="btn-new" href="{{ url_for('nuevo_ticket') }}"><i class="bi bi-plus-lg"></i> Nuevo ticket</a>
+        <a class="btn-new-alt" href="{{ url_for('instalaciones_nueva', fecha=fecha_nueva, origen='agenda', cliente_id=cli_pre) }}"><i class="bi bi-plug"></i> Nueva instalación</a>
+        <a class="btn-new" href="{{ url_for('nuevo_ticket', fecha=fecha_nueva, origen='agenda', cliente_id=cli_pre) }}"><i class="bi bi-plus-lg"></i> Nuevo ticket</a>
       </div>
     </div>
   {% else %}
