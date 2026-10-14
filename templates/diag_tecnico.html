@@ -34,6 +34,28 @@
        padding:5px 10px 5px 6px; font-size:12.5px; font-weight:500; white-space:nowrap; max-width:46%; }
   .yo i{ width:22px; height:22px; border-radius:50%; background:#fff; color:var(--accent); display:grid; place-items:center; font-size:11px; }
   .yo b{ font-weight:500; overflow:hidden; text-overflow:ellipsis; }
+  .salir{ display:flex; align-items:center; gap:6px; height:32px; padding:0 11px; border-radius:999px;
+          background:rgba(255,255,255,.16); color:#fff; text-decoration:none; font-size:12.5px; font-weight:600; white-space:nowrap; }
+  .salir:hover, .salir:active{ background:rgba(255,255,255,.28); color:#fff; }
+  button.salir{ border:0; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; }
+
+  /* Modal "Salir" */
+  .modal-fondo{ position:fixed; inset:0; z-index:50; background:rgba(15,27,45,.5); display:flex; align-items:flex-end;
+                justify-content:center; padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom)); }
+  .modal-fondo[hidden]{ display:none; }
+  .modal-caja{ width:100%; max-width:420px; background:#fff; border-radius:18px; padding:22px 20px 18px; text-align:center;
+               box-shadow:0 20px 50px rgba(15,27,45,.3); animation:subir .18s ease-out; }
+  @keyframes subir{ from{ transform:translateY(24px); opacity:0; } to{ transform:none; opacity:1; } }
+  .modal-caja .mi{ width:56px; height:56px; border-radius:50%; margin:0 auto 10px; display:grid; place-items:center;
+                   background:#FDF1F0; color:var(--danger); font-size:22px; }
+  .modal-caja h2{ margin:0 0 6px; font-size:18px; font-weight:700; }
+  .modal-caja p{ margin:0 0 18px; font-size:14px; color:var(--soft); line-height:1.5; }
+  .modal-acc{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .modal-acc .btn, .modal-acc .btn + .btn{ height:48px; margin:0; }
+  .btn-rojo{ background:var(--danger); color:#fff; }
+  .btn-rojo:active{ background:#A52B25; }
+  @media (min-width:600px){ .modal-fondo{ align-items:center; } }
+  @media (max-width:380px){ .salir span{ display:none; } .yo{ max-width:38%; } }
 
   .wrap{ max-width:600px; margin:0 auto; padding:14px 14px 110px; }
 
@@ -135,6 +157,9 @@
   .burbuja{ background:#E7FFDB; border-radius:12px 12px 12px 3px; padding:12px 14px; white-space:pre-wrap; font-size:14.5px; line-height:1.55;
             box-shadow:0 1px 1px rgba(0,0,0,.08); margin:0; font-family:inherit; }
   .reg{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--faint); padding:0 16px 14px; }
+  .ub-nota{ display:flex; gap:10px; align-items:flex-start; margin:0; padding:10px 16px; border-top:1px solid var(--line-soft);
+            background:var(--warn-bg); color:#5C3D00; font-size:13px; }
+  .ub-nota i{ color:var(--warn); margin-top:2px; }
   .reg i{ color:var(--ok); }
 </style>
 </head>
@@ -149,6 +174,9 @@
     </div>
     {% if quien %}
       <div class="yo" title="Sesión iniciada"><i class="fa-solid fa-user"></i><b>{{ quien }}</b></div>
+      <button type="button" class="salir" id="btnSalir" aria-haspopup="dialog" aria-controls="mSalir">
+        <i class="fa-solid fa-right-from-bracket"></i><span>Salir</span>
+      </button>
     {% endif %}
   </div>
 </header>
@@ -170,7 +198,7 @@
   </section>
 
   <section class="card">
-    <div class="card-h"><span class="ico"><i class="fa-brands fa-whatsapp"></i></span><h2>Resumen para la oficina</h2></div>
+    <div class="card-h"><span class="ico"><i class="fa-brands fa-whatsapp"></i></span><h2>{{ 'Ficha de la instalación' if es_inst else 'Resumen para la oficina' }}</h2></div>
     <div class="card-b"><pre class="burbuja">{{ resumen }}</pre></div>
     <div class="reg"><i class="fa-solid fa-circle-check"></i> Registrado por {{ quien }}{% if t.resuelto_por %} · cerrado como resuelto{% endif %}</div>
   </section>
@@ -202,6 +230,13 @@
       <a class="c-wa {{ '' if c_wa else 'off' }}" href="{{ 'https://wa.me/' ~ c_wa if c_wa else '#' }}"><i class="fa-brands fa-whatsapp"></i>WhatsApp</a>
       <a class="c-map {{ '' if como_llegar else 'off' }}" href="{{ como_llegar or '#' }}" target="_blank" rel="noopener"><i class="fa-solid fa-location-dot"></i>Cómo llegar</a>
     </div>
+    {% if not tiene_ub %}
+      <div class="ub-nota"><i class="fa-solid fa-location-crosshairs"></i>
+        <span>Este cliente <b>no tiene ubicación</b>. Cuando estés en la casa, guárdala abajo para la próxima visita.</span></div>
+    {% elif ub_aprox %}
+      <div class="ub-nota"><i class="fa-solid fa-triangle-exclamation"></i>
+        <span><b>Ubicación aproximada:</b> se buscó por la dirección y puede no ser la casa. Confírmala con el cliente y, al llegar, guárdala abajo.</span></div>
+    {% endif %}
   </section>
 
   <section class="card">
@@ -224,8 +259,56 @@
   <!-- Diagnóstico -->
   <form method="post" enctype="multipart/form-data" id="fDiag">
     <section class="card">
-      <div class="card-h"><span class="ico"><i class="fa-solid fa-stethoscope"></i></span><h2>Diagnóstico</h2></div>
+      <div class="card-h"><span class="ico"><i class="fa-solid {{ 'fa-plug' if es_inst else 'fa-stethoscope' }}"></i></span><h2>{{ 'Datos de la instalación' if es_inst else 'Diagnóstico' }}</h2></div>
       <div class="card-b">
+        {% if es_inst %}
+        <!-- ===== Instalación: lo que completa el técnico ===== -->
+        <div class="fila">
+          <div class="campo">
+            <label for="drop_metros"><i class="fa-solid fa-ruler-horizontal"></i> Cantidad de drop</label>
+            <div class="unidad">
+              <input class="inp" id="drop_metros" name="drop_metros" inputmode="numeric" value="{{ t.drop_metros or '' }}" placeholder="80" autocomplete="off">
+              <span>m</span>
+            </div>
+          </div>
+          <div class="campo">
+            <label for="senal"><i class="fa-solid fa-signal"></i> Señal</label>
+            <div class="unidad">
+              <input class="inp" id="senal" name="senal" inputmode="decimal" value="{{ t.senal or '' }}" placeholder="-18.5" autocomplete="off">
+              <span>dBm</span>
+            </div>
+          </div>
+        </div>
+        <div class="campo">
+          <label for="red_wifi"><i class="fa-solid fa-wifi"></i> Red WiFi</label>
+          <input class="inp" id="red_wifi" name="red_wifi" value="{{ t.red_wifi or '' }}" placeholder="Nombre de la red y clave" autocomplete="off">
+        </div>
+        <div class="fila">
+          <div class="campo">
+            <label for="sena"><i class="fa-solid fa-money-bill-wave"></i> Seña</label>
+            <input class="inp" id="sena" name="sena" value="{{ t.sena or '' }}" placeholder="Ej.: 100.000" autocomplete="off">
+          </div>
+          <div class="campo">
+            <label for="p8080"><i class="fa-solid fa-key"></i> 8080</label>
+            <input class="inp" id="p8080" name="p8080" value="{{ t.p8080 or '' }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+          </div>
+        </div>
+        <div class="fila">
+          <div class="campo">
+            <label for="vencimiento"><i class="fa-regular fa-calendar"></i> Vencimiento</label>
+            <input class="inp" id="vencimiento" name="vencimiento" value="{{ c.vencimiento or '' }}" placeholder="Día del mes o fecha" autocomplete="off">
+          </div>
+          <div class="campo">
+            <label for="megas_plan"><i class="fa-solid fa-gauge-high"></i> Plan</label>
+            {% set mg = c.megas or '' %}
+            <select class="inp" id="megas_plan" name="megas">
+              <option value="">{{ 'Sin cambio' if mg else 'Elige…' }}</option>
+              {% for m in ['70 Mbps', '100 Mbps', '130 Mbps', '180 Mbps'] %}<option {{ 'selected' if mg == m }}>{{ m }}</option>{% endfor %}
+              {% if mg and mg not in ['70 Mbps', '100 Mbps', '130 Mbps', '180 Mbps'] %}<option selected>{{ mg }}</option>{% endif %}
+            </select>
+          </div>
+        </div>
+        {% else %}
         <div class="campo">
           <label for="falla"><i class="fa-solid fa-plug-circle-exclamation"></i> Falla</label>
           <input class="inp" id="falla" name="falla" list="dlFalla" value="{{ t.falla or '' }}" placeholder="¿Qué problema encontraste?" autocomplete="off">
@@ -270,6 +353,8 @@
           </div>
         </div>
 
+        {% endif %}
+
         <div class="campo">
           <label><i class="fa-solid fa-camera"></i> Foto del medidor <span class="opt">(opcional)</span></label>
           <label class="foto" for="senal_foto" style="font-weight:400">
@@ -284,23 +369,37 @@
         </div>
 
         <div class="campo" style="margin-bottom:0">
-          <label for="trabajo_realizado"><i class="fa-solid fa-clipboard-list"></i> Trabajo realizado <span class="opt">(opcional)</span></label>
+          <label for="trabajo_realizado"><i class="fa-solid fa-clipboard-list"></i> {{ 'Observaciones' if es_inst else 'Trabajo realizado' }} <span class="opt">(opcional)</span></label>
           <textarea class="inp" id="trabajo_realizado" name="trabajo_realizado" placeholder="Qué se hizo, materiales usados, observaciones…">{{ t.trabajo_realizado or '' }}</textarea>
         </div>
       </div>
     </section>
 
     <section class="card">
-      <div class="card-h"><span class="ico" style="background:var(--ok-bg);color:var(--ok)"><i class="fa-solid fa-flag-checkered"></i></span><h2>¿Quedó solucionado?</h2></div>
+      <div class="card-h"><span class="ico" style="background:#FDECEC;color:#E5484D"><i class="fa-solid fa-house-signal"></i></span><h2>Ubicación de la casa</h2></div>
+      <div class="card-b">
+        <input type="hidden" name="casa_lat" id="casaLat">
+        <input type="hidden" name="casa_lng" id="casaLng">
+        <button type="button" class="btn btn-g" id="btnCasa" style="height:48px">
+          <i class="fa-solid fa-location-crosshairs" style="color:#E5484D"></i> Estoy en la casa: guardar ubicación
+        </button>
+        <div id="casaMsg" style="font-size:13px;color:var(--faint);margin-top:8px">
+          {% if tiene_ub and not ub_aprox %}Ya tiene una ubicación guardada. Úsalo solo si está mal.{% else %}Usa el GPS del celular. Se guarda en el cliente para las próximas visitas.{% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h"><span class="ico" style="background:var(--ok-bg);color:var(--ok)"><i class="fa-solid fa-flag-checkered"></i></span><h2>{{ '¿Quedó terminada la instalación?' if es_inst else '¿Quedó solucionado?' }}</h2></div>
       <div class="card-b">
         <div class="seg" role="radiogroup" aria-label="¿Quedó solucionado?">
           <input type="radio" name="resuelto" id="resSi" value="1" {{ 'checked' if est == 'resuelto' }}>
-          <label class="si" for="resSi"><i class="fa-solid fa-circle-check"></i> Sí, resuelto</label>
+          <label class="si" for="resSi"><i class="fa-solid fa-circle-check"></i> {{ 'Sí, terminada' if es_inst else 'Sí, resuelto' }}</label>
           <input type="radio" name="resuelto" id="resNo" value="0" {{ 'checked' if est != 'resuelto' }}>
           <label class="no" for="resNo"><i class="fa-solid fa-clock"></i> Todavía no</label>
         </div>
         <div style="font-size:12.5px;color:var(--faint);margin-top:8px">
-          Si eliges <b>Sí</b>, el ticket se cierra a tu nombre ({{ quien }}).
+          Si eliges <b>Sí</b>, {{ 'la instalación' if es_inst else 'el ticket' }} se cierra a tu nombre ({{ quien }}){{ ' y el cliente queda activo' if es_inst }}.
         </div>
       </div>
     </section>
@@ -312,8 +411,34 @@
 {% endif %}
 </main>
 
+{% if quien %}
+<!-- Modal: cerrar sesión -->
+<div class="modal-fondo" id="mSalir" hidden role="dialog" aria-modal="true" aria-labelledby="mSalirTit">
+  <div class="modal-caja">
+    <div class="mi"><i class="fa-solid fa-right-from-bracket"></i></div>
+    <h2 id="mSalirTit">¿Cerrar sesión?</h2>
+    <p>Vas a salir de la cuenta de <b>{{ quien }}</b> en este celular. Para cargar otro diagnóstico vas a tener que iniciar sesión de nuevo.</p>
+    <div class="modal-acc">
+      <button type="button" class="btn btn-g" id="mSalirNo">Cancelar</button>
+      <a class="btn btn-rojo" href="{{ url_for('logout') }}"><i class="fa-solid fa-right-from-bracket"></i> Salir</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <script>
 (() => {
+  // Modal "Salir"
+  const mSalir = document.getElementById('mSalir');
+  if (mSalir){
+    const abrir = () => { mSalir.hidden = false; document.getElementById('mSalirNo').focus(); };
+    const cerrar = () => { mSalir.hidden = true; document.getElementById('btnSalir').focus(); };
+    document.getElementById('btnSalir').addEventListener('click', abrir);
+    document.getElementById('mSalirNo').addEventListener('click', cerrar);
+    mSalir.addEventListener('click', e => { if (e.target === mSalir) cerrar(); });          // tocar afuera
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !mSalir.hidden) cerrar(); });
+  }
+
   // Opciones rápidas: completan el campo con un toque
   document.querySelectorAll('.rapidas').forEach(box => {
     const inp = document.getElementById(box.dataset.para);
@@ -336,6 +461,23 @@
     prev.src = URL.createObjectURL(f); prev.style.display = 'block';
     document.getElementById('fotoTxt').textContent = 'Foto lista';
   });
+  // "Estoy en la casa": toma la ubicación del GPS del celular (se guarda al tocar "Guardar diagnóstico")
+  const bCasa = document.getElementById('btnCasa'), casaMsg = document.getElementById('casaMsg');
+  bCasa?.addEventListener('click', () => {
+    if (!navigator.geolocation){ casaMsg.textContent = 'Este celular no da su ubicación.'; return; }
+    casaMsg.style.color = ''; casaMsg.textContent = 'Buscando tu ubicación…';
+    navigator.geolocation.getCurrentPosition(p => {
+      document.getElementById('casaLat').value = p.coords.latitude.toFixed(7);
+      document.getElementById('casaLng').value = p.coords.longitude.toFixed(7);
+      bCasa.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#177A56"></i> Ubicación tomada';
+      casaMsg.style.color = '#177A56';
+      casaMsg.textContent = `Precisión ±${Math.round(p.coords.accuracy)} m. Se guarda al tocar "Guardar diagnóstico".`;
+    }, () => {
+      casaMsg.style.color = '#C2362F';
+      casaMsg.textContent = 'No se pudo obtener la ubicación. Activa el GPS y da permiso al navegador.';
+    }, { enableHighAccuracy: true, timeout: 20000 });
+  });
+
   document.getElementById('fDiag')?.addEventListener('submit', () => {
     const b = document.getElementById('btnGuardar');
     b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando…';

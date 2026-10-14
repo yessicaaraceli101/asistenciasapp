@@ -209,10 +209,10 @@
           {% set megas_val = v('megas') %}
           <select class="cf-input" id="megas" name="megas">
             <option value="">Sin dato</option>
-            {% for m in ['70 Mbps', '130 Mbps', '180 Mbps'] %}
+            {% for m in ['70 Mbps', '100 Mbps', '130 Mbps', '180 Mbps'] %}
               <option value="{{ m }}" {{ 'selected' if megas_val == m }}>{{ m }}</option>
             {% endfor %}
-            {% if megas_val and megas_val not in ['70 Mbps', '130 Mbps', '180 Mbps'] %}
+            {% if megas_val and megas_val not in ['70 Mbps', '100 Mbps', '130 Mbps', '180 Mbps'] %}
               <option value="{{ megas_val }}" selected>{{ megas_val }}</option>
             {% endif %}
           </select>

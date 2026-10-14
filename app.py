@@ -269,7 +269,8 @@ def _ensure_config():
                             ("diagnostico", "TEXT"), ("senal_foto", "TEXT"),
                             ("diag_token", "TEXT"), ("diag_completado", "TEXT"), ("trabajo_realizado", "TEXT"),
                             ("diag_por", "TEXT"), ("resuelto_por", "TEXT"), ("resuelto_en", "TEXT"),
-                            ("ubic_origen", "TEXT")):
+                            ("ubic_origen", "TEXT"),
+                            ("drop_metros", "TEXT"), ("red_wifi", "TEXT"), ("sena", "TEXT"), ("p8080", "TEXT")):
                 if c not in acols:
                     conn.execute(f"ALTER TABLE asistencias ADD COLUMN {c} {tipo}")
         conn.execute("CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT)")
@@ -1933,10 +1934,20 @@ def equipos():
         LIMIT 500
     """, params).fetchall()
 
+    # Ventas a clientes (mismo período que el historial)
+    ventas = _query_ventas(conn, sid, desde, hasta)
+    ventas_res = _ventas_resumen(conn, sid)
+    clientes_venta = conn.execute("""SELECT id, nombre, barrio FROM clientes WHERE sucursal_id=?
+                                     ORDER BY nombre COLLATE NOCASE""", (sid,)).fetchall()
+
     conn.close()
 
     return render_template(
         "equipos.html",
+        ventas=ventas,
+        ventas_res=ventas_res,
+        clientes_venta=clientes_venta,
+        tab_inicial=request.args.get("tab") or "equipos",
         equipos=equipos,
         herramientas=herramientas,
         historial=historial,
@@ -1961,12 +1972,13 @@ def registrar_equipo():
     tipo = request.form['tipo']
     descripcion = request.form.get('descripcion', '')
     stock = request.form.get('stock', type=int) or 0   # <-- lee el stock del formulario
+    precio = _entero(request.form.get('precio'))
 
     conn = get_db()
     conn.execute("""
-        INSERT INTO equipos (nombre, tipo, descripcion, sucursal_id, stock)
-        VALUES (?, ?, ?, ?, ?)
-    """, (nombre, tipo, descripcion, current_sucursal_id(), stock))
+        INSERT INTO equipos (nombre, tipo, descripcion, sucursal_id, stock, precio)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (nombre, tipo, descripcion, current_sucursal_id(), stock, precio))
     conn.commit()
     conn.close()
 
@@ -1989,6 +2001,9 @@ def equipos_editar(eid):
            SET nombre=?, tipo=?, descripcion=?
          WHERE id=? AND sucursal_id=?
     """, (nombre, tipo, desc, eid, current_sucursal_id()))
+    if "precio" in request.form:
+        conn.execute("UPDATE equipos SET precio=? WHERE id=? AND sucursal_id=?",
+                     (_entero(request.form.get("precio")), eid, current_sucursal_id()))
     conn.commit(); conn.close()
 
     flash("Equipo actualizado correctamente.", "success")
@@ -2627,7 +2642,7 @@ def equipos_descargar_hoy_csv():
     sin_stock = _query_sin_stock(conn)
     conn.close()
     sub = f"{_fecha_es(hoy)} · Sucursal {g.sucursal_nombre}"
-    return _uso_excel("Uso de equipos", sub, rows, sin_stock, f"uso_items_{hoy}.xlsx")
+    return _uso_excel("Uso de equipos por técnicos", sub, rows, sin_stock, f"uso_items_{hoy}.xlsx")
 
 @app.route("/equipos/descargar/hoy.pdf")
 def equipos_descargar_hoy_pdf():
@@ -2638,7 +2653,7 @@ def equipos_descargar_hoy_pdf():
     sin_stock = _query_sin_stock(conn)
     conn.close()
     sub = f"{_fecha_es(hoy)} · Sucursal {g.sucursal_nombre}"
-    return _uso_pdf("Uso de equipos", sub, rows, sin_stock, f"uso_items_{hoy}.pdf")
+    return _uso_pdf("Uso de equipos por técnicos", sub, rows, sin_stock, f"uso_items_{hoy}.pdf")
 
 def _args_rango():
     desde = request.args.get("desde") or date.today().isoformat()
@@ -2658,7 +2673,7 @@ def equipos_descargar_rango_csv():
     rows, tec_nombre = _query_uso_rango(conn, desde, hasta, tecnico_id)
     sin_stock = _query_sin_stock(conn)
     conn.close()
-    return _uso_excel("Uso de equipos", _sub_rango(desde, hasta, tec_nombre), rows, sin_stock,
+    return _uso_excel("Uso de equipos por técnicos", _sub_rango(desde, hasta, tec_nombre), rows, sin_stock,
                       f"uso_items_{desde}_a_{hasta}.xlsx")
 
 @app.route("/equipos/descargar/rango.pdf")
@@ -2670,8 +2685,250 @@ def equipos_descargar_rango_pdf():
     rows, tec_nombre = _query_uso_rango(conn, desde, hasta, tecnico_id)
     sin_stock = _query_sin_stock(conn)
     conn.close()
-    return _uso_pdf("Uso de equipos", _sub_rango(desde, hasta, tec_nombre), rows, sin_stock,
+    return _uso_pdf("Uso de equipos por técnicos", _sub_rango(desde, hasta, tec_nombre), rows, sin_stock,
                     f"uso_items_{desde}_a_{hasta}.pdf")
+
+# ===========================
+#  Ventas de equipos a clientes (separadas del uso de los técnicos)
+# ===========================
+def _ensure_ventas():
+    try:
+        conn = get_db()
+        conn.execute("""CREATE TABLE IF NOT EXISTS ventas_equipos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sucursal_id INTEGER NOT NULL,
+            equipo_id INTEGER, equipo TEXT, equipo_tipo TEXT,
+            cliente_id INTEGER, cliente TEXT,
+            cantidad INTEGER NOT NULL,
+            precio_unit INTEGER, total INTEGER,
+            forma_pago TEXT, nota TEXT,
+            vendido_por TEXT, fecha TEXT)""")
+        if table_columns(conn, "equipos") and "precio" not in table_columns(conn, "equipos"):
+            conn.execute("ALTER TABLE equipos ADD COLUMN precio INTEGER")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print("Aviso: no se pudo preparar la tabla de ventas:", e)
+
+_ensure_ventas()
+
+def _gs(n):
+    """150000 -> '150.000 Gs.'"""
+    return f"{int(n or 0):,}".replace(",", ".") + " Gs."
+
+def _entero(txt):
+    """'150.000 Gs.' -> 150000 (o None)."""
+    d = re.sub(r"\D", "", str(txt or ""))
+    return int(d) if d else None
+
+def _ventas_resumen(conn, sid):
+    """Unidades, monto y cantidad de ventas de hoy, este mes y este año."""
+    hoy = date.today()
+    res = {}
+    for clave, cond, val in (("dia", "date(fecha)=?", hoy.isoformat()),
+                             ("mes", "strftime('%Y-%m', fecha)=?", hoy.strftime("%Y-%m")),
+                             ("anio", "strftime('%Y', fecha)=?", hoy.strftime("%Y"))):
+        r = conn.execute(f"""SELECT COUNT(*) AS n, COALESCE(SUM(cantidad),0) AS u, COALESCE(SUM(total),0) AS t
+                               FROM ventas_equipos WHERE sucursal_id=? AND {cond}""", (sid, val)).fetchone()
+        res[clave] = {"ventas": r["n"], "unidades": r["u"], "total": r["t"]}
+    return res
+
+def _query_ventas(conn, sid, desde, hasta):
+    return [dict(r) for r in conn.execute("""
+        SELECT * FROM ventas_equipos
+         WHERE sucursal_id=? AND date(fecha) BETWEEN ? AND ?
+         ORDER BY datetime(fecha) DESC""", (sid, desde, hasta)).fetchall()]
+
+@app.route("/equipos/vender", methods=["POST"])
+def equipos_vender():
+    """Venta de un equipo a un cliente: descuenta stock y queda registrada con su precio."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    f = request.form
+    sid = current_sucursal_id()
+    eid = f.get("equipo_id", type=int)
+    cantidad = f.get("cantidad", type=int) or 0
+    precio = _entero(f.get("precio_unit"))
+    cliente = (f.get("cliente") or "").strip()
+    cliente_id = f.get("cliente_id", type=int)
+    forma_pago = (f.get("forma_pago") or "").strip() or None
+    nota = (f.get("nota") or "").strip() or None
+
+    conn = get_db()
+    eq = conn.execute("SELECT * FROM equipos WHERE id=? AND sucursal_id=?", (eid, sid)).fetchone() if eid else None
+    if not eq:
+        conn.close(); flash("Elige un equipo.", "warning"); return redirect(url_for("equipos"))
+    if cantidad < 1:
+        conn.close(); flash("La cantidad debe ser al menos 1.", "warning"); return redirect(url_for("equipos"))
+    if not cliente:
+        conn.close(); flash("Escribe o elige el cliente que compra.", "warning"); return redirect(url_for("equipos"))
+    if precio is None:
+        conn.close(); flash("Escribe el precio de venta.", "warning"); return redirect(url_for("equipos"))
+    if cliente_id:   # el nombre manda: si no coincide con el cliente elegido, se guarda solo el nombre
+        c = conn.execute("SELECT nombre FROM clientes WHERE id=? AND sucursal_id=?", (cliente_id, sid)).fetchone()
+        if not c or (c["nombre"] or "").strip().lower() != cliente.lower():
+            cliente_id = None
+
+    ok, res = ajustar_stock(conn, eid, -cantidad, "egreso", tecnico=None, motivo=f"Venta a {cliente}")
+    if not ok:
+        conn.close(); flash(f"No se pudo vender {eq['nombre']}: {res}", "warning"); return redirect(url_for("equipos"))
+
+    total = precio * cantidad
+    conn.execute("""INSERT INTO ventas_equipos (sucursal_id, equipo_id, equipo, equipo_tipo, cliente_id, cliente,
+                        cantidad, precio_unit, total, forma_pago, nota, vendido_por, fecha)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 (sid, eid, eq["nombre"], eq["tipo"], cliente_id, cliente, cantidad, precio, total, forma_pago, nota,
+                  session.get("nombre") or session.get("usuario"), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    # Primer precio cargado: queda como precio de venta del equipo
+    if "precio" in eq.keys() and not eq["precio"]:
+        conn.execute("UPDATE equipos SET precio=? WHERE id=?", (precio, eid))
+    conn.commit()
+    conn.close()
+    flash(f"Venta registrada: {cantidad} × {eq['nombre']} a {cliente} · {_gs(total)}" +
+          (" Ese equipo quedó sin stock." if res <= 0 else ""), "success" if res > 0 else "warning")
+    return redirect(url_for("equipos", tab="ventas"))
+
+@app.route("/equipos/ventas/<int:vid>/anular", methods=["POST"])
+def equipos_venta_anular(vid):
+    """Anula una venta cargada por error: devuelve el stock. Solo administradores."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    if session.get("rol") != "admin":
+        flash("Solo un administrador puede anular ventas.", "warning")
+        return redirect(url_for("equipos", tab="ventas"))
+    conn = get_db()
+    v = conn.execute("SELECT * FROM ventas_equipos WHERE id=? AND sucursal_id=?", (vid, current_sucursal_id())).fetchone()
+    if v:
+        if v["equipo_id"] and conn.execute("SELECT 1 FROM equipos WHERE id=?", (v["equipo_id"],)).fetchone():
+            ajustar_stock(conn, v["equipo_id"], v["cantidad"], "ingreso", motivo=f"Anulación de venta a {v['cliente']}")
+        conn.execute("DELETE FROM ventas_equipos WHERE id=?", (vid,))
+        conn.commit()
+        flash(f"Venta anulada: {v['cantidad']} × {v['equipo']} volvió al stock.", "success")
+    conn.close()
+    return redirect(url_for("equipos", tab="ventas"))
+
+def _ventas_pdf(titulo, subtitulo, ventas, resumen, filename):
+    empresa = get_empresa().get("nombre_comercial") or "SPYnet"
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, title=titulo,
+                            leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=18 * mm)
+    P = ParagraphStyle
+    VERDE = rl_colors.HexColor("#15803D")
+    st_emp = P("emp", fontName="Helvetica-Bold", fontSize=9, textColor=VERDE)
+    st_tit = P("tit", fontName="Helvetica-Bold", fontSize=17, leading=21, textColor=_TINTA)
+    st_sub = P("sub", fontName="Helvetica", fontSize=9.5, leading=13, textColor=_GRIS)
+    st_h2 = P("h2", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=_TINTA)
+    st_cel = P("cel", fontName="Helvetica", fontSize=9, leading=11.5, textColor=_TINTA)
+    st_celb = P("celb", parent=st_cel, fontName="Helvetica-Bold")
+    st_celg = P("celg", parent=st_cel, fontSize=8, leading=10, textColor=_GRIS)
+    st_num = P("num", parent=st_celb, alignment=TA_CENTER)
+    st_der = P("der", parent=st_cel, alignment=TA_RIGHT)
+    st_derb = P("derb", parent=st_celb, alignment=TA_RIGHT)
+    st_cab = P("cab", fontName="Helvetica-Bold", fontSize=8.5, leading=10, textColor=rl_colors.white)
+    st_cabc = P("cabc", parent=st_cab, alignment=TA_CENTER)
+    st_cabd = P("cabd", parent=st_cab, alignment=TA_RIGHT)
+    st_kl = P("kl", fontName="Helvetica", fontSize=8.5, textColor=_GRIS, alignment=TA_CENTER)
+    st_kv = P("kv", fontName="Helvetica-Bold", fontSize=14, leading=17, textColor=VERDE, alignment=TA_CENTER)
+    st_ks = P("ks", fontName="Helvetica", fontSize=8, textColor=_GRIS, alignment=TA_CENTER)
+
+    total_u = sum(v["cantidad"] for v in ventas)
+    total_gs = sum(v["total"] or 0 for v in ventas)
+    h = [Paragraph(_xesc(empresa), st_emp), Spacer(0, 2 * mm), Paragraph(_xesc(titulo), st_tit),
+         Paragraph(_xesc(subtitulo), st_sub),
+         Paragraph(f"Generado el {datetime.now():%d/%m/%Y %H:%M}", st_sub), Spacer(0, 6 * mm)]
+
+    # Tarjetas: hoy / este mes / este año
+    hoy = date.today()
+    meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+             "septiembre", "octubre", "noviembre", "diciembre"]
+    celdas = []
+    for clave, etiqueta in (("dia", f"Hoy · {hoy:%d/%m}"), ("mes", f"{meses[hoy.month - 1].capitalize()} {hoy.year}"),
+                            ("anio", f"Año {hoy.year}")):
+        r = resumen[clave]
+        celdas.append([Paragraph(etiqueta, st_kl), Paragraph(_gs(r["total"]), st_kv),
+                       Paragraph(f"{r['unidades']} unidad{'es' if r['unidades'] != 1 else ''} · "
+                                 f"{r['ventas']} venta{'s' if r['ventas'] != 1 else ''}", st_ks)])
+    tk = Table([celdas], colWidths=[60 * mm] * 3)
+    tk.setStyle(TableStyle([
+        ("BOX", (0, 0), (0, 0), 0.8, _LINEA), ("BOX", (1, 0), (1, 0), 0.8, _LINEA), ("BOX", (2, 0), (2, 0), 0.8, _LINEA),
+        ("BACKGROUND", (0, 0), (-1, -1), rl_colors.HexColor("#F0FDF4")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    h += [tk, Spacer(0, 8 * mm), Paragraph("Detalle de ventas del período", st_h2), Spacer(0, 3 * mm)]
+
+    anchos = [21 * mm, 37 * mm, 38 * mm, 12 * mm, 24 * mm, 26 * mm, 22 * mm]
+    datos = [[Paragraph(t, st_cabc if t == "Cant." else (st_cabd if t in ("Precio", "Total") else st_cab))
+              for t in ("Fecha", "Equipo", "Cliente", "Cant.", "Precio", "Total", "Pago")]]
+    for v in ventas:
+        fx = str(v["fecha"] or "")
+        datos.append([
+            Paragraph(f"{fx[8:10]}/{fx[5:7]}/{fx[:4]}<br/><font color='#64748B' size='8'>{fx[11:16]}</font>", st_cel),
+            Paragraph(f"<b>{_xesc(v['equipo'] or '')}</b><br/><font color='#64748B' size='8'>{_xesc(v['equipo_tipo'] or '')}</font>", st_cel),
+            Paragraph(_xesc(v["cliente"] or "") + (f"<br/><font color='#64748B' size='8'>{_xesc(v['nota'])}</font>" if v.get("nota") else ""), st_cel),
+            Paragraph(str(v["cantidad"]), st_num),
+            Paragraph(_gs(v["precio_unit"]), st_der),
+            Paragraph(_gs(v["total"]), st_derb),
+            Paragraph(_xesc(v["forma_pago"] or "—"), st_celg),
+        ])
+    if not ventas:
+        datos.append([Paragraph("No hay ventas en este período.", st_celg)] + [""] * 6)
+    datos.append(["", "", Paragraph("Total del período", st_derb), Paragraph(str(total_u), st_num), "",
+                  Paragraph(_gs(total_gs), st_derb), ""])
+    estilo = [
+        ("BACKGROUND", (0, 0), (-1, 0), VERDE), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("LINEBELOW", (0, 1), (-1, -2), 0.5, _LINEA),
+        ("BACKGROUND", (0, -1), (-1, -1), rl_colors.HexColor("#DCFCE7")),
+        ("LINEABOVE", (0, -1), (-1, -1), 1, VERDE),
+    ]
+    for i in range(2, len(datos) - 1, 2):
+        estilo.append(("BACKGROUND", (0, i), (-1, i), _ZEBRA))
+    if not ventas:
+        estilo.append(("SPAN", (0, 1), (-1, 1)))
+    t = Table(datos, colWidths=anchos, repeatRows=1)
+    t.setStyle(TableStyle(estilo))
+    h.append(t)
+
+    # Resumen por equipo
+    por_eq = {}
+    for v in ventas:
+        k = v["equipo"] or "—"
+        a = por_eq.setdefault(k, [0, 0])
+        a[0] += v["cantidad"]; a[1] += v["total"] or 0
+    if por_eq:
+        h += [Spacer(0, 8 * mm), Paragraph("Resumen por equipo", st_h2), Spacer(0, 3 * mm)]
+        d2 = [[Paragraph("Equipo", st_cab), Paragraph("Unidades", st_cabc), Paragraph("Total", st_cabd)]]
+        d2 += [[Paragraph(_xesc(k), st_cel), Paragraph(str(u), st_num), Paragraph(_gs(tt), st_derb)]
+               for k, (u, tt) in sorted(por_eq.items(), key=lambda x: -x[1][1])]
+        t2 = Table(d2, colWidths=[80 * mm, 24 * mm, 34 * mm], hAlign="LEFT")
+        t2.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), VERDE), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.5, _LINEA),
+        ]))
+        h.append(t2)
+
+    doc.build(h, canvasmaker=lambda *a, **kw: _CanvasNumerado(*a, pie_izq=f"{empresa} · {titulo}", **kw))
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name=filename, mimetype="application/pdf")
+
+@app.route("/equipos/ventas.pdf")
+def equipos_ventas_pdf():
+    """PDF de ventas a clientes (separado del uso de técnicos). ?desde=&hasta= ; sin fechas = hoy."""
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    desde = request.args.get("desde") or date.today().isoformat()
+    hasta = request.args.get("hasta") or desde
+    conn = get_db()
+    sid = current_sucursal_id()
+    ventas = _query_ventas(conn, sid, desde, hasta)
+    resumen = _ventas_resumen(conn, sid)
+    conn.close()
+    periodo = _fecha_es(desde) if desde == hasta else f"Del {_fecha_es(desde)} al {_fecha_es(hasta)}"
+    nombre = f"ventas_{desde}.pdf" if desde == hasta else f"ventas_{desde}_a_{hasta}.pdf"
+    return _ventas_pdf("Ventas de equipos a clientes", f"{periodo} · Sucursal {g.sucursal_nombre}",
+                       ventas, resumen, nombre)
 
 # ---------- Kardex (movimientos de equipos) ----------
 def _query_movs(conn, desde, hasta, equipo_id=None):
@@ -4335,31 +4592,40 @@ def _ot_datos(db, t, sid):
     direccion = t.get("direccion") or c.get("direccion") or ""
 
     # Mensaje de WhatsApp con lo esencial (el técnico puede no tener usuario en el sistema)
-    lineas = [
-        f"*Orden de trabajo {ot_num}*",
-        f"Tipo: {t.get('tipo') or '-'}  |  Prioridad: {t.get('prioridad') or '-'}",
-    ]
-    if t.get("programada_en"):
-        lineas.append(f"Visita: {str(t['programada_en'])[:16]}")
-    lineas += [
-        "",
-        f"*Cliente:* {t.get('cliente') or '-'}",
-        f"CI: {t.get('cedula') or c.get('cedula') or '-'}  |  PPPoE: {t.get('pppoe') or c.get('pppoe') or '-'}",
-        f"Tel: {c.get('telefono') or '-'}",
-        f"Barrio: {c.get('barrio') or '-'}",
-    ]
-    if direccion:
-        lineas.append(f"Dirección: {direccion}")
-    if c.get("referencia"):
-        lineas.append(f"Referencia: {c['referencia']}")
-    if maps_url:
-        lineas.append(f"Ubicación: {maps_url}")
+    if _es_instalacion(t):
+        lineas = _texto_instalacion(t, c).split("\n")
+        if t.get("programada_en"):
+            lineas.insert(1, f"Visita: {str(t['programada_en'])[:16]}")
+        diag_url = _diag_url(db, t)
+        if diag_url:
+            lineas += ["", "*Al terminar, completar lo que falta aquí:*", diag_url]
+        lineas += ["", f"OT completa: {ot_url}"]
+    else:
+        lineas = [
+            f"*Orden de trabajo {ot_num}*",
+            f"Tipo: {t.get('tipo') or '-'}  |  Prioridad: {t.get('prioridad') or '-'}",
+        ]
+        if t.get("programada_en"):
+            lineas.append(f"Visita: {str(t['programada_en'])[:16]}")
+        lineas += [
+            "",
+            f"*Cliente:* {t.get('cliente') or '-'}",
+            f"CI: {t.get('cedula') or c.get('cedula') or '-'}  |  PPPoE: {t.get('pppoe') or c.get('pppoe') or '-'}",
+            f"Tel: {c.get('telefono') or '-'}",
+            f"Barrio: {c.get('barrio') or '-'}",
+        ]
+        if direccion:
+            lineas.append(f"Dirección: {direccion}")
+        if c.get("referencia"):
+            lineas.append(f"Referencia: {c['referencia']}")
+        if maps_url:
+            lineas.append(f"Ubicación: {maps_url}")
 
-    # Enlace para que el técnico complete el diagnóstico (sin emojis: algunos WhatsApp los muestran como "?")
-    diag_url = _diag_url(db, t)
-    if diag_url:
-        lineas += ["", "*Completar diagnóstico al terminar:*", diag_url]
-    lineas += ["", f"OT completa: {ot_url}"]
+        # Enlace para que el técnico complete el diagnóstico (sin emojis: algunos WhatsApp los muestran como "?")
+        diag_url = _diag_url(db, t)
+        if diag_url:
+            lineas += ["", "*Completar diagnóstico al terminar:*", diag_url]
+        lineas += ["", f"OT completa: {ot_url}"]
     texto = quote("\n".join(lineas))
 
     tel_tec = _tel_whatsapp(tec.get("telefono") or tec.get("celular") or "")
@@ -4368,7 +4634,7 @@ def _ot_datos(db, t, sid):
     # Si el técnico ya completó el diagnóstico: mensaje con ese resumen (para reenviarlo)
     wa_diag_url = None
     if t.get("diag_completado"):
-        wa_diag_url = "https://wa.me/?text=" + quote(_texto_diagnostico(t))
+        wa_diag_url = "https://wa.me/?text=" + quote(_texto_diagnostico(t, c))
 
     return dict(c=c, tec=tec, ot_num=ot_num, maps_url=maps_url, ot_url=ot_url, diag_url=diag_url, wa_diag_url=wa_diag_url,
                 wa_url=wa_url, tec_tiene_tel=bool(tel_tec), direccion=direccion)
@@ -4394,8 +4660,82 @@ def _diag_url(db, t):
     except sqlite3.Error:
         return None
 
-def _texto_diagnostico(t):
+def _es_instalacion(t):
+    return str(t.get("tipo") or "").strip().lower().startswith("instal")
+
+def _vencimiento_txt(v):
+    """'2026-11-05' -> '05/11/2026' ; '5' -> 'día 5 de cada mes'."""
+    v = str(v or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        return f"{v[8:10]}/{v[5:7]}/{v[:4]}"
+    if v.isdigit() and 1 <= int(v) <= 31:
+        return f"día {int(v)} de cada mes"
+    return v
+
+def _plan_txt(c):
+    """Plan del cliente: megas y/o monto. Ej.: '130 Mbps · 130.000 Gs.'"""
+    partes = []
+    if c.get("megas"):
+        partes.append(str(c["megas"]))
+    monto = c.get("valor") or c.get("plan")
+    if monto:
+        partes.append(f"{monto} Gs." if str(monto)[:1].isdigit() else str(monto))
+    return " · ".join(partes)
+
+def _texto_instalacion(t, c, final=False):
+    """Ficha de instalación en el formato de la empresa.
+    Lo que todavía no se sabe va vacío para que el técnico lo complete."""
+    lat, lng, _ = _mejor_ubicacion(t, c)
+    def v(x):
+        x = str(x or "").strip()
+        return f" {x}" if x else ""
+    senal = str(t.get("senal") or "").strip()
+    if senal and "dbm" not in senal.lower():
+        senal += " dBm"
+    filas = [
+        f"*INSTALACIÓN - OT-{int(t['id']):06d}*",
+        f"Nombre:{v(t.get('cliente') or c.get('nombre'))}",
+        f"C.I:{v(t.get('cedula') or c.get('cedula'))}",
+        f"Barrio:{v(c.get('barrio'))}",
+        f"Calle:{v(c.get('direccion') or c.get('referencia') or t.get('direccion'))}",
+        f"Nro de cel:{v(c.get('telefono'))}",
+        f"Pppoe:{v(t.get('pppoe') or c.get('pppoe'))}",
+        f"Ubicación:{v(f'https://www.google.com/maps?q={lat},{lng}' if lat is not None and lng is not None else '')}",
+        f"CANTIDAD DE DROP:{v(t.get('drop_metros'))}",
+        f"RED WIFI:{v(t.get('red_wifi'))}",
+        f"SEÑA:{v(t.get('sena'))}",
+        f"8080:{v(t.get('p8080'))}",
+        f"Vencimiento:{v(_vencimiento_txt(c.get('vencimiento')))}",
+        f"Plan:{v(_plan_txt(c))}",
+    ]
+    if final:
+        filas.append(f"Señal:{v(senal)}")
+        if t.get("trabajo_realizado"):
+            filas.append(f"Observaciones: {t['trabajo_realizado']}")
+        filas.append("")
+        if (t.get("estado") or "").lower() == "resuelto":
+            filas.append("Estado: *INSTALACIÓN TERMINADA*")
+            if t.get("resuelto_por"):
+                fx = str(t.get("resuelto_en") or "")
+                filas.append(f"Dado de baja por: *{t['resuelto_por']}*" + (f" ({fx[8:10]}/{fx[5:7]} {fx[11:16]})" if len(fx) >= 16 else ""))
+        else:
+            filas.append("Estado: *PENDIENTE* (la instalación no quedó terminada)")
+        filas.append(f"Técnico: {t.get('diag_por') or t.get('tecnico') or '-'}")
+    return "\n".join(filas)
+
+def _cliente_de(t):
+    """Cliente del ticket (dict vacío si no tiene)."""
+    if not t.get("cliente_id"):
+        return {}
+    db = get_db()
+    r = db.execute("SELECT * FROM clientes WHERE id=?", (t["cliente_id"],)).fetchone()
+    db.close()
+    return dict(r) if r else {}
+
+def _texto_diagnostico(t, c=None):
     """Resumen que el técnico manda a la oficina por WhatsApp (sin emojis)."""
+    if _es_instalacion(t):
+        return _texto_instalacion(t, c if c is not None else _cliente_de(t), final=True)
     def u(v, unidad, clave):
         v = str(v or "").strip()
         return (v if clave in v.lower() else f"{v} {unidad}") if v else "-"
@@ -4460,13 +4800,21 @@ def diag_tecnico(token):
             senal = "-" + senal
         megas = re.sub(r"(?i)\s*mbps?$", "", (f.get("megas") or "").strip())
 
-        cambios = {
+        cambios = {}
+        if _es_instalacion(t):
+            for campo in ("drop_metros", "red_wifi", "sena", "p8080"):
+                if campo in f:
+                    cambios[campo] = (f.get(campo) or "").strip() or None
+        cambios.update({
             "falla": (f.get("falla") or "").strip() or None,
             "cambio": (f.get("cambio") or "").strip() or None,
             "senal": senal or None,
             "megas": megas or None,
             "trabajo_realizado": (f.get("trabajo_realizado") or "").strip() or None,
-        }
+        })
+        if _es_instalacion(t):
+            # La falla y el cambio no se usan en instalaciones
+            cambios.pop("falla", None); cambios.pop("cambio", None)
         foto = request.files.get("senal_foto")
         if not error and foto and foto.filename:
             if not allowed_file(foto.filename):
@@ -4504,11 +4852,26 @@ def diag_tecnico(token):
             if not (t.get("tecnico") or "").strip() and session.get("rol") == "tecnico":
                 cambios["tecnico"] = quien
             t.update(cambios)
-            cambios["diagnostico"] = _texto_diagnostico(t).replace("*", "")
+            c_actual = _cliente_de(t)
+            if _es_instalacion(t):   # lo que se acaba de escribir manda, aunque todavía no esté guardado
+                if "vencimiento" in f: c_actual["vencimiento"] = (f.get("vencimiento") or "").strip()
+                if (f.get("megas") or "").strip(): c_actual["megas"] = f.get("megas").strip()
+            cambios["diagnostico"] = _texto_diagnostico(t, c_actual).replace("*", "")
             acols = table_columns(db, "asistencias")
             cambios = {k: v for k, v in cambios.items() if k in acols}
             db.execute(f"UPDATE asistencias SET {', '.join(k + '=?' for k in cambios)} WHERE id=?",
                        list(cambios.values()) + [t["id"]])
+            # Instalación: vencimiento y plan quedan en el cliente
+            if _es_instalacion(t) and t.get("cliente_id"):
+                ccols = table_columns(db, "clientes")
+                upd = {}
+                if "vencimiento" in f and "vencimiento" in ccols:
+                    upd["vencimiento"] = (f.get("vencimiento") or "").strip() or None
+                if "megas" in f and "megas" in ccols and (f.get("megas") or "").strip():
+                    upd["megas"] = f.get("megas").strip()
+                if upd:
+                    db.execute(f"UPDATE clientes SET {', '.join(k + '=?' for k in upd)} WHERE id=?",
+                               list(upd.values()) + [t["cliente_id"]])
             # Instalación terminada: el cliente que esperaba la instalación pasa a activo
             if resuelto and t.get("cliente_id") and str(t.get("tipo") or "").lower().startswith("instal"):
                 db.execute("""UPDATE clientes SET activo=1, situacion='activo'
@@ -4525,11 +4888,11 @@ def diag_tecnico(token):
             suc = db.execute("SELECT * FROM sucursales WHERE id=?", (sid,)).fetchone()
             empresa = get_empresa(db)
             tel_ofi = _tel_whatsapp((suc["telefono"] if suc and "telefono" in suc.keys() else "") or empresa.get("telefono") or "")
-            texto = quote(_texto_diagnostico(t))
+            texto = quote(_texto_diagnostico(t, _cliente_de(t)))
             wa_url = f"https://wa.me/{tel_ofi}?text={texto}" if tel_ofi else f"https://wa.me/?text={texto}"
             db.close()
-            return render_template("diag_tecnico.html", t=t, listo=True, wa_url=wa_url, quien=quien,
-                                   resumen=_texto_diagnostico(t).replace("*", ""), tiene_tel=bool(tel_ofi))
+            return render_template("diag_tecnico.html", t=t, listo=True, wa_url=wa_url, quien=quien, es_inst=_es_instalacion(t),
+                                   resumen=_texto_diagnostico(t, _cliente_de(t)).replace("*", ""), tiene_tel=bool(tel_ofi))
 
     # Datos del cliente para orientar al técnico
     c = {}
@@ -4539,7 +4902,7 @@ def diag_tecnico(token):
     lat, lng, ub_aprox = _mejor_ubicacion(t, c)
     db.close()
     return render_template("diag_tecnico.html", t=t, c=c, error=error, listo=False, quien=quien,
-                           ub_aprox=ub_aprox, tiene_ub=lat is not None,
+                           ub_aprox=ub_aprox, tiene_ub=lat is not None, es_inst=_es_instalacion(t),
                            c_wa=_tel_whatsapp(c.get("telefono") or ""),
                            como_llegar=(f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}" if lat is not None and lng is not None else None))
 

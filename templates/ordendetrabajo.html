@@ -382,6 +382,20 @@
       <div class="ot-problem">{{ t.problema or 'Sin descripción.' }}</div>
     </section>
 
+    {% if t.drop_metros or t.red_wifi or t.sena or t.p8080 %}
+    <!-- Datos que completó el técnico en la instalación -->
+    <section class="ot-sec">
+      <h2>Datos de la instalación{% if t.diag_completado %} <span style="font-weight:400;color:var(--ink-faint)">· {{ t.diag_completado[8:10] }}/{{ t.diag_completado[5:7] }} {{ t.diag_completado[11:16] }}</span>{% endif %}</h2>
+      <dl class="ot-dl">
+        <div><dt>Cantidad de drop</dt><dd>{{ (t.drop_metros ~ ' m') if t.drop_metros else '—' }}</dd></div>
+        <div><dt>Seña</dt><dd>{{ val(t.sena) }}</dd></div>
+        <div class="s2"><dt>Red WiFi</dt><dd>{{ val(t.red_wifi) }}</dd></div>
+        <div class="s2"><dt>8080</dt><dd>{{ val(t.p8080) }}</dd></div>
+        {% if t.resuelto_por %}<div class="s2"><dt>Instalación terminada por</dt><dd>{{ t.resuelto_por }}{% if t.resuelto_en %} · {{ t.resuelto_en[8:10] }}/{{ t.resuelto_en[5:7] }} {{ t.resuelto_en[11:16] }}{% endif %}</dd></div>{% endif %}
+      </dl>
+    </section>
+    {% endif %}
+
     {% if t.falla or t.cambio or t.megas or t.trabajo_realizado %}
     <!-- Diagnóstico que cargó el técnico -->
     <section class="ot-sec">

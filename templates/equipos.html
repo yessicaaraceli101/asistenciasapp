@@ -364,6 +364,49 @@
 .disp-row p{margin:0;font-weight:700;font-size:.9rem;color:#0f172a;}
 .disp-row span.tipo{font-size:.75rem;color:#94a3b8;}
 
+/* ===== Ventas ===== */
+.btn-venta{
+  display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:10px;
+  background:#fff;border:1px solid #16a34a;color:#15803d;font-size:.875rem;font-weight:700;cursor:pointer;
+}
+.btn-venta:hover{background:#f0fdf4;}
+.ventas-strip{
+  background:#fff;border:1px solid #bbf7d0;border-radius:14px;padding:.9rem 1.1rem;margin-bottom:1.25rem;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+}
+.ventas-strip-tit{display:flex;align-items:center;gap:8px;font-weight:800;color:#15803d;font-size:.95rem;min-width:150px;}
+.ventas-strip-tit i{font-size:1.2rem;}
+.vk{flex:1;min-width:150px;background:#f0fdf4;border:1px solid #dcfce7;border-radius:12px;padding:8px 12px;}
+.vk span{display:block;font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;}
+.vk strong{display:block;font-size:1.15rem;font-weight:800;color:#15803d;line-height:1.3;font-variant-numeric:tabular-nums;}
+.vk small{font-size:.75rem;color:#64748b;}
+.ventas-strip-acc{display:flex;gap:6px;flex-wrap:wrap;}
+
+.eq-vender{
+  width:100%;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 10px;border-radius:8px;border:1px solid #16a34a;background:#f0fdf4;color:#15803d;
+  font-size:.82rem;font-weight:700;cursor:pointer;
+}
+.eq-vender:hover{background:#dcfce7;}
+.eq-vender:disabled{border-color:#e2e8f0;background:#f8fafc;color:#94a3b8;cursor:not-allowed;}
+.eq-sec{font-size:.7rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin:0 0 -4px;}
+.eq-precio{font-size:.8rem;font-weight:700;color:#15803d;margin-top:2px;}
+.eq-precio.sin{color:#cbd5e1;font-weight:600;}
+
+.v-total{
+  display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:10px;
+  background:#f0fdf4;border:1px solid #bbf7d0;font-weight:700;color:#15803d;
+}
+.v-total strong{font-size:1.2rem;font-variant-numeric:tabular-nums;}
+.v-hint{font-size:.76rem;color:#64748b;margin-top:4px;}
+.v-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.hist-table td.num{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right;}
+.hist-table th.num{text-align:right;}
+.hist-table tfoot td{background:#f0fdf4;font-weight:800;color:#15803d;padding:10px 14px;border-top:2px solid #bbf7d0;}
+.btn-anular{border:0;background:none;color:#94a3b8;cursor:pointer;padding:4px 6px;border-radius:6px;}
+.btn-anular:hover{background:#fef2f2;color:#dc2626;}
+.tab-acc{display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;flex-wrap:wrap;}
+
 /* responsive */
 @media(max-width:760px){
   .eq-stats{grid-template-columns:1fr 1fr;}
@@ -376,7 +419,7 @@
 </style>
 
 <div class="bg-soft"></div>
-<div class="container page">
+<div class="container page" id="eqPage" data-tab="{{ tab_inicial }}">
 
   <!-- header -->
   <div class="eq-header">
@@ -387,6 +430,7 @@
       {% if session.get('rol') == 'admin' %}
       <button class="btn-back" onclick="abrirModal('modalImportar')"><i class="bi bi-upload"></i> Importar</button>
       {% endif %}
+      <button class="btn-venta" onclick="vender()"><i class="bi bi-cart-check"></i> Vender a cliente</button>
       <button class="btn-success-eq" onclick="reponer()"><i class="bi bi-plus-circle"></i> Reponer stock</button>
       <button class="btn-primary-eq" onclick="abrirModal('modalNuevoEquipo')"><i class="bi bi-plus-lg"></i> Nuevo equipo</button>
     </div>
@@ -408,7 +452,7 @@
          onkeydown="if(event.key==='Enter'){abrirModal('modalUsados')}">
       <div class="eq-stat-icon"><i class="bi bi-tools"></i></div>
       <div>
-        <strong>{{ en_uso }}</strong><span>Usados hoy</span>
+        <strong>{{ en_uso }}</strong><span>Usados hoy por técnicos</span>
         <small>Ver detalle <i class="bi bi-chevron-right"></i></small>
       </div>
     </div>
@@ -420,6 +464,24 @@
         <strong>{{ disponibles }}</strong><span>Disponibles</span>
         <small>Ver detalle <i class="bi bi-chevron-right"></i></small>
       </div>
+    </div>
+  </div>
+
+  <!-- ventas a clientes: hoy, mes y año -->
+  <div class="ventas-strip">
+    <div class="ventas-strip-tit"><i class="bi bi-cart-check"></i> Ventas a clientes</div>
+    {% for clave, etiqueta in [('dia', 'Hoy'), ('mes', 'Este mes'), ('anio', 'Este año')] %}
+      {% set r = ventas_res[clave] %}
+      <div class="vk">
+        <span>{{ etiqueta }}</span>
+        <strong>{{ '{:,}'.format(r.total|int).replace(',', '.') }} Gs.</strong>
+        <small>{{ r.unidades }} unidad{{ 'es' if r.unidades != 1 }} · {{ r.ventas }} venta{{ 's' if r.ventas != 1 }}</small>
+      </div>
+    {% endfor %}
+    <div class="ventas-strip-acc">
+      <a class="btn-ghost-sm" href="{{ url_for('equipos_ventas_pdf') }}" title="PDF con las ventas de hoy y el resumen del mes y del año">
+        <i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF ventas hoy
+      </a>
     </div>
   </div>
 
@@ -453,10 +515,10 @@
     <button class="btn-ghost-sm" id="btnLimpiarVista"><i class="bi bi-x-circle"></i> Limpiar</button>
     <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn-ghost-sm" onclick="location.href='{{ url_for('equipos_descargar_hoy_csv') }}'">
-        <i class="bi bi-file-earmark-excel" style="color:#16a34a;"></i> Excel hoy
+        <i class="bi bi-file-earmark-excel" style="color:#16a34a;"></i> Excel uso técnicos hoy
       </button>
       <button class="btn-ghost-sm" onclick="location.href='{{ url_for('equipos_descargar_hoy_pdf') }}'">
-        <i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF hoy
+        <i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF uso técnicos hoy
       </button>
     </div>
   </div>
@@ -487,14 +549,20 @@
       </div>
       <div class="fgroup" style="justify-content:flex-end;">
         <label>&nbsp;</label>
-        <button class="btn-ghost-sm" type="button" onclick="exportRango('xlsx')">
-          <i class="bi bi-file-earmark-excel" style="color:#16a34a;"></i> Excel rango
+        <button class="btn-ghost-sm" type="button" onclick="exportRango('xlsx')" title="Uso de equipos por técnicos en el período">
+          <i class="bi bi-file-earmark-excel" style="color:#16a34a;"></i> Excel uso técnicos
         </button>
       </div>
       <div class="fgroup" style="justify-content:flex-end;">
         <label>&nbsp;</label>
-        <button class="btn-ghost-sm" type="button" onclick="exportRango('pdf')">
-          <i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF rango
+        <button class="btn-ghost-sm" type="button" onclick="exportRango('pdf')" title="Uso de equipos por técnicos en el período">
+          <i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF uso técnicos
+        </button>
+      </div>
+      <div class="fgroup" style="justify-content:flex-end;">
+        <label>&nbsp;</label>
+        <button class="btn-ghost-sm" type="button" onclick="exportVentas()" title="Ventas a clientes en el período" style="border-color:#bbf7d0;">
+          <i class="bi bi-cart-check" style="color:#15803d;"></i> PDF ventas
         </button>
       </div>
     </form>
@@ -502,8 +570,9 @@
 
   <!-- tabs -->
   <div class="eq-tabs">
-    <button class="eq-tab active" onclick="switchTab('equipos', this)"><i class="bi bi-grid-3x3-gap"></i> Equipos</button>
-    <button class="eq-tab" onclick="switchTab('historial', this)"><i class="bi bi-clock-history"></i> Historial</button>
+    <button class="eq-tab active" data-tab="equipos" onclick="switchTab('equipos', this)"><i class="bi bi-grid-3x3-gap"></i> Equipos</button>
+    <button class="eq-tab" data-tab="historial" onclick="switchTab('historial', this)"><i class="bi bi-tools"></i> Uso de técnicos</button>
+    <button class="eq-tab" data-tab="ventas" onclick="switchTab('ventas', this)"><i class="bi bi-cart-check"></i> Ventas <span style="font-size:.75rem;color:#15803d">({{ ventas|length }})</span></button>
   </div>
 
   <!-- TAB: equipos -->
@@ -536,6 +605,11 @@
             <div>
               <p class="eq-card-name">{{ e['nombre'] }}</p>
               <p class="eq-card-type">{{ e['tipo'] }}</p>
+              {% if e['precio'] %}
+                <p class="eq-precio">{{ '{:,}'.format(e['precio']|int).replace(',', '.') }} Gs.</p>
+              {% else %}
+                <p class="eq-precio sin">Sin precio de venta</p>
+              {% endif %}
             </div>
             {% if stk > 5 %}
               <span class="stock-badge stock-ok"><i class="bi bi-check-circle"></i> {{ stk }}</span>
@@ -550,7 +624,8 @@
             <p class="eq-card-desc">{{ e['descripcion'] }}</p>
           {% endif %}
 
-          <!-- registrar uso -->
+          <!-- registrar uso (técnicos) -->
+          <p class="eq-sec"><i class="bi bi-tools"></i> Uso técnico</p>
           <form method="POST" action="{{ url_for('registrar_uso_item') }}" class="eq-use-form">
             <input type="hidden" name="item_id" value="{{ e['id'] }}">
             <input type="hidden" name="servicio" value="uso equipo">
@@ -567,6 +642,12 @@
             </button>
           </form>
 
+          <!-- venta a cliente -->
+          <button type="button" class="eq-vender" {% if stk <= 0 %}disabled{% endif %}
+                  onclick="vender('{{ e['id'] }}')">
+            <i class="bi bi-cart-check"></i> Vender a cliente
+          </button>
+
           {% if stk <= 0 %}
             <p class="eq-no-stock">
               <span><i class="bi bi-exclamation-triangle"></i> Stock 0: hay que reponer</span>
@@ -576,7 +657,7 @@
 
           <div class="eq-card-actions">
             <button class="btn-edit-sm"
-              onclick="abrirEditar('{{ e['id'] }}','{{ e['nombre']|e }}','{{ e['tipo']|e }}','{{ (e['descripcion'] or '')|e }}')">
+              onclick="abrirEditar('{{ e['id'] }}','{{ e['nombre']|e }}','{{ e['tipo']|e }}','{{ (e['descripcion'] or '')|e }}','{{ e['precio'] or '' }}')">
               <i class="bi bi-pencil"></i> Editar
             </button>
             <button class="btn-del-sm"
@@ -592,6 +673,64 @@
           <p>No hay equipos registrados todavía.</p>
         </div>
       {% endfor %}
+    </div>
+  </div>
+
+  <!-- TAB: ventas -->
+  <div id="tab-ventas" style="display:none;">
+    <div class="tab-acc">
+      <span style="margin-right:auto;font-size:.85rem;color:#64748b;align-self:center;">
+        {% if filtros.desde == filtros.hasta %}Ventas del {{ filtros.desde[8:10] }}/{{ filtros.desde[5:7] }}/{{ filtros.desde[:4] }}
+        {% else %}Ventas del {{ filtros.desde[8:10] }}/{{ filtros.desde[5:7] }} al {{ filtros.hasta[8:10] }}/{{ filtros.hasta[5:7] }}/{{ filtros.hasta[:4] }}{% endif %}
+        · cambia las fechas arriba en Desde / Hasta
+      </span>
+      <button class="btn-ghost-sm" type="button" onclick="exportVentas()"><i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> PDF de estas ventas</button>
+      <button class="btn-venta" type="button" onclick="vender()"><i class="bi bi-cart-plus"></i> Nueva venta</button>
+    </div>
+    <div class="hist-wrap" style="overflow-x:auto;">
+      <table class="hist-table">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Equipo</th><th>Cliente</th><th class="num">Cant.</th>
+            <th class="num">Precio</th><th class="num">Total</th><th>Pago</th><th>Vendió</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set nv = namespace(u=0, t=0) %}
+          {% for v in ventas %}
+          {% set nv.u = nv.u + v['cantidad'] %}{% set nv.t = nv.t + (v['total'] or 0) %}
+          <tr>
+            <td style="color:#64748b;white-space:nowrap;">{{ v['fecha'][8:10] }}/{{ v['fecha'][5:7] }} {{ v['fecha'][11:16] }}</td>
+            <td style="font-weight:600;color:#0f172a;">{{ v['equipo'] }}<span style="display:block;font-size:.75rem;color:#94a3b8;font-weight:400">{{ v['equipo_tipo'] or '' }}</span></td>
+            <td>
+              {% if v['cliente_id'] %}<a href="{{ url_for('clientes_detalle', cid=v['cliente_id']) }}">{{ v['cliente'] }}</a>{% else %}{{ v['cliente'] }}{% endif %}
+              {% if v['nota'] %}<span style="display:block;font-size:.75rem;color:#94a3b8">{{ v['nota'] }}</span>{% endif %}
+            </td>
+            <td class="num" style="font-weight:700;">{{ v['cantidad'] }}</td>
+            <td class="num">{{ '{:,}'.format(v['precio_unit'] or 0).replace(',', '.') }}</td>
+            <td class="num" style="font-weight:700;color:#15803d;">{{ '{:,}'.format(v['total'] or 0).replace(',', '.') }} Gs.</td>
+            <td style="color:#64748b;">{{ v['forma_pago'] or '—' }}</td>
+            <td style="color:#64748b;">{{ v['vendido_por'] or '—' }}</td>
+            <td>
+              {% if session.get('rol') == 'admin' %}
+              <form method="POST" action="{{ url_for('equipos_venta_anular', vid=v['id']) }}"
+                    onsubmit="return confirm('¿Anular esta venta? {{ v['cantidad'] }} × {{ v['equipo']|replace("'", "") }} vuelve al stock.')">
+                <button class="btn-anular" type="submit" title="Anular venta (devuelve el stock)"><i class="bi bi-x-circle"></i></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="hist-empty">No hay ventas en este período.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if ventas %}
+        <tfoot>
+          <tr><td colspan="3">Total del período</td><td class="num">{{ nv.u }}</td><td></td>
+              <td class="num">{{ '{:,}'.format(nv.t).replace(',', '.') }} Gs.</td><td colspan="3"></td></tr>
+        </tfoot>
+        {% endif %}
+      </table>
     </div>
   </div>
 
@@ -656,9 +795,15 @@
             <option>Otro</option>
           </select>
         </div>
-        <div class="sp-form-group">
-          <label>Stock inicial</label>
-          <input type="number" name="stock" min="0" value="0" placeholder="Cantidad disponible">
+        <div class="v-row">
+          <div class="sp-form-group">
+            <label>Stock inicial</label>
+            <input type="number" name="stock" min="0" value="0" placeholder="Cantidad disponible">
+          </div>
+          <div class="sp-form-group">
+            <label>Precio de venta (Gs.)</label>
+            <input type="text" name="precio" class="js-gs" inputmode="numeric" placeholder="Ej.: 250.000">
+          </div>
         </div>
         <div class="sp-form-group">
           <label>Descripción (opcional)</label>
@@ -710,6 +855,70 @@
   </div>
 </div>
 
+<!-- MODAL: Vender a cliente -->
+<div id="modalVender" class="sp-modal-backdrop" style="display:none;">
+  <div class="sp-modal">
+    <div class="sp-modal-head">
+      <h3><i class="bi bi-cart-check" style="color:#16a34a;margin-right:6px;"></i> Vender a cliente</h3>
+      <button class="btn-close-modal" onclick="cerrarModal('modalVender')"><i class="bi bi-x"></i></button>
+    </div>
+    <form method="POST" action="{{ url_for('equipos_vender') }}" id="formVender">
+      <div class="sp-modal-body">
+        <div class="sp-form-group">
+          <label>Equipo</label>
+          <select name="equipo_id" id="vEquipo" required>
+            <option value="" disabled selected>Elige un equipo…</option>
+            {% for e in equipos %}
+              {% set stk = e['stock'] or 0 %}
+              <option value="{{ e['id'] }}" data-stock="{{ stk }}" data-precio="{{ e['precio'] or '' }}" {% if stk <= 0 %}disabled{% endif %}>
+                {{ e['nombre'] }} — stock {{ stk }}{% if e['precio'] %} · {{ '{:,}'.format(e['precio']|int).replace(',', '.') }} Gs.{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="sp-form-group">
+          <label>Cliente</label>
+          <input type="text" name="cliente" id="vCliente" list="dlClientesVenta" autocomplete="off" required
+                 placeholder="Escribe el nombre (de la lista o uno nuevo)">
+          <input type="hidden" name="cliente_id" id="vClienteId">
+          <datalist id="dlClientesVenta">
+            {% for c in clientes_venta %}<option value="{{ c['nombre'] }}" data-id="{{ c['id'] }}">{{ c['barrio'] or '' }}</option>{% endfor %}
+          </datalist>
+          <div class="v-hint" id="vClienteHint">Si no está en la lista, igual se registra con ese nombre.</div>
+        </div>
+        <div class="v-row">
+          <div class="sp-form-group">
+            <label>Cantidad</label>
+            <input type="number" name="cantidad" id="vCantidad" min="1" value="1" required>
+            <div class="v-hint" id="vStockHint"></div>
+          </div>
+          <div class="sp-form-group">
+            <label>Precio unitario (Gs.)</label>
+            <input type="text" name="precio_unit" id="vPrecio" class="js-gs" inputmode="numeric" required placeholder="Ej.: 250.000">
+          </div>
+        </div>
+        <div class="v-row">
+          <div class="sp-form-group">
+            <label>Forma de pago</label>
+            <select name="forma_pago">
+              <option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>A cuenta</option>
+            </select>
+          </div>
+          <div class="sp-form-group">
+            <label>Nota (opcional)</label>
+            <input type="text" name="nota" placeholder="Ej.: factura 001-234">
+          </div>
+        </div>
+        <div class="v-total"><span>Total</span><strong id="vTotal">0 Gs.</strong></div>
+      </div>
+      <div class="sp-modal-foot">
+        <button type="button" class="btn-back" onclick="cerrarModal('modalVender')">Cancelar</button>
+        <button type="submit" class="btn-success-eq" id="vGuardar"><i class="bi bi-cart-check"></i> Registrar venta</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- MODAL: Editar equipo -->
 <div id="modalEditarEquipo" class="sp-modal-backdrop" style="display:none;">
   <div class="sp-modal">
@@ -723,9 +932,15 @@
           <label>Nombre</label>
           <input type="text" id="editNombre" name="nombre" required>
         </div>
-        <div class="sp-form-group">
-          <label>Tipo</label>
-          <input type="text" id="editTipo" name="tipo" required>
+        <div class="v-row">
+          <div class="sp-form-group">
+            <label>Tipo</label>
+            <input type="text" id="editTipo" name="tipo" required>
+          </div>
+          <div class="sp-form-group">
+            <label>Precio de venta (Gs.)</label>
+            <input type="text" id="editPrecio" name="precio" class="js-gs" inputmode="numeric" placeholder="Sin precio">
+          </div>
         </div>
         <div class="sp-form-group">
           <label>Descripción</label>
@@ -898,11 +1113,63 @@
 <script>
 /* tabs */
 function switchTab(name, btn){
-  document.getElementById('tab-equipos').style.display  = name==='equipos'  ? '' : 'none';
-  document.getElementById('tab-historial').style.display = name==='historial' ? '' : 'none';
+  ['equipos', 'historial', 'ventas'].forEach(t =>
+    document.getElementById('tab-' + t).style.display = (t === name) ? '' : 'none');
   document.querySelectorAll('.eq-tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
+  (btn || document.querySelector(`.eq-tab[data-tab="${name}"]`))?.classList.add('active');
 }
+
+/* números en guaraníes con punto de miles mientras se escribe */
+const fmtGs = n => (n || n === 0) ? String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+const soloDig = v => (v || '').replace(/\D/g, '');
+document.querySelectorAll('.js-gs').forEach(inp => inp.addEventListener('input', () => {
+  inp.value = fmtGs(soloDig(inp.value)); calcularTotal();
+}));
+
+/* ===== Vender ===== */
+const vEquipo = document.getElementById('vEquipo'), vCant = document.getElementById('vCantidad'),
+      vPrecio = document.getElementById('vPrecio'), vCliente = document.getElementById('vCliente'),
+      vClienteId = document.getElementById('vClienteId');
+function calcularTotal(){
+  if (!vPrecio) return;
+  const t = (parseInt(soloDig(vPrecio.value) || '0', 10)) * (parseInt(vCant.value || '0', 10));
+  document.getElementById('vTotal').textContent = fmtGs(t) + ' Gs.';
+}
+function syncEquipo(){
+  const op = vEquipo.options[vEquipo.selectedIndex];
+  if (!op || !op.value) return;
+  const stk = parseInt(op.dataset.stock || '0', 10);
+  vCant.max = stk;
+  if (parseInt(vCant.value, 10) > stk) vCant.value = stk;
+  document.getElementById('vStockHint').textContent = `Hay ${stk} en stock.`;
+  if (op.dataset.precio) vPrecio.value = fmtGs(op.dataset.precio);
+  calcularTotal();
+}
+function vender(id){
+  document.getElementById('formVender').reset();
+  vClienteId.value = '';
+  document.getElementById('vGuardar').disabled = false;
+  if (id){ vEquipo.value = id; } else { vEquipo.selectedIndex = 0; }
+  syncEquipo(); calcularTotal();
+  abrirModal('modalVender');
+  (id ? vCliente : vEquipo).focus();
+}
+vEquipo?.addEventListener('change', syncEquipo);
+vCant?.addEventListener('input', calcularTotal);
+// Cliente: si coincide con uno de la lista, se vincula (queda en su ficha)
+vCliente?.addEventListener('input', () => {
+  const op = [...document.querySelectorAll('#dlClientesVenta option')].find(o => o.value.toLowerCase() === vCliente.value.trim().toLowerCase());
+  vClienteId.value = op ? op.dataset.id : '';
+  document.getElementById('vClienteHint').textContent = op
+    ? 'Cliente del sistema: la venta queda vinculada a su ficha.'
+    : 'Si no está en la lista, igual se registra con ese nombre.';
+});
+document.getElementById('formVender')?.addEventListener('submit', e => {
+  const stk = parseInt(vEquipo.options[vEquipo.selectedIndex]?.dataset.stock || '0', 10);
+  if (parseInt(vCant.value, 10) > stk){ e.preventDefault(); alert(`Solo hay ${stk} en stock.`); return; }
+  if (!soloDig(vPrecio.value)){ e.preventDefault(); vPrecio.focus(); return; }
+  document.getElementById('vGuardar').disabled = true;
+});
 
 /* modales */
 function abrirModal(id){ document.getElementById(id).style.display = 'flex'; }
@@ -925,7 +1192,8 @@ function reponer(id){
 }
 
 /* editar */
-function abrirEditar(id, nombre, tipo, desc){
+function abrirEditar(id, nombre, tipo, desc, precio){
+  document.getElementById('editPrecio').value = fmtGs(precio);
   document.getElementById('editNombre').value = nombre;
   document.getElementById('editTipo').value = tipo;
   document.getElementById('editDescripcion').value = desc;
@@ -975,6 +1243,16 @@ function exportRango(tipo){
   location.href = base.replace('DESDE', desde).replace('HASTA', hasta).replace('TEC', tec);
 }
 
+/* PDF de ventas del período elegido arriba */
+function exportVentas(){
+  const form = document.querySelector('.eq-filters form');
+  const q = new URLSearchParams({ desde: form.querySelector('[name=desde]').value, hasta: form.querySelector('[name=hasta]').value });
+  location.href = `{{ url_for('equipos_ventas_pdf') }}?` + q.toString();
+}
+
 aplicarFiltros();
+// Abrir en la pestaña pedida (por ejemplo, después de registrar una venta)
+const tabInicial = document.getElementById('eqPage').dataset.tab;
+if (tabInicial === 'ventas' || tabInicial === 'historial') switchTab(tabInicial);
 </script>
 {% endblock %}
