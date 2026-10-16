@@ -261,7 +261,7 @@
             {% set barrio = t.get('c_barrio') or t.get('barrio') %}
             {% set fecha = (t.get('fecha') or '')|string %}
             <tr data-estado="{{ est }}"
-                data-search="{{ [t.get('cliente'), t.get('cedula'), t.get('pppoe'), barrio, t.get('tipo'), t.get('tecnico'), t.get('prioridad')]|select|join(' ')|lower }}">
+                data-search="{{ [t.get('cliente'), t.get('cedula'), t.get('pppoe'), barrio, t.get('tipo'), t.get('tecnico'), t.get('tecnico2'), t.get('prioridad')]|select|join(' ')|lower }}">
               <td class="tk-client">
                 <strong><a href="{{ url_for('tickets_ot', tid=t['id']) }}" title="Ver la orden de trabajo">{{ t.get('cliente') or '—' }}</a></strong>
                 <small>
@@ -272,7 +272,7 @@
               <td class="col-hide">{% if barrio %}{{ barrio }}{% else %}<span class="tk-muted">—</span>{% endif %}</td>
               <td>{{ t.get('tipo') or '—' }}</td>
               <td class="col-hide">{{ t.get('prioridad') or '—' }}</td>
-              <td class="col-hide">{{ t.get('tecnico') or '—' }}</td>
+              <td class="col-hide">{{ t.get('tecnico') or '—' }}{% if t.get('tecnico2') %}<small style="display:block;color:var(--ink-faint)">y {{ t.get('tecnico2') }}</small>{% endif %}</td>
               <td>
                 <span class="tk-status st-{{ est if est in etiquetas else 'pendiente' }}">
                   {{ etiquetas.get(est, 'Pendiente') }}

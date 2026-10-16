@@ -294,7 +294,9 @@
         <div><dt>Tipo</dt><dd>{{ val(t.tipo) }}</dd></div>
         <div><dt>Estado</dt><dd>{{ etiquetas.get(est, est|capitalize) }}</dd></div>
         <div class="s2"><dt>Ticket creado</dt><dd>{{ val((t.fecha or '')|string|truncate(16, true, '')) }}</dd></div>
-        <div class="s2"><dt>Técnico asignado</dt><dd>{{ val(tec.nombre or t.tecnico) }}</dd></div>
+        <div class="s2"><dt>{{ 'Técnicos asignados' if t.tecnico2 else 'Técnico asignado' }}</dt>
+          <dd>{{ val(tec.nombre or t.tecnico) }}{% if t.tecnico2 %} y {{ t.tecnico2 }}{% endif %}
+              {% if est == 'resuelto' %}<i class="fa-solid fa-lock" title="Trabajo resuelto: los técnicos ya no se cambian" style="font-size:11px;color:var(--ink-faint);margin-left:4px"></i>{% endif %}</dd></div>
         <div class="s2"><dt>Visita programada</dt><dd>{{ val((t.programada_en or '')|string|truncate(16, true, '')) }}</dd></div>
         <div class="s2">
           <dt>Dispositivos conectados al WiFi</dt>
@@ -460,7 +462,7 @@
     </section>
 
     <div class="ot-sign">
-      <div><strong>{{ tec.nombre or t.tecnico or 'Técnico' }}</strong>Firma del técnico</div>
+      <div><strong>{{ tec.nombre or t.tecnico or 'Técnico' }}{% if t.tecnico2 %} y {{ t.tecnico2 }}{% endif %}</strong>{{ 'Firma de los técnicos' if t.tecnico2 else 'Firma del técnico' }}</div>
       <div><strong>{{ t.cliente or c.nombre or 'Cliente' }}</strong>Firma y aclaración del cliente · Conforme</div>
     </div>
 

@@ -147,6 +147,10 @@
   .nt-seg input:checked + label{ background:#fff; color:var(--ink); box-shadow:0 1px 2px rgba(15,27,45,.12); }
   .nt-seg input:focus-visible + label{ outline:2px solid var(--accent); outline-offset:1px; }
   [hidden]{ display:none !important; }
+  .tec-resumen{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:8px; font-size:14px; margin-top:-4px; }
+  .tec-resumen.ok{ background:#EDF8F3; border:1px solid #C9EBDC; color:#177A56; }
+  .tec-resumen.vacio{ background:#F9FAFC; border:1px solid var(--line-soft); color:var(--ink-faint); }
+  .nt-field select:disabled{ background-color:#F1F4F7; color:#9AA5B4; cursor:not-allowed; }
 
   /* Pegar ubicación de Google Maps */
   .gm-row{ display:flex; gap:8px; }
@@ -176,6 +180,8 @@
 {% set tt = t if editar else {} %}
 {% set disp_guardados = (tt.dispositivos or '').split(', ') if tt.dispositivos else [] %}
 {% set disp_fijos = ['Televisor', 'Cámaras', 'Celulares', 'Computadora', 'Consola de juegos'] %}
+{# Trabajo resuelto: los técnicos quedan fijos (hay que reabrirlo para cambiarlos) #}
+{% set tec_bloqueado = editar and (tt.estado or '')|lower == 'resuelto' %}
 {% set disp_otros = disp_guardados|reject('in', disp_fijos)|list %}
 <div class="nt">
 
@@ -311,7 +317,7 @@
         <div class="nt-field">
           <label for="{{ 'tecnico_id_select' if tecnicos else 'tecnico_fijo' }}">Técnico</label>
           {% if tecnicos %}
-            <select id="tecnico_id_select">
+            <select id="tecnico_id_select" {{ 'disabled' if tec_bloqueado }}>
               <option value="">Sin asignar</option>
               {% for t in tecnicos %}
                 <option value="{{ t.id }}" {{ 'selected' if editar and (tt.tecnico_id == t.id or (not tt.tecnico_id and (tt.tecnico or '')|lower == (t.nombre or '')|lower)) }}>{{ t.nombre }}</option>
@@ -319,6 +325,9 @@
             </select>
             <input type="hidden" name="tecnico_id" id="tecnico_id">
             <input type="hidden" name="tecnico" id="tecnico_nombre">
+            {% if tec_bloqueado %}
+              <div class="nt-hint"><i class="fa-solid fa-lock" aria-hidden="true"></i> Trabajo resuelto: los técnicos no se pueden cambiar. Para cambiarlos, primero cambia el estado y guarda.</div>
+            {% endif %}
           {% else %}
             <select name="tecnico" id="tecnico_fijo">
               <option>Cristhian Alcaraz</option>
@@ -328,6 +337,19 @@
             </select>
           {% endif %}
         </div>
+
+        {% if tecnicos %}
+        <div class="nt-field">
+          <label for="tecnico2_id">Segundo técnico <span class="opt">(si van dos)</span></label>
+          <select id="tecnico2_id" name="tecnico2_id" {{ 'disabled' if tec_bloqueado }}>
+            <option value="">Ninguno</option>
+            {% for t in tecnicos %}
+              <option value="{{ t.id }}" {{ 'selected' if editar and (tt.tecnico2_id == t.id or (not tt.tecnico2_id and tt.tecnico2 and tt.tecnico2|lower == (t.nombre or '')|lower)) }}>{{ t.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="full tec-resumen" id="tecResumen" aria-live="polite"></div>
+        {% endif %}
 
         <div class="nt-field">
           <label for="programada_local">Fecha y hora de la visita <span class="opt">(opcional)</span></label>
@@ -598,6 +620,27 @@
     };
     tecSel.addEventListener('change', sync);
     sync();
+    // Segundo técnico: solo después del primero, nunca el mismo, y resumen claro
+    const tec2 = $('tecnico2_id'), res = $('tecResumen');
+    if (tec2){
+      const bloqueado = tecSel.disabled;            // trabajo resuelto: no se toca
+      const nombre = sel => sel.value ? sel.options[sel.selectedIndex].textContent.trim() : '';
+      const syncDos = () => {
+        if (!bloqueado){
+          tec2.disabled = !tecSel.value;
+          if (!tecSel.value) tec2.value = '';
+        }
+        [...tec2.options].forEach(o => { o.disabled = !!o.value && o.value === tecSel.value; });
+        if (tec2.value && tec2.value === tecSel.value) tec2.value = '';
+        const n1 = nombre(tecSel), n2 = nombre(tec2);
+        res.className = 'full tec-resumen ' + (n1 ? 'ok' : 'vacio');
+        res.innerHTML = (n2 ? `<i class="fa-solid fa-user-group"></i><span>Van <b>2 técnicos</b>: ${n1} y ${n2}</span>`
+                        : n1 ? `<i class="fa-solid fa-user"></i><span>Va <b>1 técnico</b>: ${n1}</span>`
+                        : `<i class="fa-regular fa-user"></i><span>Sin técnico asignado. Elige primero el técnico; el segundo es opcional.</span>`)
+                      + (bloqueado ? ' <i class="fa-solid fa-lock" style="margin-left:4px" title="Trabajo resuelto"></i>' : '');
+      };
+      tecSel.addEventListener('change', syncDos); tec2.addEventListener('change', syncDos); syncDos();
+    }
   }
 
   // ---------- Dispositivos y repetidor ----------

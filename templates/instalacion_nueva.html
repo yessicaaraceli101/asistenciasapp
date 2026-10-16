@@ -118,6 +118,10 @@
   @media (max-width:720px){ .gm-row{ flex-direction:column; } }
 
   [hidden]{ display:none !important; }
+  .tec-resumen{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:8px; font-size:14px; margin-top:-4px; }
+  .tec-resumen.ok{ background:#EDF8F3; border:1px solid #C9EBDC; color:#177A56; }
+  .tec-resumen.vacio{ background:#F9FAFC; border:1px solid var(--line-soft); color:var(--ink-faint); }
+  .ni-field select:disabled{ background:#F1F4F7; color:#9AA5B4; cursor:not-allowed; }
 
   @media (max-width:720px){
     .ni-grid{ grid-template-columns:1fr; }
@@ -333,6 +337,14 @@
             {% for t in tecnicos %}<option value="{{ t['id'] }}">{{ t['nombre'] }}</option>{% endfor %}
           </select>
         </div>
+        <div class="ni-field s3">
+          <label for="tecnico2_id">Segundo técnico <span class="opt">(si van dos)</span></label>
+          <select id="tecnico2_id" name="tecnico2_id">
+            <option value="">Ninguno</option>
+            {% for t in tecnicos %}<option value="{{ t['id'] }}">{{ t['nombre'] }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="s6 tec-resumen" id="tecResumen" aria-live="polite"></div>
 
         <div class="ni-field s6">
           <label>Equipos y materiales a llevar</label>
@@ -506,6 +518,24 @@
 
   aplicarModo();
   if (sel.value) fillCliente();
+
+  // ---------- Técnicos: el segundo solo después del primero, y resumen claro ----------
+  (() => {
+    const t1 = $id('tecnico_id'), t2 = $id('tecnico2_id'), res = $id('tecResumen');
+    const nombre = sel => sel.value ? sel.options[sel.selectedIndex].textContent.trim() : '';
+    const sync = () => {
+      t2.disabled = !t1.value;                       // primero el técnico principal
+      if (!t1.value) t2.value = '';
+      [...t2.options].forEach(o => { o.disabled = !!o.value && o.value === t1.value; });
+      if (t2.value && t2.value === t1.value) t2.value = '';
+      const n1 = nombre(t1), n2 = nombre(t2);
+      res.className = 's6 tec-resumen ' + (n1 ? 'ok' : 'vacio');
+      res.innerHTML = n2 ? `<i class="fa-solid fa-user-group"></i><span>Van <b>2 técnicos</b>: ${n1} y ${n2}</span>`
+                    : n1 ? `<i class="fa-solid fa-user"></i><span>Va <b>1 técnico</b>: ${n1}</span>`
+                    : `<i class="fa-regular fa-user"></i><span>Sin técnico asignado. Elige primero el técnico; el segundo es opcional.</span>`;
+    };
+    t1.addEventListener('change', sync); t2.addEventListener('change', sync); sync();
+  })();
 
   // ---------- Fecha mínima ----------
   (() => {

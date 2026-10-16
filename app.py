@@ -270,7 +270,8 @@ def _ensure_config():
                             ("diag_token", "TEXT"), ("diag_completado", "TEXT"), ("trabajo_realizado", "TEXT"),
                             ("diag_por", "TEXT"), ("resuelto_por", "TEXT"), ("resuelto_en", "TEXT"),
                             ("ubic_origen", "TEXT"),
-                            ("drop_metros", "TEXT"), ("red_wifi", "TEXT"), ("sena", "TEXT"), ("p8080", "TEXT")):
+                            ("drop_metros", "TEXT"), ("red_wifi", "TEXT"), ("sena", "TEXT"), ("p8080", "TEXT"),
+                            ("tecnico2", "TEXT"), ("tecnico2_id", "INTEGER")):
                 if c not in acols:
                     conn.execute(f"ALTER TABLE asistencias ADD COLUMN {c} {tipo}")
         conn.execute("CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT)")
@@ -1171,6 +1172,23 @@ def _datos_form_ticket():
 
     return clientes, tecnicos
 
+def _tecnico2_del_form(db, sid, tecnico1_id=None):
+    """Segundo técnico (opcional) del formulario: (id, nombre) o (None, None)."""
+    tid2 = request.form.get("tecnico2_id", type=int)
+    if not tid2 or (tecnico1_id and str(tid2) == str(tecnico1_id)):
+        return None, None
+    r = db.execute("SELECT nombre FROM tecnicos WHERE id=? AND sucursal_id=?", (tid2, sid)).fetchone()
+    return (tid2, r["nombre"]) if r else (None, None)
+
+def _tecnicos_txt(t, principal=None):
+    """'Richard Leckie y Cristhian Alcaraz' (o solo uno)."""
+    nombres = [n for n in (principal or t.get("tecnico"), t.get("tecnico2")) if n]
+    return " y ".join(nombres)
+
+def _tecnico_bloqueado(t):
+    """Con el trabajo resuelto, el técnico ya no se puede cambiar (hay que reabrirlo primero)."""
+    return (t.get("estado") or "").lower() == "resuelto"
+
 def _desde_agenda():
     """Los tickets y las instalaciones nuevas solo se registran desde la Agenda."""
     return (request.values.get("origen") or "") == "agenda"
@@ -1251,7 +1269,12 @@ def nuevo_ticket():
         repetidor_cant = (request.form.get("repetidor_cant", type=int) or 1) if repetidor == 1 else None
 
         db = get_db()
+        t2_id, t2_nombre = _tecnico2_del_form(db, current_sucursal_id(), tecnico_id)
+        if not tecnico_id and t2_id:      # solo eligieron el "segundo": pasa a ser el técnico
+            tecnico_id, tecnico_nombre, t2_id, t2_nombre = t2_id, t2_nombre, None, None
         nuevo_tid = insert_row(db, "asistencias", {
+            "tecnico2_id": t2_id,
+            "tecnico2": t2_nombre,
             "dispositivos": ", ".join(dispositivos) or None,
             "repetidor": repetidor,
             "repetidor_cant": repetidor_cant,
@@ -1760,6 +1783,7 @@ def instalaciones_nueva():
                 tecnico_id = None
 
         prog = (f.get("programada_local") or "").strip()
+        t2_id_i, t2_nombre_i = _tecnico2_del_form(db, sid, tecnico_id)
         nombre_completo = (f"{cli.get('nombre') or ''} {cli.get('apellido') or ''}").strip()
 
         tid = insert_row(db, "asistencias", {
@@ -1770,8 +1794,10 @@ def instalaciones_nueva():
             "direccion": direccion,
             "tipo": "Instalación",
             "prioridad": None,
-            "tecnico": tecnico_nombre,
-            "tecnico_id": tecnico_id,
+            "tecnico": tecnico_nombre or t2_nombre_i,
+            "tecnico_id": tecnico_id or t2_id_i,
+            "tecnico2": t2_nombre_i if tecnico_id else None,
+            "tecnico2_id": t2_id_i if tecnico_id else None,
             "problema": " ".join(partes),
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "programada_en": prog.replace("T", " ") if prog else None,
@@ -3347,11 +3373,13 @@ def agenda():
         params.append(estado_f)
     if tecnico_f and "tecnico_id" in acols:
         # Por código del técnico o, si el ticket no lo tiene, por su nombre
+        tiene_t2 = "tecnico2_id" in acols
         sql += """ AND (a.tecnico_id = ?
                      OR (a.tecnico_id IS NULL AND lower(IFNULL(a.tecnico,'')) =
-                         lower(IFNULL((SELECT nombre FROM tecnicos WHERE id = ?), '-'))))"""
+                         lower(IFNULL((SELECT nombre FROM tecnicos WHERE id = ?), '-')))""" + \
+               (" OR a.tecnico2_id = ?)" if tiene_t2 else ")")
         tid_f = int(tecnico_f) if str(tecnico_f).isdigit() else tecnico_f   # el código llega como texto
-        params += [tid_f, tid_f]
+        params += [tid_f, tid_f] + ([tid_f] if tiene_t2 else [])
 
     sql += " ORDER BY date(COALESCE(a.programada_en, a.fecha)) ASC, time(COALESCE(a.programada_en, a.fecha)) ASC"
     eventos = db.execute(sql, params).fetchall()
@@ -3493,7 +3521,12 @@ def tickets_editar(tid):
         if tecnico_id:
             r = db.execute("SELECT nombre FROM tecnicos WHERE id=? AND sucursal_id=?", (tecnico_id, sid)).fetchone()
             tecnico = r["nombre"] if r else tecnico
+        t2_id, t2_nombre = _tecnico2_del_form(db, sid, tecnico_id)
+        if not tecnico_id and t2_id:      # solo eligieron el "segundo": pasa a ser el técnico
+            tecnico_id, tecnico, t2_id, t2_nombre = t2_id, t2_nombre, None, None
         data = {
+            "tecnico2": t2_nombre,
+            "tecnico2_id": t2_id,
             "cliente": cliente,
             "cliente_id": f.get("cliente_id", type=int),
             "cedula": (f.get("cedula") or "").strip() or None,
@@ -3527,6 +3560,15 @@ def tickets_editar(tid):
                            (tecnico or "", sid)).fetchone()
             data["tecnico_id"] = r["id"] if r else None
 
+    # Trabajo ya resuelto: los técnicos no se cambian (primero hay que reabrirlo)
+    if _tecnico_bloqueado(t):
+        cambio_tec = any(k in data and (data[k] or None) != (t.get(k) or None)
+                         for k in ("tecnico", "tecnico_id", "tecnico2", "tecnico2_id"))
+        for k in ("tecnico", "tecnico_id", "tecnico2", "tecnico2_id"):
+            data.pop(k, None)
+        if cambio_tec:
+            flash("El trabajo ya está resuelto: los técnicos no se cambiaron. Para cambiarlos, primero cambia el estado.", "warning")
+
     # Quién lo cerró (si pasa a resuelto) o reabrir
     if estado == "resuelto" and (t.get("estado") or "").lower() != "resuelto":
         data["resuelto_por"] = session.get("nombre") or session.get("usuario")
@@ -3550,6 +3592,11 @@ def tickets_asignar(tid):
     tecnico_id = request.form.get("tecnico_id") or None
 
     db = get_db()
+    actual = db.execute("SELECT estado FROM asistencias WHERE id=? AND sucursal_id=?", (tid, current_sucursal_id())).fetchone()
+    if actual and _tecnico_bloqueado(dict(actual)):
+        db.close()
+        flash("Ese trabajo ya está resuelto: el técnico no se puede cambiar.", "warning")
+        return redirect(request.referrer or url_for("agenda"))
     acols = table_columns(db, "asistencias")
     if "tecnico_id" not in acols:
         db.close()
@@ -4615,6 +4662,8 @@ def _ot_datos(db, t, sid):
     # Mensaje de WhatsApp con lo esencial (el técnico puede no tener usuario en el sistema)
     if _es_instalacion(t):
         lineas = _texto_instalacion(t, c).split("\n")
+        if _tecnicos_txt(t, tec.get("nombre")):
+            lineas.insert(1, f"{'Técnicos' if t.get('tecnico2') else 'Técnico'}: {_tecnicos_txt(t, tec.get('nombre'))}")
         if t.get("programada_en"):
             lineas.insert(1, f"Visita: {str(t['programada_en'])[:16]}")
         diag_url = _diag_url(db, t)
@@ -4631,8 +4680,8 @@ def _ot_datos(db, t, sid):
         ]
         if t.get("programada_en"):
             lineas.append(f"Visita: {_fh(t['programada_en'])}")
-        if tec.get("nombre") or t.get("tecnico"):
-            lineas.append(f"Técnico: {tec.get('nombre') or t.get('tecnico')}")
+        if _tecnicos_txt(t, tec.get("nombre")):
+            lineas.append(f"{'Técnicos' if t.get('tecnico2') else 'Técnico'}: {_tecnicos_txt(t, tec.get('nombre'))}")
         lineas += [
             "",
             f"*Cliente:* {t.get('cliente') or '-'}",
@@ -4763,7 +4812,9 @@ def _texto_instalacion(t, c, final=False):
                 filas.append(f"Dado de baja por: *{t['resuelto_por']}*" + (f" ({fx[8:10]}/{fx[5:7]} {fx[11:16]})" if len(fx) >= 16 else ""))
         else:
             filas.append("Estado: *PENDIENTE* (la instalación no quedó terminada)")
-        filas.append(f"Técnico: {t.get('diag_por') or t.get('tecnico') or '-'}")
+        filas.append(f"{'Técnicos' if t.get('tecnico2') else 'Técnico'}: {_tecnicos_txt(t) or t.get('diag_por') or '-'}")
+        if t.get("diag_por") and t.get("diag_por") not in (_tecnicos_txt(t) or ""):
+            filas.append(f"Cargado por: {t['diag_por']}")
     return "\n".join(filas)
 
 def _cliente_de(t):
@@ -4809,7 +4860,9 @@ def _texto_diagnostico(t, c=None):
             filas.append(f"Dado de baja por: *{t['resuelto_por']}*" + (f" ({fh(t.get('resuelto_en'))})" if t.get("resuelto_en") else ""))
     else:
         filas.append("Estado: *PENDIENTE* (todavía no quedó solucionado)")
-    filas.append(f"Técnico: {t.get('diag_por') or t.get('tecnico') or '-'}")
+    filas.append(f"{'Técnicos' if t.get('tecnico2') else 'Técnico'}: {_tecnicos_txt(t) or t.get('diag_por') or '-'}")
+    if t.get("diag_por") and t.get("diag_por") not in (_tecnicos_txt(t) or ""):
+        filas.append(f"Cargado por: {t['diag_por']}")
     return "\n".join(filas)
 
 @app.route("/d/<token>", methods=["GET", "POST"])
@@ -5045,8 +5098,12 @@ def ordenes_trabajo():
         col_fecha = "COALESCE(programada_en, fecha)" if "programada_en" in acols else "fecha"
         sql += f" AND date({col_fecha}) = date('now','localtime')"
     if tecnico_f:
-        sql += " AND lower(IFNULL(tecnico,'')) = lower(?)"
-        params.append(tecnico_f)
+        if "tecnico2" in acols:
+            sql += " AND (lower(IFNULL(tecnico,'')) = lower(?) OR lower(IFNULL(tecnico2,'')) = lower(?))"
+            params += [tecnico_f, tecnico_f]
+        else:
+            sql += " AND lower(IFNULL(tecnico,'')) = lower(?)"
+            params.append(tecnico_f)
     orden = "datetime(COALESCE(programada_en, fecha))" if "programada_en" in acols else "datetime(fecha)"
     sql += f" ORDER BY {orden} DESC LIMIT 300"
     rows = [dict(r) for r in db.execute(sql, params).fetchall()]

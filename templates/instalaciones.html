@@ -225,7 +225,7 @@
                 {% endif %}
               </td>
               <td class="col-hide">
-                {% if i.tecnico %}{{ i.tecnico }}
+                {% if i.tecnico %}{{ i.tecnico }}{% if i.tecnico2 %}<span class="ins-sub">y {{ i.tecnico2 }}</span>{% endif %}
                 {% elif abierta and tiene_tecnico_id and tecnicos %}
                   <button type="button" class="ins-link js-asig" data-action="{{ url_for('tickets_asignar', tid=i.id) }}"
                           data-cliente="{{ i.cliente }}" data-tecnico="">Asignar</button>
