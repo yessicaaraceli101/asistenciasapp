@@ -260,7 +260,7 @@
                 <div class="cd-t-meta">
                   {{ (t['fecha'] or '')|string|truncate(16, true, '') }}
                   {% if t['tecnico'] %} · {{ t['tecnico'] }}{% endif %}
-                  {% if t['prioridad'] %} · Prioridad {{ t['prioridad']|lower }}{% endif %}
+                  {% if t['prioridad'] %} · Señal {{ t['prioridad']|lower }}{% endif %}
                 </div>
                 {% if t['problema'] %}<div class="cd-t-desc">{{ t['problema'] }}</div>{% endif %}
               </a>

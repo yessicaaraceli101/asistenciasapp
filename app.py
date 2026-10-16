@@ -1387,7 +1387,7 @@ def descargar_pdf():
             f"Dirección: {t.get('direccion','')}\n"
             f"Técnico: {t.get('tecnico','')}\n"
             f"Tipo: {t.get('tipo','')}\n"
-            f"Prioridad: {t.get('prioridad','')}\n"
+            f"Señal: {t.get('prioridad','')}\n"
             f"PPPoE: {t.get('pppoe','')}\n"
             f"Problema: {t.get('problema') or 'N/A'}\n"
             f"Fecha: {t.get('fecha','')}"
@@ -1420,7 +1420,7 @@ def descargar_word():
         doc.add_paragraph(f"Dirección: {t.get('direccion','')}")
         doc.add_paragraph(f"Técnico: {t.get('tecnico','')}")
         doc.add_paragraph(f"Tipo: {t.get('tipo','')}")
-        doc.add_paragraph(f"Prioridad: {t.get('prioridad','')}")
+        doc.add_paragraph(f"Señal: {t.get('prioridad','')}")
         doc.add_paragraph(f"PPPoE: {t.get('pppoe','')}")
         doc.add_paragraph(f"Problema: {t.get('problema') or 'N/A'}")
         doc.add_paragraph(f"Fecha: {t.get('fecha','')}")
@@ -4622,12 +4622,17 @@ def _ot_datos(db, t, sid):
             lineas += ["", "*Al terminar, completar lo que falta aquí:*", diag_url]
         lineas += ["", f"OT completa: {ot_url}"]
     else:
+        def _fh(v):
+            v = str(v or "")
+            return f"{v[8:10]}/{v[5:7]}/{v[:4]} {v[11:16]}".strip() if len(v) >= 10 else v
         lineas = [
             f"*Orden de trabajo {ot_num}*",
-            f"Tipo: {t.get('tipo') or '-'}  |  Prioridad: {t.get('prioridad') or '-'}",
+            f"Tipo: {t.get('tipo') or '-'}  |  Señal: {t.get('prioridad') or '-'}",
         ]
         if t.get("programada_en"):
-            lineas.append(f"Visita: {str(t['programada_en'])[:16]}")
+            lineas.append(f"Visita: {_fh(t['programada_en'])}")
+        if tec.get("nombre") or t.get("tecnico"):
+            lineas.append(f"Técnico: {tec.get('nombre') or t.get('tecnico')}")
         lineas += [
             "",
             f"*Cliente:* {t.get('cliente') or '-'}",
@@ -4639,8 +4644,25 @@ def _ot_datos(db, t, sid):
             lineas.append(f"Dirección: {direccion}")
         if c.get("referencia"):
             lineas.append(f"Referencia: {c['referencia']}")
+        if _plan_txt(c):
+            lineas.append(f"Plan: {_plan_txt(c)}")
+        if c.get("nap_txt"):
+            lineas.append(f"Caja NAP: {c['nap_txt']}")
         if maps_url:
             lineas.append(f"Ubicación: {maps_url}")
+
+        # Lo que reportó el cliente (solo si se cargó)
+        if (t.get("problema") or "").strip():
+            lineas += ["", "*Problema reportado:*", t["problema"].strip()]
+        extra = []
+        if t.get("dispositivos"):
+            extra.append(f"Dispositivos en el WiFi: {t['dispositivos']}")
+        if t.get("repetidor") == 1:
+            extra.append("Repetidor: Sí" + (f" ({t['repetidor_cant']})" if (t.get("repetidor_cant") or 1) > 1 else ""))
+        elif t.get("repetidor") == 0:
+            extra.append("Repetidor: No")
+        if extra:
+            lineas += [""] + extra
 
         # Enlace para que el técnico complete el diagnóstico (sin emojis: algunos WhatsApp los muestran como "?")
         diag_url = _diag_url(db, t)

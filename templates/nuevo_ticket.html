@@ -300,7 +300,7 @@
         </div>
 
         <div class="nt-field">
-          <label for="prioridad">Prioridad</label>
+          <label for="prioridad">Señal</label>
           <select id="prioridad" name="prioridad">
             {% for x in ['Alta', 'Media', 'Baja'] %}
               <option {{ 'selected' if (tt.prioridad or 'Media') == x }}>{{ x }}</option>

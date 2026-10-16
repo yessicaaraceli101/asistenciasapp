@@ -280,7 +280,7 @@
           <div class="ag-body">
             <div class="ag-top">
               <span class="ag-tipo">{{ e['tipo'] or 'Asistencia' }}</span>
-              {% if e['prioridad'] %}<span class="ag-prioridad">· Prioridad {{ e['prioridad']|lower }}</span>{% endif %}
+              {% if e['prioridad'] %}<span class="ag-prioridad">· Señal {{ e['prioridad']|lower }}</span>{% endif %}
 
               {% if st == 'pendiente' %}
                 <span class="chip chip-warn"><i class="bi bi-hourglass-split"></i> Pendiente</span>
