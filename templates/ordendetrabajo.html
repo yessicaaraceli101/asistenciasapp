@@ -217,7 +217,7 @@
         <div class="sn-hint">Si escribes 18.5 se guarda como -18.5</div>
       </div>
       <div class="sn-field">
-        <label>Foto del medidor</label>
+        <label>Foto de señal o potencia</label>
         <div class="sn-foto">
           <img id="snPrev" src="{{ foto_senal }}" alt="Foto de la señal" {{ '' if foto_senal else 'hidden' }}>
           <label class="ot-btn sn-pick" style="margin:0">
@@ -425,7 +425,7 @@
           <strong>{{ dbm(t.senal) if t.senal else '—' }}</strong>
         </div>
         {% if foto_senal %}
-          <div class="ot-senal-foto"><img src="{{ foto_senal }}" alt="Foto del medidor de señal"></div>
+          <div class="ot-senal-foto"><img src="{{ foto_senal }}" alt="Foto de señal o potencia"></div>
         {% endif %}
       </div>
       {% if foto_megas %}

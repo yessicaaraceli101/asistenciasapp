@@ -375,7 +375,7 @@
 
         {# Fotos: sin "capture", así el celular deja sacar la foto o elegirla de la galería #}
         {% for campo, titulo, icono, sub in [
-             ('senal_foto', 'Foto del medidor', 'fa-signal', 'Del medidor de potencia o de la ONU'),
+             ('senal_foto', 'Foto de señal o potencia', 'fa-signal', 'Del medidor de potencia o de la ONU'),
              ('megas_foto', 'Foto de los megas', 'fa-gauge-high', 'Captura del test de velocidad'),
            ] %}
         <div class="campo">
@@ -485,7 +485,7 @@
         } catch (e) {
           if (e.name !== 'AbortError'){
             msg.hidden = false;
-            msg.textContent = 'No se pudieron compartir las fotos. Usa "Enviar solo el texto": incluye los enlaces de las fotos.';
+            msg.textContent = 'No se pudieron compartir las fotos. Prueba de nuevo, o usa "Enviar solo el texto" y adjunta las fotos desde la galería.';
           }
         } finally {
           bComp.disabled = false; bComp.innerHTML = original;

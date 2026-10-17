@@ -4778,7 +4778,7 @@ def _plan_txt(c):
 def _fotos_lineas(t):
     """Enlaces públicos a las fotos del técnico (para el mensaje de WhatsApp)."""
     filas = []
-    for campo, titulo in (("senal_foto", "Foto del medidor"), ("megas_foto", "Foto de los megas")):
+    for campo, titulo in (("senal_foto", "Foto de señal o potencia"), ("megas_foto", "Foto de los megas")):
         if t.get(campo):
             try:
                 filas.append(f"{titulo}: {_url_publica('static', filename='img/senal/' + t[campo])}")
@@ -4816,9 +4816,6 @@ def _texto_instalacion(t, c, final=False):
         filas.append(f"Señal:{v(senal)}")
         if t.get("trabajo_realizado"):
             filas.append(f"Observaciones: {t['trabajo_realizado']}")
-        fotos = _fotos_lineas(t)
-        if fotos:
-            filas += [""] + fotos
         filas.append("")
         if (t.get("estado") or "").lower() == "resuelto":
             filas.append("Estado: *INSTALACIÓN TERMINADA*")
@@ -4868,9 +4865,6 @@ def _texto_diagnostico(t, c=None):
     ]
     if t.get("trabajo_realizado"):
         filas.append(f"Trabajo realizado: {t['trabajo_realizado']}")
-    fotos = _fotos_lineas(t)
-    if fotos:
-        filas += [""] + fotos
     filas.append("")
     if est == "resuelto":
         filas.append("Estado: *RESUELTO*")
@@ -4930,7 +4924,7 @@ def diag_tecnico(token):
             # La falla y el cambio no se usan en instalaciones
             cambios.pop("falla", None); cambios.pop("cambio", None)
         # Fotos: medidor de señal y test de velocidad (megas). Se pueden sacar o elegir de la galería.
-        for campo, prefijo, que in (("senal_foto", "senal", "del medidor"), ("megas_foto", "megas", "de los megas")):
+        for campo, prefijo, que in (("senal_foto", "senal", "de señal o potencia"), ("megas_foto", "megas", "de los megas")):
             foto = request.files.get(campo)
             if error or not foto or not foto.filename:
                 continue
