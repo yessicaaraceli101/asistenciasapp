@@ -62,7 +62,7 @@ migrate_db()
 # ---- Config de subida de imágenes ----
 HERRAMIENTAS_UPLOAD_FOLDER = os.path.join('static', 'img', 'herramientas')
 EQUIPOS_UPLOAD_FOLDER      = os.path.join('static', 'img', 'equipos')
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 os.makedirs(HERRAMIENTAS_UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(EQUIPOS_UPLOAD_FOLDER, exist_ok=True)
 
@@ -271,7 +271,7 @@ def _ensure_config():
                             ("diag_por", "TEXT"), ("resuelto_por", "TEXT"), ("resuelto_en", "TEXT"),
                             ("ubic_origen", "TEXT"),
                             ("drop_metros", "TEXT"), ("red_wifi", "TEXT"), ("sena", "TEXT"), ("p8080", "TEXT"),
-                            ("tecnico2", "TEXT"), ("tecnico2_id", "INTEGER")):
+                            ("tecnico2", "TEXT"), ("tecnico2_id", "INTEGER"), ("megas_foto", "TEXT")):
                 if c not in acols:
                     conn.execute(f"ALTER TABLE asistencias ADD COLUMN {c} {tipo}")
         conn.execute("CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT)")
@@ -3678,13 +3678,14 @@ def tickets_borrar(tid):
     db.execute("DELETE FROM asistencias WHERE id=? AND sucursal_id=?", (tid, current_sucursal_id()))
     db.commit()
     db.close()
-    # Borrar también la foto de la señal, si tenía
-    foto = col(t, "senal_foto")
-    if foto:
-        try:
-            os.remove(os.path.join(SENAL_UPLOAD_FOLDER, os.path.basename(foto)))
-        except OSError:
-            pass
+    # Borrar también las fotos (señal y megas), si tenía
+    for campo in ("senal_foto", "megas_foto"):
+        foto = col(t, campo)
+        if foto:
+            try:
+                os.remove(os.path.join(SENAL_UPLOAD_FOLDER, os.path.basename(foto)))
+            except OSError:
+                pass
     flash(f"Se eliminó {(t['tipo'] or 'el trabajo').lower()} de {t['cliente'] or 'cliente sin nombre'} (OT-{int(tid):06d}).", "success")
     return redirect(volver)
 
@@ -4774,6 +4775,17 @@ def _plan_txt(c):
         partes.append(f"{monto} Gs." if str(monto)[:1].isdigit() else str(monto))
     return " · ".join(partes)
 
+def _fotos_lineas(t):
+    """Enlaces públicos a las fotos del técnico (para el mensaje de WhatsApp)."""
+    filas = []
+    for campo, titulo in (("senal_foto", "Foto del medidor"), ("megas_foto", "Foto de los megas")):
+        if t.get(campo):
+            try:
+                filas.append(f"{titulo}: {_url_publica('static', filename='img/senal/' + t[campo])}")
+            except Exception:
+                pass
+    return filas
+
 def _texto_instalacion(t, c, final=False):
     """Ficha de instalación en el formato de la empresa.
     Lo que todavía no se sabe va vacío para que el técnico lo complete."""
@@ -4804,6 +4816,9 @@ def _texto_instalacion(t, c, final=False):
         filas.append(f"Señal:{v(senal)}")
         if t.get("trabajo_realizado"):
             filas.append(f"Observaciones: {t['trabajo_realizado']}")
+        fotos = _fotos_lineas(t)
+        if fotos:
+            filas += [""] + fotos
         filas.append("")
         if (t.get("estado") or "").lower() == "resuelto":
             filas.append("Estado: *INSTALACIÓN TERMINADA*")
@@ -4853,6 +4868,9 @@ def _texto_diagnostico(t, c=None):
     ]
     if t.get("trabajo_realizado"):
         filas.append(f"Trabajo realizado: {t['trabajo_realizado']}")
+    fotos = _fotos_lineas(t)
+    if fotos:
+        filas += [""] + fotos
     filas.append("")
     if est == "resuelto":
         filas.append("Estado: *RESUELTO*")
@@ -4911,15 +4929,24 @@ def diag_tecnico(token):
         if _es_instalacion(t):
             # La falla y el cambio no se usan en instalaciones
             cambios.pop("falla", None); cambios.pop("cambio", None)
-        foto = request.files.get("senal_foto")
-        if not error and foto and foto.filename:
+        # Fotos: medidor de señal y test de velocidad (megas). Se pueden sacar o elegir de la galería.
+        for campo, prefijo, que in (("senal_foto", "senal", "del medidor"), ("megas_foto", "megas", "de los megas")):
+            foto = request.files.get(campo)
+            if error or not foto or not foto.filename:
+                continue
             if not allowed_file(foto.filename):
-                error = "La foto debe ser JPG, PNG o GIF."
-            else:
-                ext = foto.filename.rsplit(".", 1)[1].lower()
-                nombre = f"senal_{t['id']}_{int(datetime.now().timestamp())}.{ext}"
-                foto.save(os.path.join(SENAL_UPLOAD_FOLDER, nombre))
-                cambios["senal_foto"] = nombre
+                error = f"La foto {que} debe ser JPG, PNG, GIF o WEBP."
+                continue
+            ext = foto.filename.rsplit(".", 1)[1].lower()
+            nombre = f"{prefijo}_{t['id']}_{int(datetime.now().timestamp())}.{ext}"
+            foto.save(os.path.join(SENAL_UPLOAD_FOLDER, nombre))
+            # la foto anterior ya no se usa
+            if t.get(campo):
+                try:
+                    os.remove(os.path.join(SENAL_UPLOAD_FOLDER, os.path.basename(t[campo])))
+                except OSError:
+                    pass
+            cambios[campo] = nombre
 
         casa_lat, casa_lng = f.get("casa_lat", type=float), f.get("casa_lng", type=float)
         if not error and casa_lat is not None and casa_lng is not None \
@@ -4987,7 +5014,9 @@ def diag_tecnico(token):
             texto = quote(_texto_diagnostico(t, _cliente_de(t)))
             wa_url = f"https://wa.me/{tel_ofi}?text={texto}" if tel_ofi else f"https://wa.me/?text={texto}"
             db.close()
+            fotos_compartir = [url_for("static", filename="img/senal/" + t[k]) for k in ("senal_foto", "megas_foto") if t.get(k)]
             return render_template("diag_tecnico.html", t=t, listo=True, wa_url=wa_url, quien=quien, es_inst=_es_instalacion(t),
+                                   fotos_compartir=fotos_compartir, texto_plano=_texto_diagnostico(t, _cliente_de(t)),
                                    resumen=_texto_diagnostico(t, _cliente_de(t)).replace("*", ""), tiene_tel=bool(tel_ofi))
 
     # Datos del cliente para orientar al técnico

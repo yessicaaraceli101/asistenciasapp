@@ -203,9 +203,27 @@
     <div class="reg"><i class="fa-solid fa-circle-check"></i> Registrado por {{ quien }}{% if t.resuelto_por %} · cerrado como resuelto{% endif %}</div>
   </section>
 
+  {% if fotos_compartir %}
+  <section class="card">
+    <div class="card-h"><span class="ico"><i class="fa-solid fa-images"></i></span><h2>Fotos que se envían</h2></div>
+    <div class="card-b" style="display:flex;gap:10px;flex-wrap:wrap">
+      {% for f in fotos_compartir %}<img src="{{ f }}" alt="" style="width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--line)">{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   <div class="barra"><div class="barra-in">
-    <a class="btn btn-wa" href="{{ wa_url }}"><i class="fa-brands fa-whatsapp" style="font-size:20px"></i> Enviar a la oficina por WhatsApp</a>
+    {% if fotos_compartir %}
+      <button type="button" class="btn btn-wa" id="btnCompartir" hidden
+              data-fotos="{{ fotos_compartir|join('|') }}" data-texto="{{ texto_plano }}">
+        <i class="fa-brands fa-whatsapp" style="font-size:20px"></i> Enviar con las fotos
+      </button>
+      <a class="btn btn-wa" href="{{ wa_url }}" id="btnSoloTexto"><i class="fa-brands fa-whatsapp" style="font-size:20px"></i> Enviar a la oficina por WhatsApp</a>
+    {% else %}
+      <a class="btn btn-wa" href="{{ wa_url }}"><i class="fa-brands fa-whatsapp" style="font-size:20px"></i> Enviar a la oficina por WhatsApp</a>
+    {% endif %}
     <a class="btn btn-g" href="{{ request.path }}"><i class="fa-regular fa-pen-to-square"></i> Corregir algo</a>
+    <div id="compartirMsg" style="font-size:12.5px;color:var(--faint);text-align:center;margin-top:6px" hidden></div>
   </div></div>
   {% if not tiene_tel %}<p style="text-align:center;font-size:12.5px;color:var(--faint)">WhatsApp te va a pedir que elijas a quién enviarlo.</p>{% endif %}
 
@@ -355,18 +373,28 @@
 
         {% endif %}
 
+        {# Fotos: sin "capture", así el celular deja sacar la foto o elegirla de la galería #}
+        {% for campo, titulo, icono, sub in [
+             ('senal_foto', 'Foto del medidor', 'fa-signal', 'Del medidor de potencia o de la ONU'),
+             ('megas_foto', 'Foto de los megas', 'fa-gauge-high', 'Captura del test de velocidad'),
+           ] %}
         <div class="campo">
-          <label><i class="fa-solid fa-camera"></i> Foto del medidor <span class="opt">(opcional)</span></label>
-          <label class="foto" for="senal_foto" style="font-weight:400">
-            <input type="file" id="senal_foto" name="senal_foto" accept="image/*" capture="environment">
-            <span class="fi"><i class="fa-solid fa-camera"></i></span>
+          <label><i class="fa-solid fa-camera"></i> {{ titulo }} <span class="opt">(opcional)</span></label>
+          <label class="foto" for="{{ campo }}" style="font-weight:400">
+            <input type="file" id="{{ campo }}" name="{{ campo }}" accept="image/*" class="js-foto">
+            <span class="fi"><i class="fa-solid {{ icono }}"></i></span>
             <span>
-              <strong id="fotoTxt">{{ 'Cambiar la foto' if t.senal_foto else 'Sacar o elegir una foto' }}</strong>
-              <small>{{ 'Ya hay una cargada; la nueva la reemplaza.' if t.senal_foto else 'Del medidor de potencia o de la ONU' }}</small>
+              <strong class="js-foto-txt">{{ 'Cambiar la foto' if t[campo] else 'Sacar una foto o elegir de la galería' }}</strong>
+              <small>{{ 'Ya hay una cargada; la nueva la reemplaza.' if t[campo] else sub }}</small>
             </span>
-            <img id="fotoPrev" alt="">
+            {% if t[campo] %}
+              <img class="js-foto-prev" src="{{ url_for('static', filename='img/senal/' ~ t[campo]) }}" alt="" style="display:block">
+            {% else %}
+              <img class="js-foto-prev" alt="">
+            {% endif %}
           </label>
         </div>
+        {% endfor %}
 
         <div class="campo" style="margin-bottom:0">
           <label for="trabajo_realizado"><i class="fa-solid fa-clipboard-list"></i> {{ 'Observaciones' if es_inst else 'Trabajo realizado' }} <span class="opt">(opcional)</span></label>
@@ -428,6 +456,44 @@
 
 <script>
 (() => {
+  // ----- Enviar el resumen CON las fotos (celular: menú de compartir) -----
+  const bComp = document.getElementById('btnCompartir');
+  if (bComp){
+    const soloTexto = document.getElementById('btnSoloTexto'), msg = document.getElementById('compartirMsg');
+    const urls = bComp.dataset.fotos.split('|').filter(Boolean);
+    const texto = bComp.dataset.texto;
+    const prueba = new File([new Blob(['x'], { type: 'image/jpeg' })], 'x.jpg', { type: 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [prueba] })){
+      // Se puede compartir con fotos: ese pasa a ser el botón principal
+      bComp.hidden = false;
+      soloTexto.classList.replace('btn-wa', 'btn-g');
+      soloTexto.innerHTML = '<i class="fa-regular fa-message"></i> Enviar solo el texto';
+      bComp.addEventListener('click', async () => {
+        const original = bComp.innerHTML;
+        bComp.disabled = true; bComp.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Preparando fotos…';
+        try {
+          const files = await Promise.all(urls.map(async (u, i) => {
+            const b = await (await fetch(u)).blob();
+            const ext = (b.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+            return new File([b], `${i === 0 ? 'foto1' : 'foto' + (i + 1)}.${ext}`, { type: b.type || 'image/jpeg' });
+          }));
+          // Por si WhatsApp no pega el texto junto a las fotos: queda copiado para pegarlo
+          try { await navigator.clipboard.writeText(texto); } catch {}
+          await navigator.share({ files, text: texto });
+          msg.hidden = false;
+          msg.textContent = 'Si el texto no apareció junto a las fotos, ya está copiado: en el chat mantén apretado y toca Pegar.';
+        } catch (e) {
+          if (e.name !== 'AbortError'){
+            msg.hidden = false;
+            msg.textContent = 'No se pudieron compartir las fotos. Usa "Enviar solo el texto": incluye los enlaces de las fotos.';
+          }
+        } finally {
+          bComp.disabled = false; bComp.innerHTML = original;
+        }
+      });
+    }
+  }
+
   // Modal "Salir"
   const mSalir = document.getElementById('mSalir');
   if (mSalir){
@@ -452,15 +518,15 @@
     const v = senal.value.trim().replace(',', '.');
     if (/^\d+(\.\d+)?$/.test(v) && parseFloat(v) > 0) senal.value = '-' + v;
   });
-  // Vista previa de la foto
-  const foto = document.getElementById('senal_foto'), prev = document.getElementById('fotoPrev');
-  foto?.addEventListener('change', () => {
-    const f = foto.files[0];
-    if (!f){ prev.style.display = 'none'; return; }
-    if (f.size > 16 * 1024 * 1024){ alert('La foto pesa más de 16 MB.'); foto.value = ''; return; }
+  // Vista previa de cada foto (medidor y megas)
+  document.querySelectorAll('.js-foto').forEach(inp => inp.addEventListener('change', () => {
+    const caja = inp.closest('.foto'), prev = caja.querySelector('.js-foto-prev');
+    const f = inp.files[0];
+    if (!f) return;
+    if (f.size > 16 * 1024 * 1024){ alert('La foto pesa más de 16 MB.'); inp.value = ''; return; }
     prev.src = URL.createObjectURL(f); prev.style.display = 'block';
-    document.getElementById('fotoTxt').textContent = 'Foto lista';
-  });
+    caja.querySelector('.js-foto-txt').textContent = 'Foto lista';
+  }));
   // "Estoy en la casa": toma la ubicación del GPS del celular (se guarda al tocar "Guardar diagnóstico")
   const bCasa = document.getElementById('btnCasa'), casaMsg = document.getElementById('casaMsg');
   bCasa?.addEventListener('click', () => {

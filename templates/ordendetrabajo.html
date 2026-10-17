@@ -145,6 +145,7 @@
 {% set etiquetas = {'pendiente':'Pendiente', 'en_progreso':'En progreso', 'resuelto':'Resuelto', 'cancelado':'Cancelado'} %}
 {% set est = (t.estado or 'pendiente')|lower %}
 {% set foto_senal = url_for('static', filename='img/senal/' ~ t.senal_foto) if t.senal_foto else '' %}
+{% set foto_megas = url_for('static', filename='img/senal/' ~ t.megas_foto) if t.megas_foto else '' %}
 
 <div class="ot-wrap">
 
@@ -414,10 +415,10 @@
     </section>
     {% endif %}
 
-    {% if t.senal or foto_senal %}
+    {% if t.senal or foto_senal or foto_megas %}
     <!-- Señal medida por el técnico -->
     <section class="ot-sec">
-      <h2>Señal medida</h2>
+      <h2>{{ 'Señal y megas medidos' if foto_megas else 'Señal medida' }}</h2>
       <div class="ot-senal">
         <div class="ot-senal-valor">
           <span>Potencia que llega (Rx)</span>
@@ -427,6 +428,15 @@
           <div class="ot-senal-foto"><img src="{{ foto_senal }}" alt="Foto del medidor de señal"></div>
         {% endif %}
       </div>
+      {% if foto_megas %}
+        <div class="ot-senal" style="margin-top:12px">
+          <div class="ot-senal-valor">
+            <span>Velocidad medida</span>
+            <strong>{% if t.megas %}{{ t.megas }}{% if 'mb' not in (t.megas|string|lower) %} Mbps{% endif %}{% else %}—{% endif %}</strong>
+          </div>
+          <div class="ot-senal-foto"><img src="{{ foto_megas }}" alt="Captura del test de velocidad"></div>
+        </div>
+      {% endif %}
     </section>
     {% endif %}
 
