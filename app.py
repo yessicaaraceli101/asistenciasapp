@@ -73,6 +73,8 @@ os.makedirs(USER_UPLOAD_FOLDER, exist_ok=True)
 # Fotos de la señal medida en la instalación (medidor de potencia / ONU)
 SENAL_UPLOAD_FOLDER = os.path.join('static', 'img', 'senal')
 os.makedirs(SENAL_UPLOAD_FOLDER, exist_ok=True)
+ONU_UPLOAD_FOLDER = os.path.join('static', 'img', 'onu')        # fotos de la etiqueta de la ONU / router
+os.makedirs(ONU_UPLOAD_FOLDER, exist_ok=True)
 
 # Estados válidos de un ticket (asistencia)
 ESTADOS_VALIDOS = {'pendiente', 'en_progreso', 'resuelto', 'cancelado'}
@@ -205,7 +207,7 @@ def _ensure_cliente_cols():
             # Instalación: equipo, contrato y vivienda (para retirar equipos si cancela)
             for c, tipo in (("onu_serie", "TEXT"), ("contrato_tipo", "TEXT"), ("contrato_meses", "INTEGER"),
                             ("vivienda", "TEXT"), ("dueno_nombre", "TEXT"), ("dueno_ci", "TEXT"),
-                            ("dueno_telefono", "TEXT")):
+                            ("dueno_telefono", "TEXT"), ("onu_foto", "TEXT")):
                 if c not in cols:
                     conn.execute(f"ALTER TABLE clientes ADD COLUMN {c} {tipo}")
             conn.commit()
@@ -3111,21 +3113,54 @@ def clientes():
 SERVICIO_CAMPOS = ("onu_serie", "contrato_tipo", "contrato_meses", "vivienda",
                    "dueno_nombre", "dueno_ci", "dueno_telefono")
 
+def _guardar_foto_onu():
+    """Guarda la foto de la etiqueta de la ONU/router si vino en el formulario. Devuelve el nombre o None."""
+    try:
+        foto = request.files.get("onu_foto")
+    except Exception:
+        return None
+    if not foto or not foto.filename or not allowed_file(foto.filename):
+        return None
+    ext = foto.filename.rsplit(".", 1)[1].lower()
+    nombre = f"onu_{secrets.token_hex(6)}.{ext}"
+    foto.save(os.path.join(ONU_UPLOAD_FOLDER, nombre))
+    return nombre
+
+def _borrar_foto_onu(nombre):
+    if nombre:
+        try:
+            os.remove(os.path.join(ONU_UPLOAD_FOLDER, os.path.basename(nombre)))
+        except OSError:
+            pass
+
 def _servicio_form_data(form):
     """Equipo, contrato y vivienda. Si la casa es propia, no se guardan datos de dueño."""
     tipo = (form.get("contrato_tipo") or "").strip() or None
     meses = form.get("contrato_meses", type=int) if tipo == "temporal" else None
     vivienda = (form.get("vivienda") or "").strip() or None
     alquilada = vivienda == "alquilada"
-    return {
-        "onu_serie": (form.get("onu_serie") or "").strip().upper() or None,
+    datos = {
         "contrato_tipo": tipo,
         "contrato_meses": meses,
         "vivienda": vivienda,
         "dueno_nombre": ((form.get("dueno_nombre") or "").strip() or None) if alquilada else None,
         "dueno_ci": ((form.get("dueno_ci") or "").strip() or None) if alquilada else None,
         "dueno_telefono": ((form.get("dueno_telefono") or "").strip() or None) if alquilada else None,
+        **_foto_onu_form(form),
     }
+    # El número de serie solo se toca si el formulario lo trae (en Clientes ahora se carga con la foto)
+    if "onu_serie" in form:
+        datos["onu_serie"] = (form.get("onu_serie") or "").strip().upper() or None
+    return datos
+
+def _foto_onu_form(form):
+    """{'onu_foto': nombre} si se subió una foto; {'onu_foto': None} si pidieron quitarla; {} si no se tocó."""
+    nombre = _guardar_foto_onu()
+    if nombre:
+        return {"onu_foto": nombre}
+    if form.get("onu_foto_quitar") == "1":
+        return {"onu_foto": None}
+    return {}
 
 def _cliente_form_data(cols):
     """Lee el formulario de cliente y devuelve solo las columnas que existen."""
@@ -3264,6 +3299,8 @@ def clientes_editar(cid):
         db.execute(f"UPDATE clientes SET {sets} WHERE id=? AND sucursal_id=?",
                    list(data.values())+[cid, current_sucursal_id()])
         db.commit(); db.close()
+        if "onu_foto" in data and "onu_foto" in c.keys() and c["onu_foto"] and c["onu_foto"] != data["onu_foto"]:
+            _borrar_foto_onu(c["onu_foto"])
         flash("Cliente actualizado.", "success")
         return redirect(url_for("clientes"))
     db.close()
@@ -3396,6 +3433,23 @@ def agenda():
 
     sql += " ORDER BY date(COALESCE(a.programada_en, a.fecha)) ASC, time(COALESCE(a.programada_en, a.fecha)) ASC"
     eventos = db.execute(sql, params).fetchall()
+
+    # Todas las instalaciones pendientes de la sucursal (de cualquier día o sin fecha),
+    # para que no se pierdan: atrasadas primero, después las de hoy, las próximas y las sin fecha.
+    hoy_iso = date.today().isoformat()
+    t2 = "a.tecnico2" if "tecnico2" in acols else "NULL"
+    inst_pend = []
+    for r in db.execute(f"""
+        SELECT a.id, a.cliente, a.programada_en, a.tecnico, {t2} AS tecnico2, a.estado
+          FROM asistencias a
+         WHERE a.sucursal_id=? AND lower(IFNULL(a.tipo,'')) LIKE 'instal%'
+           AND lower(IFNULL(a.estado,'pendiente')) IN ('pendiente','en_progreso')
+         ORDER BY CASE WHEN a.programada_en IS NULL OR a.programada_en='' THEN 1 ELSE 0 END,
+                  datetime(a.programada_en) ASC, a.id ASC""", (current_sucursal_id(),)).fetchall():
+        d = dict(r)
+        dia_v = str(d.get("programada_en") or "")[:10]
+        d["cuando"] = ("sin" if not dia_v else "atrasada" if dia_v < hoy_iso else "hoy" if dia_v == hoy_iso else "proxima")
+        inst_pend.append(d)
     db.close()
 
     # Navegación día a día si NO es rango
@@ -3416,7 +3470,8 @@ def agenda():
         tecnico_f=tecnico_f,
         tecnicos=tecnicos,
         range_mode=range_mode,
-        desde=desde_r, hasta=hasta_r
+        desde=desde_r, hasta=hasta_r,
+        inst_pend=inst_pend,
     )
 
 @app.route("/tickets/<int:tid>/programar", methods=["POST"])
@@ -4999,6 +5054,7 @@ def diag_tecnico(token):
                     upd["vencimiento"] = (f.get("vencimiento") or "").strip() or None
                 if "megas" in f and "megas" in ccols and (f.get("megas") or "").strip():
                     upd["megas"] = f.get("megas").strip()
+
                 if upd:
                     db.execute(f"UPDATE clientes SET {', '.join(k + '=?' for k in upd)} WHERE id=?",
                                list(upd.values()) + [t["cliente_id"]])

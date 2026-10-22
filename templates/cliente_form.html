@@ -60,6 +60,15 @@
   .cf-btn-ghost{ background:var(--surface); border-color:var(--line); color:var(--ink); }
   .cf-btn-ghost:hover{ background:#F7F9FC; border-color:#B7C2D0; color:var(--ink); }
   .cf-actions{ display:flex; justify-content:flex-end; gap:8px; }
+  /* Foto de la etiqueta de la ONU / router */
+  .onu-foto{ display:flex; align-items:center; gap:10px; margin-top:8px; flex-wrap:wrap; }
+  .onu-pick{ position:relative; overflow:hidden; display:inline-flex; align-items:center; gap:8px; height:38px; padding:0 12px;
+             border:1px dashed #B7C2D0; border-radius:8px; background:#FAFBFD; font-size:13.5px; font-weight:500; color:var(--ink); cursor:pointer; }
+  .onu-pick:hover{ border-color:var(--accent); color:var(--accent); }
+  .onu-pick input{ position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .onu-foto img{ width:64px; height:48px; object-fit:cover; border-radius:6px; border:1px solid var(--line); }
+  .onu-foto .onu-quitar{ font-size:12.5px; color:#C2362F; display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
+
 
   /* Ubicación */
   .cf-ub-row{ display:flex; gap:8px; }
@@ -112,7 +121,7 @@
     <p>{% if mode == 'edit' %}{{ v('nombre') }}{% else %}Completa los datos del cliente. Solo el nombre es obligatorio.{% endif %}</p>
   </div>
 
-  <form method="post" id="clienteForm" novalidate>
+  <form method="post" id="clienteForm" novalidate enctype="multipart/form-data">
 
     <!-- Identificación -->
     <section class="cf-section">
@@ -244,9 +253,20 @@
       <div class="cf-section-head"><h2>Equipo, contrato y vivienda</h2></div>
       <div class="cf-grid">
         <div class="cf-field s2">
-          <label for="onu_serie">N.º de serie de la ONU</label>
-          <input class="cf-input" id="onu_serie" name="onu_serie" autocomplete="off" spellcheck="false"
-                 placeholder="Ej.: HWTC1A2B3C4D" value="{{ v('onu_serie') }}">
+          <label>N.º de serie de la ONU</label>
+          {% set onu_foto = v('onu_foto') %}
+          <div class="onu-foto">
+            <label class="onu-pick"><i class="fa-solid fa-camera" aria-hidden="true"></i>
+              <span class="js-onu-txt">{{ 'Cambiar foto' if onu_foto else 'Subir foto de la etiqueta' }}</span>
+              <input type="file" name="onu_foto" accept="image/*" class="js-onu-foto"></label>
+            <img alt="Foto de la etiqueta" {% if onu_foto %}src="{{ url_for('static', filename='img/onu/' ~ onu_foto) }}"{% else %}hidden{% endif %}>
+            {% if onu_foto %}
+              <label class="onu-quitar"><input type="checkbox" name="onu_foto_quitar" value="1"> Quitar</label>
+            {% endif %}
+          </div>
+          <div class="cf-hint">
+            {% if v('onu_serie') %}Número cargado antes: <b>{{ v('onu_serie') }}</b>. {% endif %}Saca la foto de la etiqueta o elígela de la galería.
+          </div>
         </div>
         <div class="cf-field s2">
           <label for="contrato_tipo">Duración del servicio</label>
@@ -321,6 +341,17 @@
     document.querySelectorAll('.js-dueno').forEach(el => el.hidden = viv.value !== 'alquilada');
   };
   ct.addEventListener('change', sync); viv.addEventListener('change', sync); sync();
+
+
+  // Foto de la etiqueta de la ONU / router: vista previa (cámara o galería)
+  document.querySelectorAll('.js-onu-foto').forEach(inp => inp.addEventListener('change', () => {
+    const f = inp.files[0], box = inp.closest('.onu-foto'), img = box.querySelector('img');
+    if (!f) return;
+    if (f.size > 16 * 1024 * 1024){ alert('La foto pesa más de 16 MB.'); inp.value = ''; return; }
+    img.src = URL.createObjectURL(f); img.hidden = false;
+    box.querySelector('.js-onu-txt').textContent = 'Cambiar foto';
+    const q = box.querySelector('input[name=onu_foto_quitar]'); if (q) q.checked = false;
+  }));
 
   // ----- Ubicación de la casa -----
   const lat = $('lat'), lng = $('lng'), estado = $('ubEstado'), prev = $('ubPrev'), pegar = $('ubPegar');
