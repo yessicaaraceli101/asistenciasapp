@@ -94,6 +94,7 @@
   .ot-senal-valor strong{ font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; }
   .ot-senal-foto{ border:1px solid var(--line); border-radius:6px; padding:6px; text-align:center; }
   .ot-senal-foto img{ max-width:100%; max-height:300px; object-fit:contain; display:block; margin:0 auto; }
+  .ot-onu-img{ display:block; margin-top:6px; max-width:240px; max-height:140px; object-fit:contain; border:1px solid var(--line); border-radius:6px; }
 
   /* Campos para completar a mano */
   .ot-fill{ border:1px solid var(--line); border-radius:6px; }
@@ -206,7 +207,7 @@
   <!-- ===== Cargar la señal medida (solo pantalla) ===== -->
   <form class="sn-panel" method="post" action="{{ url_for('tickets_senal', tid=t.id) }}" enctype="multipart/form-data" id="fSenal">
     <h2><i class="fa-solid fa-signal" aria-hidden="true" style="color:var(--accent)"></i> Señal de la {{ 'instalación' if ((t.tipo or '')|lower).startswith('instal') else 'visita' }}</h2>
-    <p>Lo que cargues aquí aparece en la orden de trabajo y en el PDF.</p>
+    <p>Señal, foto del medidor y foto de la ONU: lo que cargues aquí aparece en la orden de trabajo y en el PDF.</p>
     <div class="sn-grid">
       <div class="sn-field">
         <label for="senal">Señal que llega</label>
@@ -232,9 +233,20 @@
         <div class="sn-hint" id="snHint">Desde el celular puedes sacar la foto en el momento.</div>
       </div>
     </div>
+    <div class="sn-field" style="margin-top:14px">
+      <label>Foto de la etiqueta de la ONU <span style="font-weight:400;color:var(--ink-faint)">(n.º de serie)</span></label>
+      <div class="sn-foto">
+        <img id="onuPrev" {% if c.onu_foto %}src="{{ url_for('static', filename='img/onu/' ~ c.onu_foto) }}"{% else %}hidden{% endif %} alt="Etiqueta de la ONU">
+        <label class="ot-btn sn-pick" style="margin:0">
+          <i class="fa-solid fa-barcode" aria-hidden="true"></i> <span id="onuPickTxt">{{ 'Cambiar foto' if c.onu_foto else 'Subir foto' }}</span>
+          <input type="file" name="onu_foto" id="onuFoto" accept="image/*">
+        </label>
+      </div>
+      <div class="sn-hint">Se saca con la cámara o se elige de la galería. Queda también en la ficha del cliente.</div>
+    </div>
     <div class="sn-foot">
       <button type="submit" class="ot-btn primary" name="accion" value="guardar" id="snGuardar">
-        <i class="fa-solid fa-check" aria-hidden="true"></i> Guardar señal
+        <i class="fa-solid fa-check" aria-hidden="true"></i> Guardar
       </button>
     </div>
   </form>
@@ -329,7 +341,12 @@
       <dl class="ot-dl">
         <div class="s2">
           <dt>N.º de serie de la ONU</dt>
-          <dd>{% if c.onu_serie %}{{ c.onu_serie }}{% else %}<span class="ot-blank"></span>{% endif %}</dd>
+          <dd>{% if c.onu_serie %}{{ c.onu_serie }}{% elif not c.onu_foto %}<span class="ot-blank"></span>{% endif %}
+            {% if c.onu_foto %}
+              {% set fo = url_for('static', filename='img/onu/' ~ c.onu_foto) %}
+              <a href="{{ fo }}" target="_blank" rel="noopener" title="Ver la foto grande">
+                <img src="{{ fo }}" alt="Etiqueta de la ONU" class="ot-onu-img"></a>
+            {% endif %}</dd>
         </div>
         <div>
           <dt>Duración del servicio</dt>
@@ -504,6 +521,15 @@
     document.getElementById('snPickTxt').textContent = 'Cambiar foto';
     document.getElementById('snHint').textContent = 'Toca "Guardar señal" para confirmar.';
   });
+  // Foto de la ONU: vista previa
+  const onuFoto = document.getElementById('onuFoto'), onuPrev = document.getElementById('onuPrev');
+  onuFoto?.addEventListener('change', () => {
+    const f = onuFoto.files[0];
+    if (!f) return;
+    if (f.size > 16 * 1024 * 1024){ alert('La foto pesa más de 16 MB.'); onuFoto.value = ''; return; }
+    onuPrev.src = URL.createObjectURL(f); onuPrev.hidden = false;
+    document.getElementById('onuPickTxt').textContent = 'Cambiar foto';
+  });
   document.getElementById('fSenal')?.addEventListener('submit', e => {
     if (e.submitter && e.submitter.value === 'guardar'){
       e.submitter.disabled = true;
@@ -514,7 +540,7 @@
   });
   window.addEventListener('pageshow', () => {
     const b = document.getElementById('snGuardar');
-    if (b){ b.disabled = false; b.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Guardar señal'; }
+    if (b){ b.disabled = false; b.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Guardar'; }
   });
 
   // QR con la ubicación (Google Maps)

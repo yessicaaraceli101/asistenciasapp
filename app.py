@@ -3133,6 +3133,19 @@ def _borrar_foto_onu(nombre):
         except OSError:
             pass
 
+def _onu_foto_al_cliente(db, cliente_id):
+    """Si vino 'onu_foto' en el formulario, la guarda como foto de la etiqueta de la ONU del cliente."""
+    if not cliente_id or "onu_foto" not in table_columns(db, "clientes"):
+        return False
+    nueva = _guardar_foto_onu()
+    if not nueva:
+        return False
+    vieja = db.execute("SELECT onu_foto FROM clientes WHERE id=?", (cliente_id,)).fetchone()
+    db.execute("UPDATE clientes SET onu_foto=? WHERE id=?", (nueva, cliente_id))
+    if vieja and vieja[0]:
+        _borrar_foto_onu(vieja[0])
+    return True
+
 def _servicio_form_data(form):
     """Equipo, contrato y vivienda. Si la casa es propia, no se guardan datos de dueño."""
     tipo = (form.get("contrato_tipo") or "").strip() or None
@@ -5058,6 +5071,8 @@ def diag_tecnico(token):
                 if upd:
                     db.execute(f"UPDATE clientes SET {', '.join(k + '=?' for k in upd)} WHERE id=?",
                                list(upd.values()) + [t["cliente_id"]])
+            # Foto de la etiqueta de la ONU (n.º de serie): queda en el cliente
+            _onu_foto_al_cliente(db, t.get("cliente_id"))
             # Instalación terminada: el cliente que esperaba la instalación pasa a activo
             if resuelto and t.get("cliente_id") and str(t.get("tipo") or "").lower().startswith("instal"):
                 db.execute("""UPDATE clientes SET activo=1, situacion='activo'
@@ -5129,7 +5144,7 @@ def tickets_senal(tid):
 
     db = get_db()
     sid = current_sucursal_id()
-    t = db.execute("SELECT id, senal_foto FROM asistencias WHERE id=? AND sucursal_id=?", (tid, sid)).fetchone()
+    t = db.execute("SELECT id, senal_foto, cliente_id FROM asistencias WHERE id=? AND sucursal_id=?", (tid, sid)).fetchone()
     if not t:
         db.close()
         flash("Ticket no encontrado en esta sucursal.", "warning")
@@ -5164,9 +5179,11 @@ def tickets_senal(tid):
 
     sets = ", ".join(f"{k}=?" for k in cambios)
     db.execute(f"UPDATE asistencias SET {sets} WHERE id=? AND sucursal_id=?", list(cambios.values()) + [tid, sid])
+    onu_ok = _onu_foto_al_cliente(db, t["cliente_id"])
     db.commit()
     db.close()
-    flash("Señal guardada. Ya aparece en la orden de trabajo y en el PDF.", "success")
+    flash("Datos guardados. Ya aparecen en la orden de trabajo y en el PDF."
+          + (" La foto de la ONU quedó también en la ficha del cliente." if onu_ok else ""), "success")
     return redirect(url_for("tickets_ot", tid=tid))
 
 @app.route("/ordenes")

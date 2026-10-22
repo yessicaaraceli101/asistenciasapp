@@ -396,6 +396,23 @@
         </div>
         {% endfor %}
 
+        <div class="campo">
+          <label><i class="fa-solid fa-barcode"></i> Foto de la etiqueta de la ONU <span class="opt">(n.º de serie)</span></label>
+          <label class="foto" for="onu_foto" style="font-weight:400">
+            <input type="file" id="onu_foto" name="onu_foto" accept="image/*" class="js-foto">
+            <span class="fi"><i class="fa-solid fa-barcode"></i></span>
+            <span>
+              <strong class="js-foto-txt">{{ 'Cambiar la foto' if c.onu_foto else 'Sacar una foto o elegir de la galería' }}</strong>
+              <small>{{ 'Ya hay una cargada; la nueva la reemplaza.' if c.onu_foto else 'La etiqueta con el número de serie' }}</small>
+            </span>
+            {% if c.onu_foto %}
+              <img class="js-foto-prev" src="{{ url_for('static', filename='img/onu/' ~ c.onu_foto) }}" alt="" style="display:block">
+            {% else %}
+              <img class="js-foto-prev" alt="">
+            {% endif %}
+          </label>
+        </div>
+
         <div class="campo" style="margin-bottom:0">
           <label for="trabajo_realizado"><i class="fa-solid fa-clipboard-list"></i> {{ 'Observaciones' if es_inst else 'Trabajo realizado' }} <span class="opt">(opcional)</span></label>
           <textarea class="inp" id="trabajo_realizado" name="trabajo_realizado" placeholder="Qué se hizo, materiales usados, observaciones…">{{ t.trabajo_realizado or '' }}</textarea>
