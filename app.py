@@ -1812,7 +1812,11 @@ def instalaciones_nueva():
         push_notificacion("Nueva instalación",
                           _cuerpo_aviso(nombre_completo, tecnico_nombre, prog,
                                         cli.get("barrio") or direccion or None))
-        flash(f"Instalación registrada para {nombre_completo}.", "success")
+        if f.get("modo") == "nuevo" and (cli.get("situacion") or "").lower().startswith("pendiente"):
+            flash(f"Instalación registrada para {nombre_completo}. El cliente ya está en Clientes "
+                  f"(como «pendiente de instalación»; pasa a activo al terminar la instalación).", "success")
+        else:
+            flash(f"Instalación registrada para {nombre_completo}.", "success")
         if f.get("despues") == "ot" and tid:
             return redirect(url_for("tickets_ot", tid=tid))
         return redirect(url_for("instalaciones"))
@@ -3042,10 +3046,17 @@ def clientes():
     exo      = request.args.get("exonerado","")
     barrio_f = request.args.get("barrio","").strip()
     page     = request.args.get("page", 1, type=int)
+    orden    = request.args.get("orden", "")
     per_page = 25
 
     db = get_db()
     ccols = table_columns(db, "clientes")
+
+    # Clientes nuevos que esperan su instalación: se muestran arriba para encontrarlos rápido
+    pendientes_inst = [dict(r) for r in db.execute("""
+        SELECT id, nombre, barrio, telefono FROM clientes
+         WHERE sucursal_id=? AND lower(IFNULL(situacion,'')) LIKE 'pendiente%'
+         ORDER BY id DESC LIMIT 12""", (current_sucursal_id(),)).fetchall()]
 
     where = " WHERE sucursal_id=?"
     p = [current_sucursal_id()]
@@ -3070,7 +3081,8 @@ def clientes():
     page = max(1, min(page, total_pages))
     offset = (page - 1) * per_page
 
-    sql = f"SELECT * FROM clientes{where} ORDER BY nombre COLLATE NOCASE ASC LIMIT ? OFFSET ?"
+    orden_sql = "id DESC" if orden == "recientes" else "nombre COLLATE NOCASE ASC"
+    sql = f"SELECT * FROM clientes{where} ORDER BY {orden_sql} LIMIT ? OFFSET ?"
     rows = db.execute(sql, p + [per_page, offset]).fetchall()
     db.close()
 
@@ -3092,7 +3104,8 @@ def clientes():
 
     return render_template("clientes.html",
                            clientes=clientes_norm,
-                           q=q, situacion=situ, exonerado=exo, barrio=barrio_f,
+                           q=q, situacion=situ, exonerado=exo, barrio=barrio_f, orden=orden,
+                           pendientes_inst=pendientes_inst,
                            total=total, page=page, total_pages=total_pages, per_page=per_page)
 
 SERVICIO_CAMPOS = ("onu_serie", "contrato_tipo", "contrato_meses", "vivienda",

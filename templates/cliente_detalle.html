@@ -113,7 +113,7 @@
       <h1>{{ nombre }}</h1>
       <div class="cd-meta">
         {% if campo('situacion') %}
-          <span class="cd-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspen' in sit or 'bloq' in sit or 'deud' in sit %}st-warn{% else %}st-off{% endif %}">{{ campo('situacion')|capitalize }}</span>
+          <span class="cd-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspen' in sit or 'bloq' in sit or 'deud' in sit or 'pendiente' in sit %}st-warn{% else %}st-off{% endif %}">{{ campo('situacion')|capitalize }}</span>
         {% elif c['activo'] == 1 %}
           <span class="cd-status st-ok">Activo</span>
         {% else %}

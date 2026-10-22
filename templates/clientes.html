@@ -31,9 +31,21 @@
 
   .cl-panel{ background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
 
+  /* Clientes esperando instalación */
+  .cl-nuevos{ background:#FFF7E6; border:1px solid #F5E0B3; border-radius:10px; padding:12px 14px; margin-bottom:16px; }
+  .cl-nuevos-head{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; color:#8A5A00; margin-bottom:10px; }
+  .cl-nuevos-head strong{ font-size:14.5px; }
+  .cl-nuevos-head span{ font-size:12.5px; color:#9A6B12; }
+  .cl-nuevos-list{ display:flex; flex-wrap:wrap; gap:8px; }
+  .cl-nuevos-list a{ display:flex; flex-direction:column; padding:8px 12px; border-radius:8px; background:#fff; border:1px solid #F5E0B3;
+                     text-decoration:none; color:var(--ink); min-width:180px; }
+  .cl-nuevos-list a:hover{ border-color:#E5A50A; }
+  .cl-nuevos-list strong{ font-size:14px; font-weight:600; }
+  .cl-nuevos-list span{ font-size:12.5px; color:var(--ink-faint); }
+
   /* Filtros en una fila */
   .cl-filters{
-    display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:10px;
+    display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr auto; gap:10px;
     padding:12px; border-bottom:1px solid var(--line);
   }
   .cl-filters .f{ position:relative; }
@@ -114,6 +126,7 @@
 
   @media (max-width:900px){
     .cl-filters{ grid-template-columns:1fr 1fr; }
+    .cl-nuevos-list a{ min-width:0; flex:1 1 45%; }
     .cl-filters .f{ grid-column:1 / -1; }
     .cl-table .col-hide{ display:none; }
   }
@@ -149,6 +162,24 @@
            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv">
   </form>
 
+  {% if pendientes_inst and not filtros_activos and page == 1 %}
+    <section class="cl-nuevos" aria-label="Clientes esperando su instalación">
+      <div class="cl-nuevos-head">
+        <i class="fa-solid fa-plug-circle-plus" aria-hidden="true"></i>
+        <strong>Esperando instalación ({{ pendientes_inst|length }})</strong>
+        <span>Clientes nuevos cargados desde Nueva instalación. Pasan a activos cuando se termina la instalación.</span>
+      </div>
+      <div class="cl-nuevos-list">
+        {% for c in pendientes_inst %}
+          <a href="{{ url_for('clientes_detalle', cid=c.id) }}">
+            <strong>{{ c.nombre }}</strong>
+            <span>{{ c.barrio or '' }}{% if c.barrio and c.telefono %} · {% endif %}{{ c.telefono or '' }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
   <div class="cl-panel">
     <form class="cl-filters" method="get" role="search">
       <div class="f">
@@ -158,6 +189,10 @@
       <input name="barrio" value="{{ barrio or '' }}" placeholder="Barrio" aria-label="Barrio">
       <input name="situacion" value="{{ situacion or '' }}" placeholder="Situación" list="dlSit" aria-label="Situación">
       <datalist id="dlSit"><option value="activo"><option value="en mora"><option value="suspendido"><option value="cancelado"></datalist>
+      <select name="orden" aria-label="Orden">
+        <option value="">Orden: A a Z</option>
+        <option value="recientes" {% if orden == 'recientes' %}selected{% endif %}>Más recientes primero</option>
+      </select>
       <select name="exonerado" aria-label="Exonerado">
         <option value="">Exonerados y no</option>
         <option value="1" {% if exonerado == '1' %}selected{% endif %}>Solo exonerados</option>
@@ -219,7 +254,7 @@
               </td>
               <td>
                 {% if c.situacion %}
-                  <span class="cl-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspen' in sit or 'bloq' in sit or 'deud' in sit %}st-warn{% else %}st-off{% endif %}">
+                  <span class="cl-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspen' in sit or 'bloq' in sit or 'deud' in sit or 'pendiente' in sit %}st-warn{% else %}st-off{% endif %}">
                     {{ c.situacion|capitalize }}
                   </span>
                 {% else %}<span class="cl-muted">—</span>{% endif %}
@@ -259,7 +294,7 @@
   </div>
 
   {% if total_pages and total_pages > 1 %}
-    {% set args = dict(q=q, barrio=barrio, situacion=situacion, exonerado=exonerado) %}
+    {% set args = dict(q=q, barrio=barrio, situacion=situacion, exonerado=exonerado, orden=orden or None) %}
     <nav class="cl-pager" aria-label="Paginación de clientes">
       <span>Página {{ page }} de {{ total_pages }}</span>
       <div class="cl-pages">
