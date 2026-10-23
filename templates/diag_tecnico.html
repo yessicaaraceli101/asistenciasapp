@@ -113,6 +113,7 @@
   .unidad .inp{ padding-right:58px; font-variant-numeric:tabular-nums; }
   .unidad span{ position:absolute; right:14px; top:50%; transform:translateY(-50%); color:var(--faint); font-size:14px; pointer-events:none; }
   .rapidas{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .ref{ font-size:12.5px; color:var(--faint); margin-top:5px; }
   .rapidas button{ border:1px solid var(--line); background:#fff; border-radius:999px; padding:5px 11px; font:inherit; font-size:12.5px; color:var(--soft); cursor:pointer; }
   .rapidas button:active, .rapidas button.on{ border-color:var(--accent); color:var(--accent-d); background:#F0F9FF; }
 
@@ -314,16 +315,17 @@
         <div class="fila">
           <div class="campo">
             <label for="vencimiento"><i class="fa-regular fa-calendar"></i> Vencimiento</label>
-            <input class="inp" id="vencimiento" name="vencimiento" value="{{ c.vencimiento or '' }}" placeholder="Día del mes o fecha" autocomplete="off">
+            <input class="inp" id="vencimiento" name="vencimiento" value="" placeholder="Día del mes o fecha" autocomplete="off">
+            {% if c.vencimiento %}<div class="ref">En la ficha: {{ c.vencimiento }}. Si lo dejas vacío, queda ese.</div>{% endif %}
           </div>
           <div class="campo">
             <label for="megas_plan"><i class="fa-solid fa-gauge-high"></i> Plan</label>
             {% set mg = c.megas or '' %}
             <select class="inp" id="megas_plan" name="megas">
-              <option value="">{{ 'Sin cambio' if mg else 'Elige…' }}</option>
-              {% for m in ['70 Mbps', '100 Mbps', '130 Mbps', '180 Mbps'] %}<option {{ 'selected' if mg == m }}>{{ m }}</option>{% endfor %}
-              {% if mg and mg not in ['70 Mbps', '100 Mbps', '130 Mbps', '180 Mbps'] %}<option selected>{{ mg }}</option>{% endif %}
+              <option value="">Elige…</option>
+              {% for m in ['70 Mbps', '100 Mbps', '130 Mbps', '180 Mbps'] %}<option>{{ m }}</option>{% endfor %}
             </select>
+            {% if mg %}<div class="ref">En la ficha: {{ mg }}. Si no eliges, queda ese.</div>{% endif %}
           </div>
         </div>
         {% else %}
@@ -402,15 +404,12 @@
             <input type="file" id="onu_foto" name="onu_foto" accept="image/*" class="js-foto">
             <span class="fi"><i class="fa-solid fa-barcode"></i></span>
             <span>
-              <strong class="js-foto-txt">{{ 'Cambiar la foto' if c.onu_foto else 'Sacar una foto o elegir de la galería' }}</strong>
-              <small>{{ 'Ya hay una cargada; la nueva la reemplaza.' if c.onu_foto else 'La etiqueta con el número de serie' }}</small>
+              <strong class="js-foto-txt">Sacar una foto o elegir de la galería</strong>
+              <small>La etiqueta con el número de serie</small>
             </span>
-            {% if c.onu_foto %}
-              <img class="js-foto-prev" src="{{ url_for('static', filename='img/onu/' ~ c.onu_foto) }}" alt="" style="display:block">
-            {% else %}
-              <img class="js-foto-prev" alt="">
-            {% endif %}
+            <img class="js-foto-prev" alt="">
           </label>
+          {% if c.onu_foto %}<div class="ref">El cliente ya tiene una foto de la ONU. Súbela solo si se cambió o instaló otro equipo.</div>{% endif %}
         </div>
 
         <div class="campo" style="margin-bottom:0">

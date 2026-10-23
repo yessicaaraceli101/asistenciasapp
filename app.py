@@ -5052,7 +5052,7 @@ def diag_tecnico(token):
             t.update(cambios)
             c_actual = _cliente_de(t)
             if _es_instalacion(t):   # lo que se acaba de escribir manda, aunque todavía no esté guardado
-                if "vencimiento" in f: c_actual["vencimiento"] = (f.get("vencimiento") or "").strip()
+                if (f.get("vencimiento") or "").strip(): c_actual["vencimiento"] = f.get("vencimiento").strip()
                 if (f.get("megas") or "").strip(): c_actual["megas"] = f.get("megas").strip()
             cambios["diagnostico"] = _texto_diagnostico(t, c_actual).replace("*", "")
             acols = table_columns(db, "asistencias")
@@ -5063,8 +5063,8 @@ def diag_tecnico(token):
             if _es_instalacion(t) and t.get("cliente_id"):
                 ccols = table_columns(db, "clientes")
                 upd = {}
-                if "vencimiento" in f and "vencimiento" in ccols:
-                    upd["vencimiento"] = (f.get("vencimiento") or "").strip() or None
+                if "vencimiento" in ccols and (f.get("vencimiento") or "").strip():   # vacío = se deja el que tenía
+                    upd["vencimiento"] = f.get("vencimiento").strip()
                 if "megas" in f and "megas" in ccols and (f.get("megas") or "").strip():
                     upd["megas"] = f.get("megas").strip()
 
