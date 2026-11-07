@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Informes{% endblock %}
+
+{% block extra_head %}
+<style>
+  .inf{
+    --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
+    --line:#D9E0E8; --line-soft:#E8EDF2; --accent:#0284C7; --accent-hover:#0369A1;
+    max-width:1100px; margin:0 auto; padding:8px 0 40px; color:var(--ink);
+  }
+  .inf-head h1{ font-size:26px; font-weight:600; letter-spacing:-.3px; margin:0 0 4px; }
+  .inf-head p{ margin:0 0 20px; font-size:14px; color:var(--ink-soft); }
+
+  .inf-panel{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin-bottom:16px; }
+  .inf-panel h2{ font-size:15px; font-weight:600; margin:0 0 12px; }
+  .inf-rango{ display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+  .inf-rango label{ display:block; font-size:13px; font-weight:500; color:var(--ink-soft); margin-bottom:5px; }
+  .inf-rango input{ height:40px; padding:0 10px; font:inherit; font-size:14px; border:1px solid var(--line); border-radius:8px; }
+  .inf-rango input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,.15); }
+  .inf-btn{ display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 16px; border-radius:8px; font-size:14px; font-weight:500;
+            border:1px solid var(--accent); background:var(--accent); color:#fff; text-decoration:none; cursor:pointer; white-space:nowrap; }
+  .inf-btn:hover{ background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .inf-rapidos{ display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }
+  .inf-rapidos a{ padding:5px 12px; border-radius:999px; border:1px solid var(--line); font-size:13px; color:var(--ink-soft); text-decoration:none; background:#fff; }
+  .inf-rapidos a:hover{ border-color:var(--accent); color:var(--accent); }
+  .inf-rapidos a.on{ background:#E0F2FE; border-color:#BAE6FD; color:var(--accent-hover); font-weight:600; }
+
+  .inf-cards{ display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:16px; }
+  .inf-card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:18px; display:flex; flex-direction:column; gap:10px; }
+  .inf-card .ico{ width:42px; height:42px; border-radius:10px; display:grid; place-items:center; font-size:19px; }
+  .inf-card h3{ font-size:16px; font-weight:600; margin:0; }
+  .inf-card p{ margin:0; font-size:13.5px; color:var(--ink-soft); flex:1; }
+  .inf-card .n{ font-size:28px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
+  .inf-card .n small{ font-size:13px; font-weight:500; color:var(--ink-faint); margin-left:4px; }
+  .inf-card .inf-btn{ justify-content:center; }
+  .c-inst .ico{ background:#EEF2FF; color:#1D4ED8; } .c-inst .n{ color:#1D4ED8; }
+  .c-asis .ico{ background:#E0F2FE; color:#0369A1; } .c-asis .n{ color:#0369A1; }
+  .c-gen .ico{ background:#EDF8F3; color:#177A56; } .c-gen .n{ color:#177A56; }
+  .c-gen .inf-btn{ background:#177A56; border-color:#177A56; }
+  .c-gen .inf-btn:hover{ background:#12613F; border-color:#12613F; }
+
+  .inf-tec{ width:100%; border-collapse:collapse; font-size:14px; }
+  .inf-tec th{ text-align:left; font-size:12.5px; font-weight:500; color:var(--ink-faint); padding:6px 8px; border-bottom:1px solid var(--line); }
+  .inf-tec td{ padding:8px; border-bottom:1px solid var(--line-soft); }
+  .inf-tec td.n{ text-align:right; font-weight:600; font-variant-numeric:tabular-nums; width:90px; }
+  /* Barra con <meter>: no necesita estilos en línea */
+  .inf-bar{ width:100%; height:8px; display:block; border:0; border-radius:999px; background:#E0F2FE; overflow:hidden;
+            -webkit-appearance:none; appearance:none; }
+  .inf-bar::-webkit-meter-bar{ background:#E0F2FE; border:0; border-radius:999px; height:8px; }
+  .inf-bar::-webkit-meter-optimum-value{ background:var(--accent); border-radius:999px; }
+  .inf-bar::-moz-meter-bar{ background:var(--accent); border-radius:999px; }
+  .inf-vacio{ font-size:14px; color:var(--ink-faint); }
+
+  @media (max-width:860px){ .inf-cards{ grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set q = 'desde=' ~ desde ~ '&hasta=' ~ hasta %}
+<div class="inf">
+  <div class="inf-head">
+    <h1>Informes</h1>
+    <p>Descarga en PDF las instalaciones y asistencias realizadas en {{ g.sucursal_nombre }}, o un informe general con todo.</p>
+  </div>
+
+  <!-- Período -->
+  <form class="inf-panel" method="get">
+    <h2>Período</h2>
+    <div class="inf-rango">
+      <div><label for="desde">Desde</label><input type="date" id="desde" name="desde" value="{{ desde }}"></div>
+      <div><label for="hasta">Hasta</label><input type="date" id="hasta" name="hasta" value="{{ hasta }}"></div>
+      <button class="inf-btn" type="submit"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Ver período</button>
+    </div>
+    <div class="inf-rapidos">
+      {% for nombre, d, h in rapidos %}
+        <a href="{{ url_for('informes', desde=d, hasta=h) }}" class="{{ 'on' if d == desde and h == hasta }}">{{ nombre }}</a>
+      {% endfor %}
+    </div>
+  </form>
+
+  <!-- Informes -->
+  <div class="inf-cards">
+    <div class="inf-card c-inst">
+      <span class="ico"><i class="fa-solid fa-plug" aria-hidden="true"></i></span>
+      <h3>Instalaciones realizadas</h3>
+      <div class="n">{{ n_inst }}<small>en el período</small></div>
+      <p>Cliente, barrio, plan, técnicos, drop, señal y quién la dio de baja.</p>
+      <a class="inf-btn" href="{{ url_for('informe_instalaciones_pdf') }}?{{ q }}"><i class="fa-regular fa-file-pdf" aria-hidden="true"></i> Descargar PDF</a>
+    </div>
+    <div class="inf-card c-asis">
+      <span class="ico"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i></span>
+      <h3>Asistencias realizadas</h3>
+      <div class="n">{{ n_asis }}<small>en el período</small></div>
+      <p>Cliente, tipo, falla, cambio, señal, técnicos y quién la dio de baja.</p>
+      <a class="inf-btn" href="{{ url_for('informe_asistencias_pdf') }}?{{ q }}"><i class="fa-regular fa-file-pdf" aria-hidden="true"></i> Descargar PDF</a>
+    </div>
+    <div class="inf-card c-gen">
+      <span class="ico"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i></span>
+      <h3>Informe general</h3>
+      <div class="n">{{ n_inst + n_asis }}<small>trabajos</small></div>
+      <p>Resumen con totales, pendientes ({{ pend.inst }} instalaciones y {{ pend.asis }} asistencias hoy), trabajos por técnico, ventas y equipos usados, más los dos detalles.</p>
+      <a class="inf-btn" href="{{ url_for('informe_general_pdf') }}?{{ q }}"><i class="fa-regular fa-file-pdf" aria-hidden="true"></i> Descargar PDF</a>
+    </div>
+  </div>
+
+  <!-- Vista rápida por técnico -->
+  <div class="inf-panel">
+    <h2>Trabajos realizados por técnico en el período</h2>
+    {% if tecnicos %}
+      {% set maximo = tecnicos[0][1] %}
+      <table class="inf-tec">
+        <thead><tr><th>Técnico</th><th></th><th style="text-align:right">Trabajos</th></tr></thead>
+        <tbody>
+          {% for nombre, n in tecnicos %}
+            <tr>
+              <td style="width:220px">{{ nombre }}</td>
+              <td><meter class="inf-bar" min="0" max="{{ maximo }}" value="{{ n }}">{{ n }}</meter></td>
+              <td class="n">{{ n }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="inf-vacio">Todavía no hay trabajos realizados en este período.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

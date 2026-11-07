@@ -199,6 +199,8 @@
         <ul class="dropdown-menu dropdown-menu-end shadow-sm">
           <li><a class="dropdown-item" href="{{ url_for('descargar_pdf') }}"><i class="fa-regular fa-file-pdf" aria-hidden="true"></i> Descargar PDF</a></li>
           <li><a class="dropdown-item" href="{{ url_for('descargar_word') }}"><i class="fa-regular fa-file-word" aria-hidden="true"></i> Descargar Word</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="{{ url_for('informes') }}"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i> Informes de realizadas (PDF)</a></li>
         </ul>
       </div>
       <a href="{{ url_for('nuevo_ticket') }}" class="tk-btn">

@@ -253,7 +253,9 @@
 
   {% block extra_head %}{% endblock %}
 </head>
-<body data-sonido="{{ 1 if session.get('notif_sonido', 1) else 0 }}" data-gmaps-key="{{ google_maps_key }}" data-ubicacion-api="{{ url_for('api_ubicacion_desde_enlace') }}" data-notif-api="{{ notif_api }}">
+<body data-sonido="{{ 1 if session.get('notif_sonido', 1) else 0 }}" data-gmaps-key="{{ google_maps_key }}" data-ubicacion-api="{{ url_for('api_ubicacion_desde_enlace') }}" data-notif-api="{{ notif_api }}"
+      data-sucursal="{{ g.sucursal_nombre or '' }}"
+      {% if session.get('usuario') %}data-local-api="{{ url_for('api_notificaciones') }}" data-pend-api="{{ url_for('api_pendientes') }}"{% endif %}>
 
 {% macro nav_link(endpoint, icon, label) -%}
   {% set ep = request.endpoint or '' %}
@@ -377,6 +379,7 @@
 
       <div class="sb-section">Reportes</div>
       <ul>
+        {{ nav_link('informes', 'fa-regular fa-file-pdf', 'Informes (PDF)') }}
         {{ nav_group('stats', 'fa-solid fa-chart-column', 'Estadísticas', ['estadisticas'], [
              dict(l='Este mes', u=url_for('estadisticas'), m=[url_for('estadisticas'), url_for('estadisticas', mes=nav.mes)]),
              dict(l='Mes anterior', u=url_for('estadisticas', mes=nav.mes_ant)),
@@ -715,9 +718,9 @@
   (() => {
     // ========= Config =========
     const API_BASE = document.body.dataset.notifApi || 'http://localhost:4000'; // sistema de reclamos (NOTIF_API_URL en .env)
-    const LOCAL_API = {{ url_for('api_notificaciones')|tojson }};               // avisos de SPYnet (asistencias e instalaciones)
-    const PEND_API  = {{ url_for('api_pendientes')|tojson }};                   // resumen de lo pendiente
-    const SUCURSAL = {{ (g.sucursal_nombre or '""')|tojson }};
+    const LOCAL_API = document.body.dataset.localApi;   // avisos de SPYnet (asistencias e instalaciones)
+    const PEND_API  = document.body.dataset.pendApi;    // resumen de lo pendiente
+    const SUCURSAL  = document.body.dataset.sucursal || '';
     const POLL_MS  = 8000;
 
     // ========= DOM =========

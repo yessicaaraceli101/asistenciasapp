@@ -1799,6 +1799,11 @@ def instalaciones_nueva():
             "tecnico": tecnico_nombre or t2_nombre_i,
             "tecnico_id": tecnico_id or t2_id_i,
             "tecnico2": t2_nombre_i if tecnico_id else None,
+            # Datos de la ficha de instalación que ya se pueden cargar desde la oficina
+            "drop_metros": metros or None,
+            "red_wifi": (f.get("red_wifi") or "").strip() or None,
+            "sena": (f.get("sena") or "").strip() or None,
+            "p8080": (f.get("p8080") or "").strip() or None,
             "tecnico2_id": t2_id_i if tecnico_id else None,
             "problema": " ".join(partes),
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -5490,6 +5495,304 @@ def red_nap_liberar(nid):
 # ===========================
 MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
             "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+# ===========================
+#  Informes en PDF: instalaciones y asistencias realizadas, e informe general
+# ===========================
+from reportlab.lib.pagesizes import landscape as _apaisado
+
+class _CanvasNumeradoH(rl_canvas.Canvas):
+    """Pie de página 'Página X de N' que sirve para hojas verticales y apaisadas."""
+    def __init__(self, *a, pie_izq="", **kw):
+        super().__init__(*a, **kw)
+        self._paginas, self._pie_izq = [], pie_izq
+    def showPage(self):
+        self._paginas.append(dict(self.__dict__))
+        self._startPage()
+    def save(self):
+        total = len(self._paginas)
+        for estado in self._paginas:
+            self.__dict__.update(estado)
+            ancho = self._pagesize[0]
+            self.setFont("Helvetica", 8)
+            self.setFillColor(_GRIS)
+            self.setStrokeColor(_LINEA)
+            self.line(12 * mm, 12 * mm, ancho - 12 * mm, 12 * mm)
+            self.drawString(12 * mm, 8 * mm, self._pie_izq)
+            self.drawRightString(ancho - 12 * mm, 8 * mm, f"Página {self._pageNumber} de {total}")
+            super().showPage()
+        super().save()
+
+def _rango_informe():
+    """desde/hasta de la URL; por defecto, el mes en curso."""
+    hoy = date.today()
+    desde = request.args.get("desde") or hoy.replace(day=1).isoformat()
+    hasta = request.args.get("hasta") or hoy.isoformat()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", desde): desde = hoy.replace(day=1).isoformat()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", hasta): hasta = hoy.isoformat()
+    if desde > hasta:
+        desde, hasta = hasta, desde
+    return desde, hasta
+
+def _trabajos_realizados(db, sid, desde, hasta, instalaciones):
+    """Trabajos resueltos en el período (por la fecha en que se cerraron)."""
+    acols = table_columns(db, "asistencias")
+    ccols = table_columns(db, "clientes")
+    cerrado = "COALESCE(a.resuelto_en, a.diag_completado, a.programada_en, a.fecha)" if "resuelto_en" in acols \
+              else "COALESCE(a.programada_en, a.fecha)"
+    tipo = "lower(IFNULL(a.tipo,'')) LIKE 'instal%'" if instalaciones else "lower(IFNULL(a.tipo,'')) NOT LIKE 'instal%'"
+    cc = lambda c: f"c.{c}" if c in ccols else "NULL"
+    filas = db.execute(f"""
+        SELECT a.*, {cerrado} AS cerrado_en,
+               {cc('barrio')} AS c_barrio, {cc('megas')} AS c_megas, {cc('valor')} AS c_valor, {cc('telefono')} AS c_tel,
+               {cc('onu_serie')} AS c_onu, {cc('onu_foto')} AS c_onu_foto
+          FROM asistencias a LEFT JOIN clientes c ON c.id = a.cliente_id
+         WHERE a.sucursal_id=? AND lower(IFNULL(a.estado,'')) = 'resuelto' AND {tipo}
+           AND date({cerrado}) BETWEEN ? AND ?
+         ORDER BY datetime({cerrado}) ASC""", (sid, desde, hasta)).fetchall()
+    return [dict(r) for r in filas]
+
+def _pendientes(db, sid):
+    r = db.execute("""SELECT
+        SUM(CASE WHEN lower(IFNULL(tipo,'')) LIKE 'instal%' THEN 1 ELSE 0 END) AS inst,
+        SUM(CASE WHEN lower(IFNULL(tipo,'')) NOT LIKE 'instal%' THEN 1 ELSE 0 END) AS asis
+        FROM asistencias WHERE sucursal_id=? AND lower(IFNULL(estado,'pendiente')) IN ('pendiente','en_progreso')""", (sid,)).fetchone()
+    return {"inst": r["inst"] or 0, "asis": r["asis"] or 0}
+
+def _por_tecnico(trabajos):
+    """{técnico: cantidad} contando también al segundo técnico."""
+    cuenta = {}
+    for t in trabajos:
+        for n in (t.get("tecnico"), t.get("tecnico2")):
+            if n:
+                cuenta[n] = cuenta.get(n, 0) + 1
+        if not t.get("tecnico") and not t.get("tecnico2"):
+            cuenta["Sin técnico"] = cuenta.get("Sin técnico", 0) + 1
+    return sorted(cuenta.items(), key=lambda x: -x[1])
+
+def _fx(v, hora=True):
+    v = str(v or "")
+    if len(v) < 10:
+        return v or "—"
+    return f"{v[8:10]}/{v[5:7]}/{v[:4]}" + (f" {v[11:16]}" if hora and len(v) >= 16 else "")
+
+class _Estilos:
+    def __init__(self):
+        P = ParagraphStyle
+        self.emp = P("emp", fontName="Helvetica-Bold", fontSize=9, textColor=_AZUL)
+        self.tit = P("tit", fontName="Helvetica-Bold", fontSize=17, leading=21, textColor=_TINTA)
+        self.sub = P("sub", fontName="Helvetica", fontSize=9.5, leading=13, textColor=_GRIS)
+        self.h2 = P("h2", fontName="Helvetica-Bold", fontSize=12, leading=15, textColor=_TINTA)
+        self.cel = P("cel", fontName="Helvetica", fontSize=8.5, leading=10.5, textColor=_TINTA)
+        self.celb = P("celb", parent=self.cel, fontName="Helvetica-Bold")
+        self.celg = P("celg", parent=self.cel, fontSize=7.5, leading=9, textColor=_GRIS)
+        self.num = P("num", parent=self.celb, alignment=TA_CENTER)
+        self.cab = P("cab", fontName="Helvetica-Bold", fontSize=8, leading=9.5, textColor=rl_colors.white)
+        self.kl = P("kl", fontName="Helvetica", fontSize=8.5, textColor=_GRIS, alignment=TA_CENTER)
+        self.kv = P("kv", fontName="Helvetica-Bold", fontSize=18, leading=21, textColor=_AZUL, alignment=TA_CENTER)
+        self.ks = P("ks", fontName="Helvetica", fontSize=7.5, textColor=_GRIS, alignment=TA_CENTER)
+
+def _encabezado(E, empresa, titulo, desde, hasta):
+    periodo = _fecha_es(desde) if desde == hasta else f"Del {_fecha_es(desde)} al {_fecha_es(hasta)}"
+    return [Paragraph(_xesc(empresa), E.emp), Spacer(0, 2 * mm), Paragraph(_xesc(titulo), E.tit),
+            Paragraph(f"{periodo} · Sucursal {_xesc(g.sucursal_nombre or '')}", E.sub),
+            Paragraph(f"Generado el {datetime.now():%d/%m/%Y %H:%M} por {_xesc(session.get('nombre') or session.get('usuario') or '')}", E.sub),
+            Spacer(0, 6 * mm)]
+
+def _tabla(E, cabecera, filas, anchos, vacio, color=None):
+    color = color or _AZUL
+    datos = [[Paragraph(c, E.cab) for c in cabecera]] + filas
+    if not filas:
+        datos.append([Paragraph(vacio, E.celg)] + [""] * (len(cabecera) - 1))
+    t = Table(datos, colWidths=anchos, repeatRows=1, hAlign="LEFT")
+    estilo = [
+        ("BACKGROUND", (0, 0), (-1, 0), color), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("LINEBELOW", (0, 1), (-1, -1), 0.5, _LINEA),
+    ]
+    for i in range(2, len(datos), 2):
+        estilo.append(("BACKGROUND", (0, i), (-1, i), _ZEBRA))
+    if not filas:
+        estilo.append(("SPAN", (0, 1), (-1, 1)))
+    t.setStyle(TableStyle(estilo))
+    return t
+
+def _serie_onu(E, t):
+    """N.º de serie de la ONU del cliente (o aviso si solo hay foto de la etiqueta)."""
+    if t.get("c_onu"):
+        return Paragraph(_xesc(str(t["c_onu"])), E.cel)
+    if t.get("c_onu_foto"):
+        return Paragraph("Ver foto en la ficha", E.celg)
+    return Paragraph("—", E.celg)
+
+def _filas_instalaciones(E, trabajos):
+    filas = []
+    for i, t in enumerate(trabajos, 1):
+        plan = " · ".join(x for x in [t.get("c_megas"), (f"{t['c_valor']} Gs." if t.get("c_valor") else "")] if x)
+        senal = str(t.get("senal") or "")
+        filas.append([
+            Paragraph(str(i), E.celg),
+            Paragraph(_fx(t["cerrado_en"]), E.cel),
+            Paragraph(f"OT-{int(t['id']):06d}", E.celb),
+            Paragraph(f"<b>{_xesc(t.get('cliente') or '')}</b><br/><font color='#64748B' size='7.5'>{_xesc(t.get('c_barrio') or '')}</font>", E.cel),
+            Paragraph(_xesc(plan or "—"), E.cel),
+            _serie_onu(E, t),
+            Paragraph(_xesc(_tecnicos_txt(t) or "—"), E.cel),
+            Paragraph(_xesc((str(t.get("drop_metros")) + " m") if t.get("drop_metros") else "—"), E.cel),
+            Paragraph(_xesc((senal + (" dBm" if senal and "dbm" not in senal.lower() else "")) or "—"), E.cel),
+            Paragraph(_xesc(t.get("resuelto_por") or "—"), E.celg),
+        ])
+    return filas
+
+def _filas_asistencias(E, trabajos):
+    filas = []
+    for i, t in enumerate(trabajos, 1):
+        senal = str(t.get("senal") or "")
+        filas.append([
+            Paragraph(str(i), E.celg),
+            Paragraph(_fx(t["cerrado_en"]), E.cel),
+            Paragraph(f"OT-{int(t['id']):06d}", E.celb),
+            Paragraph(f"<b>{_xesc(t.get('cliente') or '')}</b><br/><font color='#64748B' size='7.5'>{_xesc(t.get('c_barrio') or '')}</font>", E.cel),
+            Paragraph(_xesc(t.get("tipo") or "—"), E.cel),
+            Paragraph(_xesc(t.get("falla") or (t.get("problema") or "—")[:80]), E.cel),
+            Paragraph(_xesc(t.get("cambio") or "—"), E.cel),
+            _serie_onu(E, t),
+            Paragraph(_xesc((senal + (" dBm" if senal and "dbm" not in senal.lower() else "")) or "—"), E.cel),
+            Paragraph(_xesc(_tecnicos_txt(t) or "—"), E.cel),
+            Paragraph(_xesc(t.get("resuelto_por") or "—"), E.celg),
+        ])
+    return filas
+
+_ANCHO_H = _apaisado(A4)[0] - 24 * mm      # ancho útil de la hoja apaisada
+_CAB_INST = ["#", "Terminada", "OT", "Cliente", "Plan", "N.º serie ONU", "Técnicos", "Drop", "Señal", "Dado de baja por"]
+_ANCH_INST = [7, 24, 21, 52, 34, 32, 44, 15, 19, 28]
+_CAB_ASIS = ["#", "Resuelta", "OT", "Cliente", "Tipo", "Falla", "Cambio", "N.º serie ONU", "Señal", "Técnicos", "Dado de baja por"]
+_ANCH_ASIS = [7, 23, 21, 44, 22, 34, 30, 30, 17, 32, 26]
+
+def _anchos(lista):
+    total = sum(lista)
+    return [_ANCHO_H * x / total for x in lista]
+
+def _doc(buf, titulo):
+    return SimpleDocTemplate(buf, pagesize=_apaisado(A4), title=titulo,
+                             leftMargin=12 * mm, rightMargin=12 * mm, topMargin=12 * mm, bottomMargin=18 * mm)
+
+def _enviar_pdf(buf, nombre):
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name=nombre, mimetype="application/pdf")
+
+@app.route("/informes")
+def informes():
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    desde, hasta = _rango_informe()
+    db = get_db()
+    sid = current_sucursal_id()
+    inst = _trabajos_realizados(db, sid, desde, hasta, True)
+    asis = _trabajos_realizados(db, sid, desde, hasta, False)
+    pend = _pendientes(db, sid)
+    db.close()
+    hoy = date.today()
+    mes_ant_fin = hoy.replace(day=1) - timedelta(days=1)
+    rapidos = [("Hoy", hoy.isoformat(), hoy.isoformat()),
+               ("Esta semana", (hoy - timedelta(days=hoy.weekday())).isoformat(), hoy.isoformat()),
+               ("Este mes", hoy.replace(day=1).isoformat(), hoy.isoformat()),
+               ("Mes anterior", mes_ant_fin.replace(day=1).isoformat(), mes_ant_fin.isoformat()),
+               ("Este año", hoy.replace(month=1, day=1).isoformat(), hoy.isoformat())]
+    return render_template("informes.html", desde=desde, hasta=hasta, n_inst=len(inst), n_asis=len(asis),
+                           pend=pend, tecnicos=_por_tecnico(inst + asis)[:8], rapidos=rapidos)
+
+@app.route("/informes/instalaciones.pdf")
+def informe_instalaciones_pdf():
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    desde, hasta = _rango_informe()
+    db = get_db(); trabajos = _trabajos_realizados(db, current_sucursal_id(), desde, hasta, True); db.close()
+    E = _Estilos(); empresa = get_empresa().get("nombre_comercial") or "SPYnet"
+    buf = BytesIO(); doc = _doc(buf, "Instalaciones realizadas")
+    h = _encabezado(E, empresa, "Instalaciones realizadas", desde, hasta)
+    h += [Paragraph(f"Total: <b>{len(trabajos)}</b> instalaci{'ón' if len(trabajos) == 1 else 'ones'}", E.sub), Spacer(0, 3 * mm),
+          _tabla(E, _CAB_INST, _filas_instalaciones(E, trabajos), _anchos(_ANCH_INST), "No hay instalaciones realizadas en este período.")]
+    doc.build(h, canvasmaker=lambda *a, **kw: _CanvasNumeradoH(*a, pie_izq=f"{empresa} · Instalaciones realizadas", **kw))
+    return _enviar_pdf(buf, f"instalaciones_{desde}_a_{hasta}.pdf")
+
+@app.route("/informes/asistencias.pdf")
+def informe_asistencias_pdf():
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    desde, hasta = _rango_informe()
+    db = get_db(); trabajos = _trabajos_realizados(db, current_sucursal_id(), desde, hasta, False); db.close()
+    E = _Estilos(); empresa = get_empresa().get("nombre_comercial") or "SPYnet"
+    buf = BytesIO(); doc = _doc(buf, "Asistencias realizadas")
+    h = _encabezado(E, empresa, "Asistencias realizadas", desde, hasta)
+    h += [Paragraph(f"Total: <b>{len(trabajos)}</b> asistencia{'' if len(trabajos) == 1 else 's'}", E.sub), Spacer(0, 3 * mm),
+          _tabla(E, _CAB_ASIS, _filas_asistencias(E, trabajos), _anchos(_ANCH_ASIS), "No hay asistencias realizadas en este período.",
+                 color=rl_colors.HexColor("#0369A1"))]
+    doc.build(h, canvasmaker=lambda *a, **kw: _CanvasNumeradoH(*a, pie_izq=f"{empresa} · Asistencias realizadas", **kw))
+    return _enviar_pdf(buf, f"asistencias_{desde}_a_{hasta}.pdf")
+
+@app.route("/informes/general.pdf")
+def informe_general_pdf():
+    if "usuario" not in session and "usuario_id" not in session:
+        return redirect(url_for("login"))
+    desde, hasta = _rango_informe()
+    sid = current_sucursal_id()
+    db = get_db()
+    inst = _trabajos_realizados(db, sid, desde, hasta, True)
+    asis = _trabajos_realizados(db, sid, desde, hasta, False)
+    pend = _pendientes(db, sid)
+    try:
+        ventas = _query_ventas(db, sid, desde, hasta)
+    except sqlite3.Error:
+        ventas = []
+    try:
+        usos = db.execute("""SELECT COALESCE(SUM(cantidad),0) FROM uso_items
+                              WHERE sucursal_id=? AND date(fecha) BETWEEN ? AND ?""", (sid, desde, hasta)).fetchone()[0]
+    except sqlite3.Error:
+        usos = 0
+    db.close()
+
+    E = _Estilos(); empresa = get_empresa().get("nombre_comercial") or "SPYnet"
+    buf = BytesIO(); doc = _doc(buf, "Informe general")
+    h = _encabezado(E, empresa, "Informe general", desde, hasta)
+
+    # Tarjetas
+    tarjetas = [
+        ("Instalaciones realizadas", str(len(inst)), "en el período"),
+        ("Asistencias realizadas", str(len(asis)), "en el período"),
+        ("Pendientes hoy", str(pend["inst"] + pend["asis"]), f"{pend['inst']} instalaciones · {pend['asis']} asistencias"),
+        ("Ventas de equipos", _gs(sum(v.get("total") or 0 for v in ventas)), f"{sum(v['cantidad'] for v in ventas)} unidades"),
+        ("Equipos usados", str(usos), "por técnicos"),
+    ]
+    celdas = [[Paragraph(a, E.kl), Paragraph(b, E.kv), Paragraph(c, E.ks)] for a, b, c in tarjetas]
+    tk = Table([celdas], colWidths=[_ANCHO_H / 5] * 5)
+    tk.setStyle(TableStyle([("BOX", (i, 0), (i, 0), 0.8, _LINEA) for i in range(5)] + [
+        ("BACKGROUND", (0, 0), (-1, -1), rl_colors.HexColor("#F8FAFF")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
+    h += [tk, Spacer(0, 7 * mm)]
+
+    # Por técnico
+    pt_i, pt_a = dict(_por_tecnico(inst)), dict(_por_tecnico(asis))
+    nombres = sorted(set(pt_i) | set(pt_a), key=lambda n: -(pt_i.get(n, 0) + pt_a.get(n, 0)))
+    filas_t = [[Paragraph(_xesc(n), E.celb), Paragraph(str(pt_i.get(n, 0)), E.num), Paragraph(str(pt_a.get(n, 0)), E.num),
+                Paragraph(str(pt_i.get(n, 0) + pt_a.get(n, 0)), E.num)] for n in nombres]
+    h += [Paragraph("Trabajos realizados por técnico", E.h2),
+          Paragraph("Si en un trabajo fueron dos técnicos, cuenta para los dos.", E.celg), Spacer(0, 2 * mm),
+          _tabla(E, ["Técnico", "Instalaciones", "Asistencias", "Total"], filas_t,
+                 [90 * mm, 35 * mm, 35 * mm, 30 * mm], "Sin trabajos realizados en este período."),
+          Spacer(0, 8 * mm)]
+
+    # Detalles
+    h += [Paragraph(f"Instalaciones realizadas ({len(inst)})", E.h2), Spacer(0, 2 * mm),
+          _tabla(E, _CAB_INST, _filas_instalaciones(E, inst), _anchos(_ANCH_INST), "No hay instalaciones realizadas en este período."),
+          Spacer(0, 8 * mm),
+          Paragraph(f"Asistencias realizadas ({len(asis)})", E.h2), Spacer(0, 2 * mm),
+          _tabla(E, _CAB_ASIS, _filas_asistencias(E, asis), _anchos(_ANCH_ASIS), "No hay asistencias realizadas en este período.",
+                 color=rl_colors.HexColor("#0369A1"))]
+    doc.build(h, canvasmaker=lambda *a, **kw: _CanvasNumeradoH(*a, pie_izq=f"{empresa} · Informe general", **kw))
+    return _enviar_pdf(buf, f"informe_general_{desde}_a_{hasta}.pdf")
+
 
 @app.route("/estadisticas")
 def estadisticas():

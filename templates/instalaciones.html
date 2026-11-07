@@ -152,9 +152,12 @@
       <h1>Instalaciones</h1>
       <p>Nuevas conexiones de la sucursal {{ g.sucursal_nombre }}: programación, técnico y estado.</p>
     </div>
-    <a class="ins-btn" href="{{ url_for('instalaciones_nueva') }}">
-      <i class="fa-solid fa-plus" aria-hidden="true"></i> Nueva instalación
-    </a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a class="ins-btn ins-btn-ghost" href="{{ url_for('informes') }}"><i class="fa-regular fa-file-pdf" aria-hidden="true"></i> Informe PDF</a>
+      <a class="ins-btn" href="{{ url_for('instalaciones_nueva') }}">
+        <i class="fa-solid fa-plus" aria-hidden="true"></i> Nueva instalación
+      </a>
+    </div>
   </div>
 
   <section class="ins-kpis" aria-label="Resumen de instalaciones">

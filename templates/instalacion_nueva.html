@@ -2,7 +2,6 @@
 {% block title %}Nueva instalación{% endblock %}
 
 {% block extra_head %}
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 <style>
   .ni{
     --ink:#0F1B2D; --ink-soft:#4A5668; --ink-faint:#7A8699;
@@ -138,7 +137,7 @@
   <a class="ni-back" href="{{ url_for('instalaciones') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver a instalaciones</a>
   <div class="ni-head">
     <h1>Nueva instalación</h1>
-    <p>Registra una conexión nueva. Si el cliente todavía no existe, se crea en el mismo paso.</p>
+    <p>Registra una conexión nueva. El cliente se crea en el mismo paso y queda en Clientes.</p>
   </div>
 
   <form method="post" id="niForm" novalidate>
@@ -148,12 +147,7 @@
     <section class="ni-section">
       <div class="ni-section-head">
         <h2>Cliente</h2>
-        <div class="ni-seg" role="radiogroup" aria-label="Tipo de cliente">
-          <input type="radio" name="modo" id="modoNuevo" value="nuevo" {{ 'checked' if not cliente_pre }}>
-          <label for="modoNuevo">Cliente nuevo</label>
-          <input type="radio" name="modo" id="modoExistente" value="existente" {{ 'checked' if cliente_pre }}>
-          <label for="modoExistente">Cliente existente</label>
-        </div>
+        <input type="hidden" name="modo" value="nuevo">
       </div>
 
       <!-- Cliente nuevo -->
@@ -214,36 +208,6 @@
         <div class="ni-hint" style="margin-top:12px">El cliente se crea como "pendiente de instalación" y pasa a activo cuando marques la instalación como realizada.</div>
       </div>
 
-      <!-- Cliente existente -->
-      <div class="ni-body" id="bloqueExistente" hidden>
-        <div class="ni-field" id="fCliente">
-          <label for="cliente_id">Cliente<span class="req" aria-hidden="true">*</span></label>
-          <select id="cliente_id" name="cliente_id">
-            <option value=""></option>
-            {% for c in clientes %}
-              <option value="{{ c.id }}" {{ 'selected' if c.id == cliente_pre }}
-                      data-cedula="{{ c.cedula or '' }}" data-telefono="{{ c.telefono or '' }}"
-                      data-barrio="{{ c.barrio or '' }}" data-direccion="{{ c.direccion or '' }}"
-                      data-referencia="{{ c.referencia or '' }}" data-lat="{{ c.lat or '' }}" data-lng="{{ c.lng or '' }}"
-                      data-onu="{{ c.onu_serie or '' }}" data-contrato="{{ c.contrato_tipo or '' }}" data-meses="{{ c.contrato_meses or '' }}"
-                      data-vivienda="{{ c.vivienda or '' }}" data-dnombre="{{ c.dueno_nombre or '' }}"
-                      data-dci="{{ c.dueno_ci or '' }}" data-dtel="{{ c.dueno_telefono or '' }}">
-                {{ ((c.nombre or '') ~ ' ' ~ (c.apellido or ''))|trim }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-        <dl class="ni-client" id="niClientCard">
-          <div><dt>Cédula</dt><dd id="vCed">—</dd></div>
-          <div><dt>Teléfono</dt><dd id="vTel">—</dd></div>
-          <div><dt>Barrio</dt><dd id="vBar">—</dd></div>
-        </dl>
-        <div class="ni-field" style="margin-top:14px">
-          <label for="direccion_existente">Dirección de la instalación</label>
-          <input class="ni-input js-dir" id="direccion_existente" name="direccion_existente" autocomplete="off" placeholder="Calle y número">
-          <div class="ni-hint">Se completa con la del cliente; cámbiala si la instalación es en otro lugar.</div>
-        </div>
-      </div>
     </section>
 
     <!-- ============ Ubicación ============ -->
@@ -354,9 +318,22 @@
             {% endfor %}
           </div>
         </div>
+        <div class="ni-subtitle">Datos de la ficha <span style="font-weight:400;color:var(--ink-faint)">(lo que no sepas, déjalo vacío: lo completa el técnico)</span></div>
         <div class="ni-field s2">
-          <label for="metros">Cable de acometida (m) <span class="opt">(aprox.)</span></label>
+          <label for="metros">Cantidad de drop (m)</label>
           <input class="ni-input" id="metros" name="metros" inputmode="numeric" autocomplete="off" placeholder="Ej.: 80">
+        </div>
+        <div class="ni-field s4">
+          <label for="red_wifi">Red WiFi</label>
+          <input class="ni-input" id="red_wifi" name="red_wifi" autocomplete="off" placeholder="Ej.: SPYnet - Benjamín Flecha">
+        </div>
+        <div class="ni-field s3">
+          <label for="sena">Seña</label>
+          <input class="ni-input" id="sena" name="sena" autocomplete="off" placeholder="Ej.: 100.000">
+        </div>
+        <div class="ni-field s3">
+          <label for="p8080">8080</label>
+          <input class="ni-input" id="p8080" name="p8080" autocomplete="off" autocapitalize="none" spellcheck="false">
         </div>
         <div class="ni-field s6">
           <label for="observaciones">Observaciones</label>
@@ -380,13 +357,10 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 (() => {
   const $id = id => document.getElementById(id);
   const form = $id('niForm');
-  const bloqueNuevo = $id('bloqueNuevo'), bloqueExist = $id('bloqueExistente');
   const latEl = $id('lat'), lngEl = $id('lng'), status = $id('geoStatus');
 
   // ---------- Montos en guaraníes: 160000 -> 160.000 mientras se escribe ----------
@@ -459,35 +433,7 @@
   document.getElementById('btnPegar').addEventListener('click', usarPegado);
 
 
-  // ---------- Modo nuevo / existente ----------
-  const modo = () => form.querySelector('input[name=modo]:checked').value;
-  function aplicarModo(){
-    const nuevo = modo() === 'nuevo';
-    bloqueNuevo.hidden = !nuevo;
-    bloqueExist.hidden = nuevo;
-    document.querySelectorAll('.ni-field.invalid').forEach(f => f.classList.remove('invalid'));
-  }
-  form.querySelectorAll('input[name=modo]').forEach(r => r.addEventListener('change', () => {
-    aplicarModo();
-    if (modo() === 'existente') jQuery('#cliente_id').select2('open'); else $id('nombre').focus();
-  }));
 
-  // ---------- Cliente existente ----------
-  const sel = $id('cliente_id');
-  function fillCliente(){
-    const op = sel.options[sel.selectedIndex];
-    const card = $id('niClientCard');
-    if (!op || !op.value){ card.classList.remove('show'); $id('direccion_existente').value = ''; clearCoords(); return; }
-    const d = op.dataset;
-    $id('vCed').textContent = d.cedula || '—';
-    $id('vTel').textContent = d.telefono || '—';
-    $id('vBar').textContent = d.barrio || '—';
-    card.classList.add('show');
-    $id('direccion_existente').value = d.direccion || [d.barrio, d.referencia].filter(Boolean).join(' - ');
-    $id('fCliente').classList.remove('invalid');
-    if (d.lat && d.lng) setCoords(d.lat, d.lng); else clearCoords();
-    precargarServicio(d);
-  }
   // ---------- Contrato y vivienda ----------
   const radio = n => form.querySelector(`input[name=${n}]:checked`).value;
   function syncServicio(){
@@ -500,24 +446,7 @@
   }));
   syncServicio();
 
-  function precargarServicio(d){
-    $id('onu_serie').value = d.onu || '';
-    (d.contrato === 'temporal' ? $id('ctTemp') : $id('ctIndef')).checked = true;
-    $id('contrato_meses').value = d.meses || '';
-    (d.vivienda === 'alquilada' ? $id('vvAlq') : $id('vvPropia')).checked = true;
-    $id('dueno_nombre').value = d.dnombre || '';
-    $id('dueno_ci').value = d.dci || '';
-    $id('dueno_telefono').value = d.dtel || '';
-    syncServicio();
-  }
 
-  jQuery('#cliente_id').select2({
-    width: '100%', placeholder: 'Escribe el nombre del cliente', allowClear: true,
-    language: { noResults: () => 'Sin resultados' }
-  }).on('change', fillCliente);
-
-  aplicarModo();
-  if (sel.value) fillCliente();
 
   // ---------- Técnicos: el segundo solo después del primero, y resumen claro ----------
   (() => {
@@ -537,6 +466,7 @@
     t1.addEventListener('change', sync); t2.addEventListener('change', sync); sync();
   })();
 
+
   // ---------- Fecha mínima ----------
   (() => {
     const d = new Date(), p = n => String(n).padStart(2, '0');
@@ -550,13 +480,8 @@
       $id(fieldId).classList.toggle('invalid', !ok);
       if (!ok && !primero) primero = focusEl;
     };
-    if (modo() === 'nuevo'){
-      marcar('fNombre', $id('nombre').value.trim(), $id('nombre'));
-      marcar('fTelefono', $id('telefono').value.trim(), $id('telefono'));
-    } else {
-      marcar('fCliente', sel.value, null);
-      if (!sel.value && !primero) primero = 'select2';
-    }
+    marcar('fNombre', $id('nombre').value.trim(), $id('nombre'));
+    marcar('fTelefono', $id('telefono').value.trim(), $id('telefono'));
     if (radio('contrato_tipo') === 'temporal') marcar('fMeses', parseInt($id('contrato_meses').value, 10) > 0, $id('contrato_meses'));
     if (radio('vivienda') === 'alquilada'){
       marcar('fDNombre', $id('dueno_nombre').value.trim(), $id('dueno_nombre'));
@@ -564,7 +489,7 @@
     }
     if (primero){
       e.preventDefault();
-      if (primero === 'select2') jQuery('#cliente_id').select2('open'); else primero.focus();
+      primero.focus();
       return;
     }
     form.querySelectorAll('button[type=submit]').forEach(b => b.disabled = true);
