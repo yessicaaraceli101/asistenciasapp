@@ -5876,16 +5876,26 @@ def estadisticas():
         """, (sid, mes_ini.isoformat(), mes_fin.isoformat())).fetchall():
             estados[r["e"] if r["e"] in estados else "pendiente"] += r["n"]
 
-    # Por técnico en el mes
+    # Por técnico en el mes: si fueron dos técnicos, el trabajo cuenta para los dos
+    rango_mes = (sid, mes_ini.isoformat(), mes_fin.isoformat())
+    segundo = ""
+    if "tecnico2" in acols:
+        segundo = """
+            UNION ALL
+            SELECT tecnico2 AS tec, tipo, estado FROM asistencias
+             WHERE sucursal_id=? AND date(fecha) BETWEEN ? AND ? AND trim(IFNULL(tecnico2,'')) <> ''"""
     por_tecnico = db.execute(f"""
-        SELECT COALESCE(NULLIF(trim(tecnico),''), 'Sin asignar') AS tecnico,
+        WITH trabajos AS (
+            SELECT tecnico AS tec, tipo, estado FROM asistencias
+             WHERE sucursal_id=? AND date(fecha) BETWEEN ? AND ?{segundo}
+        )
+        SELECT COALESCE(NULLIF(trim(tec),''), 'Sin asignar') AS tecnico,
                COUNT(*) AS total,
                COALESCE(SUM(CASE WHEN {ES_INST} THEN 1 ELSE 0 END), 0) AS inst,
                COALESCE(SUM(CASE WHEN lower(IFNULL(estado,''))='resuelto' THEN 1 ELSE 0 END), 0) AS resueltos
-          FROM asistencias
-         WHERE sucursal_id=? AND date(fecha) BETWEEN ? AND ?
+          FROM trabajos
          GROUP BY 1 ORDER BY total DESC
-    """, (sid, mes_ini.isoformat(), mes_fin.isoformat())).fetchall()
+    """, rango_mes + (rango_mes if segundo else ())).fetchall()
 
     # Detalle por técnico: cada trabajo con fecha y hora, cliente y ubicación
     ccols_det = table_columns(db, "clientes")
@@ -5899,7 +5909,8 @@ def estadisticas():
         SELECT a.id, a.cliente, a.tipo, a.estado, a.fecha, {prog} AS programada_en,
                COALESCE(NULLIF(trim(a.direccion),''), {dir_c}) AS direccion, a.lat, a.lng,
                {barrio_c} AS barrio, {refer_c} AS referencia,
-               COALESCE(NULLIF(trim(a.tecnico),''), 'Sin asignar') AS tecnico
+               COALESCE(NULLIF(trim(a.tecnico),''), 'Sin asignar') AS tecnico,
+               {"a.tecnico2" if "tecnico2" in acols else "NULL"} AS tecnico2
           FROM asistencias a {join_c}
          WHERE a.sucursal_id=? AND date(a.fecha) BETWEEN ? AND ?
          ORDER BY datetime(COALESCE({prog}, a.fecha)) DESC
@@ -5908,7 +5919,11 @@ def estadisticas():
         d["cuando"] = str(d["programada_en"] or d["fecha"] or "")[:16]
         d["ubicacion"] = " · ".join(x for x in [d.get("barrio"), d.get("direccion") or d.get("referencia")] if x)
         d["mapa"] = f"https://www.google.com/maps?q={d['lat']},{d['lng']}" if d.get("lat") and d.get("lng") else None
-        detalle.setdefault(d["tecnico"], []).append(d)
+        t2 = (d.get("tecnico2") or "").strip()
+        # Con quién fue (se muestra en el detalle de cada uno)
+        detalle.setdefault(d["tecnico"], []).append({**d, "companero": t2 or None})
+        if t2 and t2 != d["tecnico"]:
+            detalle.setdefault(t2, []).append({**d, "companero": d["tecnico"] if d["tecnico"] != "Sin asignar" else None})
 
     # Clientes: activos, cancelados y otros (según "situacion" y "activo")
     ccols = table_columns(db, "clientes")
