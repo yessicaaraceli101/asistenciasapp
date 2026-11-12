@@ -1,3 +1,6 @@
+# ==========================================================
+# DÓNDE VA: SPYnet (asistenciasapp.spynetpy.com) -> carpeta principal de SPYnet. Renombrar a: app.py
+# ==========================================================
 # app.py
 from flask import Flask, render_template, request, redirect, url_for, send_file, session, flash, jsonify, g
 import sqlite3
@@ -5993,6 +5996,55 @@ def api_ubicacion_desde_enlace():
     if not coords:
         return jsonify({"error": "sin_coordenadas"}), 404
     return jsonify({"lat": coords[0], "lng": coords[1]})
+
+
+# ===========================
+#  Movil Check: ingreso directo con el usuario de SPYnet
+#  La tarjeta "Movil Check" del menú apunta a /ir-a-movilcheck. Esta ruta arma un pase
+#  firmado (válido 60 segundos) con el usuario logueado y lo manda a Movil Check, que
+#  lo verifica con la misma SSO_SECRET y abre la sesión sin pedir contraseña.
+# ===========================
+import hmac, hashlib, base64
+
+# Clave compartida con Movil Check: tiene que ser EXACTAMENTE la misma que SSO_SECRET en el app.py de Movil Check.
+# (Si algún día se define SSO_SECRET en un .env, se usa esa en lugar de esta.)
+SSO_SECRET = os.getenv("SSO_SECRET") or "4526185811c46a455c4e91710a766fa1242943a7ac0cf535bc070f292da3d292"
+MOVILCHECK_URL = (os.getenv("MOVILCHECK_URL") or "https://movilcheck.spynetpy.com").strip().rstrip("/")
+
+def _movilcheck_url(usuario, nombre, rol):
+    """Pase firmado, válido 60 segundos, para entrar a Movil Check sin volver a iniciar sesión."""
+    datos = json.dumps({
+        "usuario": usuario,
+        "nombre": nombre,
+        "rol": rol,
+        "exp": int(time.time()) + 60,
+        "nonce": secrets.token_hex(8),
+    }, separators=(",", ":"), ensure_ascii=False)
+    b64 = base64.urlsafe_b64encode(datos.encode("utf-8")).decode().rstrip("=")
+    firma = hmac.new(SSO_SECRET.encode(), b64.encode(), hashlib.sha256).hexdigest()
+    return f"{MOVILCHECK_URL}/sso?token={b64}.{firma}"
+
+@app.route("/ir-a-movilcheck")
+def ir_a_movilcheck():
+    if "usuario" not in session and "usuario_id" not in session:
+        session["volver_a"] = request.path          # después del login vuelve aquí solo
+        return redirect(url_for("login"))
+
+    # Se lee de la base (no de la sesión) para que un usuario desactivado no pueda pasar
+    db = get_db()
+    u = db.execute("SELECT * FROM usuarios WHERE id=?", (session.get("usuario_id"),)).fetchone()
+    db.close()
+    if not u or col(u, "activo", 1) == 0:
+        session.clear()
+        flash("Tu usuario está desactivado. Consulta con un administrador.", "warning")
+        return redirect(url_for("login"))
+
+    login_usuario = col(u, "usuario") or ""
+    return redirect(_movilcheck_url(
+        usuario=f"{login_usuario}-{u['id']}",       # ej.: "yessica-3" (único aunque se repita en otra sucursal)
+        nombre=col(u, "nombre", login_usuario),
+        rol=col(u, "rol", "operador"),
+    ))
 
 # ===========================
 #  Main
