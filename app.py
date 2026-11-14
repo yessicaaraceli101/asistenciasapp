@@ -28,7 +28,7 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, KeepTogether
 from reportlab.pdfgen import canvas as rl_canvas
 
 # Variables de entorno desde un archivo .env (opcional: pip install python-dotenv)
@@ -1862,7 +1862,7 @@ def instalaciones_nueva():
 # ===========================
 #  Equipos (incluye stock y movimientos)
 # ===========================
-def ajustar_stock(conn, equipo_id, cantidad, tipo_mov, tecnico=None, motivo=""):
+def ajustar_stock(conn, equipo_id, cantidad, tipo_mov, tecnico=None, motivo="", condicion=None):
     # 1. Validar stock suficiente (solo lectura)
     row = conn.execute(
         "SELECT stock FROM equipos WHERE id=? AND sucursal_id=?",
@@ -1882,12 +1882,46 @@ def ajustar_stock(conn, equipo_id, cantidad, tipo_mov, tecnico=None, motivo=""):
         tipo = tipo_mov
 
     # 3. Solo insertar movimiento (el trigger actualizará el stock)
-    conn.execute("""
-        INSERT INTO movimientos_equipos (equipo_id, tipo, cantidad, tecnico, motivo, sucursal_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (equipo_id, tipo, abs(int(cantidad)), tecnico, motivo or "", current_sucursal_id()))
+    if condicion and "condicion" in table_columns(conn, "movimientos_equipos"):
+        conn.execute("""
+            INSERT INTO movimientos_equipos (equipo_id, tipo, cantidad, tecnico, motivo, sucursal_id, condicion)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (equipo_id, tipo, abs(int(cantidad)), tecnico, motivo or "", current_sucursal_id(), condicion))
+    else:
+        conn.execute("""
+            INSERT INTO movimientos_equipos (equipo_id, tipo, cantidad, tecnico, motivo, sucursal_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (equipo_id, tipo, abs(int(cantidad)), tecnico, motivo or "", current_sucursal_id()))
+    # 4. Routers recuperados: suben con un ingreso recuperado y bajan con un egreso recuperado.
+    #    Nunca pueden ser más que el stock total.
+    if "stock_recuperado" in table_columns(conn, "equipos"):
+        delta = 0
+        if condicion == "recuperado":
+            delta = abs(int(cantidad)) if tipo == "ingreso" else -abs(int(cantidad))
+        conn.execute("""UPDATE equipos
+                           SET stock_recuperado = MAX(0, MIN(IFNULL(stock,0), IFNULL(stock_recuperado,0) + ?))
+                         WHERE id=?""", (delta, equipo_id))
     conn.commit()
     return True, nuevo
+
+
+def _condicion_form(form):
+    """'nuevo' o 'recuperado' (por defecto nuevo)."""
+    c = (form.get("condicion") or form.get("origen") or "").strip().lower()
+    return "recuperado" if c.startswith("recup") else "nuevo"
+
+
+def _validar_condicion(eq, condicion, cantidad):
+    """Revisa que haya routers nuevos/recuperados suficientes. Devuelve un mensaje de error o None."""
+    if (eq["categoria"] if "categoria" in eq.keys() else "") != "equipo":
+        return None
+    stock = eq["stock"] or 0
+    recup = (eq["stock_recuperado"] if "stock_recuperado" in eq.keys() else 0) or 0
+    disp = recup if condicion == "recuperado" else stock - recup
+    if cantidad > disp:
+        tipo = "recuperados" if condicion == "recuperado" else "nuevos"
+        return f"No hay suficientes {eq['nombre']} {tipo} (quedan {disp})."
+    return None
 
 @app.route("/equipos")
 def equipos():
@@ -1970,6 +2004,7 @@ def equipos():
             where += " AND u.tecnico=? "
             params.append(tecnico["nombre"])
 
+    cond_u = "u.condicion" if "condicion" in table_columns(conn, "uso_items") else "NULL"
     historial = conn.execute(f"""
         SELECT
             u.id,
@@ -1982,7 +2017,9 @@ def equipos():
             u.tecnico,
             IFNULL(u.cantidad,1) AS cantidad,
             u.fecha,
-            u.servicio
+            u.servicio,
+            {cond_u} AS condicion,
+            CASE WHEN u.item_type='equipo' THEN IFNULL(e.categoria,'herramienta') ELSE 'herramienta' END AS categoria
         FROM uso_items u
         LEFT JOIN herramientas h
             ON u.item_type='herramienta'
@@ -2035,16 +2072,17 @@ def registrar_equipo():
     stock = request.form.get('stock', type=int) or 0   # <-- lee el stock del formulario
     precio = _entero(request.form.get('precio'))
 
+    categoria = _categoria_form(request.form, tipo)
     conn = get_db()
     conn.execute("""
-        INSERT INTO equipos (nombre, tipo, descripcion, sucursal_id, stock, precio)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (nombre, tipo, descripcion, current_sucursal_id(), stock, precio))
+        INSERT INTO equipos (nombre, tipo, descripcion, sucursal_id, stock, precio, categoria)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (nombre, tipo, descripcion, current_sucursal_id(), stock, precio, categoria))
     conn.commit()
     conn.close()
 
-    flash("Equipo registrado correctamente.", "success")
-    return redirect(url_for('equipos'))
+    flash(("Equipo registrado." if categoria == "equipo" else "Herramienta o material registrado."), "success")
+    return redirect(url_for('equipos', tab=('equipos' if categoria == 'equipo' else 'herramientas')))
 
 # ---- Editar equipo ----
 @app.route("/equipos/<int:eid>/editar", methods=["POST"])
@@ -2065,10 +2103,14 @@ def equipos_editar(eid):
     if "precio" in request.form:
         conn.execute("UPDATE equipos SET precio=? WHERE id=? AND sucursal_id=?",
                      (_entero(request.form.get("precio")), eid, current_sucursal_id()))
+    if "categoria" in request.form:
+        conn.execute("UPDATE equipos SET categoria=? WHERE id=? AND sucursal_id=?",
+                     (_categoria_form(request.form, tipo), eid, current_sucursal_id()))
     conn.commit(); conn.close()
 
-    flash("Equipo actualizado correctamente.", "success")
-    return redirect(url_for("equipos"))
+    flash("Actualizado correctamente.", "success")
+    cat = _categoria_form(request.form, tipo) if "categoria" in request.form else None
+    return redirect(url_for("equipos", tab=("herramientas" if cat == "herramienta" else "equipos")))
 
 # ---- Eliminar equipo ----
 @app.route("/equipos/<int:eid>/eliminar", methods=["POST"])
@@ -2103,15 +2145,24 @@ def registrar_uso_item():
 
     # ¿Es equipo?
     equipo = conn.execute("""
-        SELECT id, nombre
+        SELECT *
         FROM equipos
         WHERE id=? AND sucursal_id=?
     """, (item_id, sid)).fetchone()
 
     restante = None
+    condicion = None
     if equipo:
+        # Routers: se indica si se lleva uno nuevo o uno recuperado
+        if (equipo["categoria"] if "categoria" in equipo.keys() else "") == "equipo":
+            condicion = _condicion_form(request.form)
+            err = _validar_condicion(equipo, condicion, cantidad)
+            if err:
+                conn.close()
+                flash(err, "warning")
+                return redirect(url_for("equipos"))
         # Descontar stock utilizando la función existente
-        ok, res = ajustar_stock(conn, item_id, -cantidad, "egreso", tecnico, servicio)
+        ok, res = ajustar_stock(conn, item_id, -cantidad, "egreso", tecnico, servicio, condicion=condicion)
         if not ok:
             conn.close()
             flash(res, "warning")
@@ -2132,11 +2183,18 @@ def registrar_uso_item():
             return redirect(url_for("equipos"))
         item_type = "herramienta"
 
-    conn.execute("""
-        INSERT INTO uso_items
-        (item_type,item_id,tecnico,fecha,servicio,cantidad,sucursal_id)
-        VALUES (?,?,?,?,?,?,?)
-    """, (item_type, item_id, tecnico, fecha, servicio, cantidad, sid))
+    if "condicion" in table_columns(conn, "uso_items"):
+        conn.execute("""
+            INSERT INTO uso_items
+            (item_type,item_id,tecnico,fecha,servicio,cantidad,sucursal_id,condicion)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (item_type, item_id, tecnico, fecha, servicio, cantidad, sid, condicion))
+    else:
+        conn.execute("""
+            INSERT INTO uso_items
+            (item_type,item_id,tecnico,fecha,servicio,cantidad,sucursal_id)
+            VALUES (?,?,?,?,?,?,?)
+        """, (item_type, item_id, tecnico, fecha, servicio, cantidad, sid))
 
     conn.commit()
     conn.close()
@@ -2146,7 +2204,8 @@ def registrar_uso_item():
         if restante <= 0:
             flash(f"Uso registrado. {equipo['nombre']} quedó con stock 0: hay que reponerlo.", "warning")
         else:
-            flash(f"Uso registrado. Quedan {restante} de {equipo['nombre']}.", "success")
+            extra = f" ({condicion})" if condicion else ""
+            flash(f"Uso registrado{extra}. Quedan {restante} de {equipo['nombre']}.", "success")
     else:
         flash("Uso registrado correctamente.", "success")
     return redirect(url_for("equipos"))
@@ -2167,11 +2226,23 @@ def equipos_ingresar_stock():
         return redirect(url_for("equipos"))
 
     conn = get_db()
-    ok, res = ajustar_stock(conn, equipo_id, cantidad, "ingreso", tecnico, motivo or "Ingreso manual")
+    eq = conn.execute("SELECT * FROM equipos WHERE id=? AND sucursal_id=?",
+                      (equipo_id, current_sucursal_id())).fetchone()
+    es_router = bool(eq) and (eq["categoria"] if "categoria" in eq.keys() else "") == "equipo"
+    condicion = _condicion_form(request.form) if es_router else None
+    if condicion == "recuperado":
+        de = (request.form.get("recuperado_de") or "").strip()
+        motivo = "Recuperado" + (f" de {de}" if de else "") + (f" · {motivo}" if motivo else "")
+    ok, res = ajustar_stock(conn, equipo_id, cantidad, "ingreso", tecnico,
+                            motivo or ("Compra / router nuevo" if es_router else "Ingreso manual"),
+                            condicion=condicion)
     conn.close()
 
     if ok:
-        flash(f"Ingreso registrado. Stock nuevo: {res}", "success")
+        if condicion == "recuperado":
+            flash(f"Router recuperado cargado al stock. Stock total: {res}", "success")
+        else:
+            flash(f"Ingreso registrado. Stock nuevo: {res}", "success")
     else:
         flash(res, "danger")
     return redirect(url_for("equipos"))
@@ -2371,6 +2442,9 @@ def _query_uso(conn, where_sql, params):
     hcols = table_columns(conn, "herramientas")
     stk_e = "e.stock" if "stock" in ecols else "NULL"
     stk_h = "h.stock" if "stock" in hcols else "NULL"
+    cat_e = "IFNULL(e.categoria,'herramienta')" if "categoria" in ecols else "'herramienta'"
+    rec_e = "IFNULL(e.stock_recuperado,0)" if "stock_recuperado" in ecols else "0"
+    cond_u = "u.condicion" if "condicion" in table_columns(conn, "uso_items") else "NULL"
     sql = f"""
         SELECT u.item_type,
                CASE
@@ -2382,6 +2456,9 @@ def _query_uso(conn, where_sql, params):
                  WHEN u.item_type='herramienta' THEN {stk_h}
                  WHEN u.item_type='equipo'      THEN {stk_e}
                END AS stock_actual,
+               CASE WHEN u.item_type='equipo' THEN {cat_e} ELSE 'herramienta' END AS categoria,
+               CASE WHEN u.item_type='equipo' THEN {rec_e} ELSE 0 END AS recup_actual,
+               {cond_u} AS condicion,
                u.tecnico,
                IFNULL(u.cantidad, 1) AS cantidad,
                IFNULL(u.servicio, '') AS servicio,
@@ -2400,7 +2477,8 @@ def _query_sin_stock(conn):
     if "stock" not in table_columns(conn, "equipos"):
         return []
     return [dict(r) for r in conn.execute(
-        "SELECT nombre, tipo FROM equipos WHERE sucursal_id=? AND IFNULL(stock,0)<=0 ORDER BY nombre COLLATE NOCASE",
+        "SELECT nombre, tipo" + (", categoria" if "categoria" in table_columns(conn, "equipos") else "") +
+        " FROM equipos WHERE sucursal_id=? AND IFNULL(stock,0)<=0 ORDER BY nombre COLLATE NOCASE",
         (current_sucursal_id(),)).fetchall()]
 
 def _query_uso_hoy(conn):
@@ -2439,12 +2517,58 @@ def _filas_uso(rows):
             "fecha_txt": str(r.get("fecha") or ""),
             "item": str(r.get("nombre_item") or "—"),
             "tipo": str(r.get("item_type") or "").capitalize(),
+            "router": (r.get("categoria") == "equipo"),
+            "categoria_txt": "Equipo (router)" if r.get("categoria") == "equipo" else "Herramienta / material",
+            "condicion": ("Recuperado" if r.get("condicion") == "recuperado" else "Nuevo")
+                         if r.get("categoria") == "equipo" else "",
             "tecnico": str(r.get("tecnico") or "").strip() or "Sin asignar",
             "cantidad": int(r.get("cantidad") or 1),
             "servicio": str(r.get("servicio") or "").capitalize() or "—",
             "stock": None if stk is None else int(stk),
         })
     return filas
+
+def _resumen_categorias(filas):
+    """Unidades usadas: routers nuevos, routers recuperados, herramientas/materiales."""
+    r = {"nuevo": 0, "recuperado": 0, "herramienta": 0}
+    for f in filas:
+        if f["router"]:
+            r["recuperado" if f["condicion"] == "Recuperado" else "nuevo"] += f["cantidad"]
+        else:
+            r["herramienta"] += f["cantidad"]
+    return r
+
+def _uso_por_tecnico_detalle(filas):
+    """{técnico: {'nuevo': n, 'recuperado': n, 'herramienta': n, 'total': n}}"""
+    res = {}
+    for f in sorted(filas, key=lambda x: x["tecnico"].lower()):
+        d = res.setdefault(f["tecnico"], {"nuevo": 0, "recuperado": 0, "herramienta": 0, "total": 0})
+        k = ("recuperado" if f["condicion"] == "Recuperado" else "nuevo") if f["router"] else "herramienta"
+        d[k] += f["cantidad"]; d["total"] += f["cantidad"]
+    return res
+
+def _query_recuperados(conn, desde, hasta):
+    """Routers recuperados que volvieron al stock en el período."""
+    if "condicion" not in table_columns(conn, "movimientos_equipos"):
+        return []
+    return [dict(r) for r in conn.execute("""
+        SELECT m.fecha, e.nombre AS equipo, m.cantidad, IFNULL(m.motivo,'') AS motivo, IFNULL(m.tecnico,'') AS cargado_por
+          FROM movimientos_equipos m JOIN equipos e ON e.id = m.equipo_id
+         WHERE m.sucursal_id=? AND m.tipo='ingreso' AND m.condicion='recuperado'
+           AND IFNULL(m.motivo,'') NOT LIKE 'Anulación%'
+           AND date(m.fecha) BETWEEN ? AND ?
+         ORDER BY datetime(m.fecha) ASC""", (current_sucursal_id(), desde, hasta)).fetchall()]
+
+def _stock_routers(conn):
+    """Stock actual de cada router: nuevos y recuperados."""
+    ec = table_columns(conn, "equipos")
+    if "categoria" not in ec:
+        return []
+    rec = "IFNULL(stock_recuperado,0)" if "stock_recuperado" in ec else "0"
+    return [dict(r) for r in conn.execute(f"""
+        SELECT nombre, IFNULL(stock,0) AS stock, {rec} AS recuperados
+          FROM equipos WHERE sucursal_id=? AND categoria='equipo'
+         ORDER BY nombre COLLATE NOCASE""", (current_sucursal_id(),)).fetchall()]
 
 def _uso_por_tecnico(filas):
     res = {}
@@ -2481,8 +2605,8 @@ def _uso_excel(titulo, subtitulo, rows, sin_stock, filename):
     ws["A2"] = subtitulo
     ws["A2"].font = Font(name="Arial", size=10, color="64748B")
 
-    cols = [("Fecha", 18), ("Ítem", 30), ("Tipo", 12), ("Técnico", 24),
-            ("Cantidad", 11), ("Stock actual", 13), ("Servicio", 22)]
+    cols = [("Fecha", 18), ("Ítem", 30), ("Categoría", 22), ("Técnico", 24),
+            ("Cantidad", 11), ("Stock actual", 13), ("Servicio", 22), ("Router nuevo / recuperado", 24)]
     CAB = 4
     for i, (nombre, ancho) in enumerate(cols, start=1):
         c = ws.cell(row=CAB, column=i, value=nombre)
@@ -2493,8 +2617,8 @@ def _uso_excel(titulo, subtitulo, rows, sin_stock, filename):
     r = CAB
     for n, f in enumerate(filas):
         r += 1
-        vals = [f["fecha"] or f["fecha_txt"], f["item"], f["tipo"], f["tecnico"],
-                f["cantidad"], f["stock"], f["servicio"]]
+        vals = [f["fecha"] or f["fecha_txt"], f["item"], f["categoria_txt"], f["tecnico"],
+                f["cantidad"], f["stock"], f["servicio"], f["condicion"] or "—"]
         for i, v in enumerate(vals, start=1):
             c = ws.cell(row=r, column=i, value=v)
             c.font, c.border = base, borde
@@ -2517,7 +2641,7 @@ def _uso_excel(titulo, subtitulo, rows, sin_stock, filename):
 
     ws.freeze_panes = f"A{CAB + 1}"
     if filas:
-        ws.auto_filter.ref = f"A{CAB}:G{r}"
+        ws.auto_filter.ref = f"A{CAB}:H{r}"
     ws.page_setup.orientation = "landscape"
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.fitToWidth = 1
@@ -2588,18 +2712,22 @@ class _CanvasNumerado(rl_canvas.Canvas):
             super().showPage()
         super().save()
 
-def _uso_pdf(titulo, subtitulo, rows, sin_stock, filename):
+def _uso_pdf(titulo, subtitulo, rows, sin_stock, filename, recuperados=None, stock_routers=None):
     filas = _filas_uso(rows)
+    recuperados = recuperados or []
+    stock_routers = stock_routers or []
     empresa = get_empresa().get("nombre_comercial") or "SPYnet"
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, title=titulo,
                             leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=18 * mm)
 
+    VERDE = rl_colors.HexColor("#15803D")
+    NARANJA = rl_colors.HexColor("#C2410C")
     P = ParagraphStyle
     st_emp = P("emp", fontName="Helvetica-Bold", fontSize=9, textColor=_AZUL)
     st_tit = P("tit", fontName="Helvetica-Bold", fontSize=17, leading=21, textColor=_TINTA)
     st_sub = P("sub", fontName="Helvetica", fontSize=9.5, leading=13, textColor=_GRIS)
-    st_h2 = P("h2", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=_TINTA)
+    st_h2 = P("h2", fontName="Helvetica-Bold", fontSize=11.5, leading=14, textColor=_TINTA)
     st_cel = P("cel", fontName="Helvetica", fontSize=9, leading=11.5, textColor=_TINTA)
     st_celb = P("celb", parent=st_cel, fontName="Helvetica-Bold")
     st_celg = P("celg", parent=st_cel, fontSize=8, leading=10, textColor=_GRIS)
@@ -2608,80 +2736,169 @@ def _uso_pdf(titulo, subtitulo, rows, sin_stock, filename):
     st_cab = P("cab", fontName="Helvetica-Bold", fontSize=8.5, leading=10, textColor=rl_colors.white)
     st_cabc = P("cabc", parent=st_cab, alignment=TA_CENTER)
     st_totl = P("totl", parent=st_celb, alignment=TA_RIGHT)
+    st_kl = P("kl", fontName="Helvetica", fontSize=8.5, leading=10, textColor=_GRIS, alignment=TA_CENTER)
+    st_kv = P("kv", fontName="Helvetica-Bold", fontSize=16, leading=19, alignment=TA_CENTER)
+    st_nuevo = P("nuevo", parent=st_celb, fontSize=8.5, textColor=_AZUL)
+    st_recup = P("recup", parent=st_celb, fontSize=8.5, textColor=NARANJA)
 
+    def plural(n, s, p):
+        return f"{n} {s if n == 1 else p}"
+
+    def fecha_cel(f):
+        return (Paragraph(f"{f['fecha']:%d/%m/%Y}<br/><font color='#64748B' size='8'>{f['fecha']:%H:%M}</font>", st_cel)
+                if f["fecha"] else Paragraph(_xesc(f["fecha_txt"]), st_cel))
+
+    def estilo_base(color, n_filas, con_total=True):
+        e = [
+            ("BACKGROUND", (0, 0), (-1, 0), color),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("LINEBELOW", (0, 1), (-1, -2 if con_total else -1), 0.5, _LINEA),
+        ]
+        if con_total:
+            e += [("BACKGROUND", (0, -1), (-1, -1), _TOTAL), ("LINEABOVE", (0, -1), (-1, -1), 1, color)]
+        for i in range(2, n_filas + 1, 2):
+            e.append(("BACKGROUND", (0, i), (-1, i), _ZEBRA))
+        return e
+
+    routers = [f for f in filas if f["router"]]
+    herram = [f for f in filas if not f["router"]]
+    res = _resumen_categorias(filas)
     total_u = sum(f["cantidad"] for f in filas)
+    total_rec = sum(int(r["cantidad"] or 0) for r in recuperados)
+
     h = [Paragraph(_xesc(empresa), st_emp), Spacer(0, 2 * mm), Paragraph(_xesc(titulo), st_tit)]
     if subtitulo:
         h.append(Paragraph(_xesc(subtitulo), st_sub))
-    h.append(Paragraph(
-        f"{len(filas)} registro{'s' if len(filas) != 1 else ''} · {total_u} unidad{'es' if total_u != 1 else ''}"
-        f" · Generado el {datetime.now():%d/%m/%Y %H:%M}", st_sub))
-    h.append(Spacer(0, 6 * mm))
+    h.append(Paragraph(f"{plural(len(filas), 'registro', 'registros')} · {plural(total_u, 'unidad', 'unidades')}"
+                       f" · Generado el {datetime.now():%d/%m/%Y %H:%M}", st_sub))
+    h.append(Spacer(0, 5 * mm))
 
-    # Tabla principal: anchos que suman 180 mm; el texto largo se parte en renglones
-    anchos = [24 * mm, 46 * mm, 19 * mm, 35 * mm, 13 * mm, 15 * mm, 28 * mm]
+    # Resumen arriba: qué se usó
+    kpis = [("Routers nuevos usados", res["nuevo"], _AZUL),
+            ("Routers recuperados usados", res["recuperado"], NARANJA),
+            ("Herramientas y materiales", res["herramienta"], _TINTA),
+            ("Routers recuperados ingresados", total_rec, VERDE)]
+    celdas = [[Paragraph(str(v), P(f"kv{i}", parent=st_kv, textColor=c)), Paragraph(t, st_kl)]
+              for i, (t, v, c) in enumerate(kpis)]
+    tk = Table([celdas], colWidths=[45 * mm] * 4)
+    tk.setStyle(TableStyle([("BOX", (i, 0), (i, 0), 0.8, _LINEA) for i in range(4)] + [
+        ("BACKGROUND", (0, 0), (-1, -1), rl_colors.HexColor("#F8FAFC")),
+        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    h += [tk, Spacer(0, 7 * mm)]
+
+    # 1) Equipos (routers)
+    h += [Paragraph("Equipos (routers) usados", st_h2), Spacer(0, 2.5 * mm)]
+    anchos = [24 * mm, 42 * mm, 25 * mm, 33 * mm, 12 * mm, 15 * mm, 29 * mm]
     datos = [[Paragraph(t, st_cabc if t in ("Cant.", "Stock") else st_cab)
-              for t in ("Fecha", "Ítem", "Tipo", "Técnico", "Cant.", "Stock", "Servicio")]]
-    for f in filas:
-        fecha = (Paragraph(f"{f['fecha']:%d/%m/%Y}<br/><font color='#64748B' size='8'>{f['fecha']:%H:%M}</font>", st_cel)
-                 if f["fecha"] else Paragraph(_xesc(f["fecha_txt"]), st_cel))
-        stk = "—" if f["stock"] is None else str(f["stock"])
+              for t in ("Fecha", "Router", "Estado", "Técnico", "Cant.", "Stock", "Servicio")]]
+    for f in routers:
         datos.append([
-            fecha,
+            fecha_cel(f),
             Paragraph(_xesc(f["item"]), st_celb),
-            Paragraph(_xesc(f["tipo"]), st_celg),
+            Paragraph(f["condicion"], st_recup if f["condicion"] == "Recuperado" else st_nuevo),
             Paragraph(_xesc(f["tecnico"]), st_cel),
             Paragraph(str(f["cantidad"]), st_num),
-            Paragraph(stk, st_num0 if f["stock"] is not None and f["stock"] <= 0 else st_num),
+            Paragraph("—" if f["stock"] is None else str(f["stock"]),
+                      st_num0 if f["stock"] is not None and f["stock"] <= 0 else st_num),
             Paragraph(_xesc(f["servicio"]), st_celg),
         ])
-    if not filas:
-        datos.append([Paragraph("No hay usos registrados en este período.", st_celg)] + [""] * 6)
-    datos.append(["", "", "", Paragraph("Total unidades", st_totl), Paragraph(str(total_u), st_num), "", ""])
+    if not routers:
+        datos.append([Paragraph("No se usaron routers en este período.", st_celg)] + [""] * 6)
+    datos.append([Paragraph(f"Total routers ({res['nuevo']} nuevos · {res['recuperado']} recuperados)", st_totl), "", "", "",
+                  Paragraph(str(res["nuevo"] + res["recuperado"]), st_num), "", ""])
+    est = estilo_base(_AZUL, len(datos) - 2)
+    est.append(("SPAN", (0, -1), (3, -1)))
+    if not routers:
+        est.append(("SPAN", (0, 1), (-1, 1)))
+    t = Table(datos, colWidths=anchos, repeatRows=1); t.setStyle(TableStyle(est)); h += [t, Spacer(0, 7 * mm)]
 
-    estilo = [
-        ("BACKGROUND", (0, 0), (-1, 0), _AZUL),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-        ("LINEBELOW", (0, 1), (-1, -2), 0.5, _LINEA),
-        ("BACKGROUND", (0, -1), (-1, -1), _TOTAL),
-        ("LINEABOVE", (0, -1), (-1, -1), 1, _AZUL),
-    ]
-    for i in range(1, len(datos) - 1):
-        if i % 2 == 0:
-            estilo.append(("BACKGROUND", (0, i), (-1, i), _ZEBRA))
-        f = filas[i - 1] if filas else None
-        if f and f["stock"] is not None and f["stock"] <= 0:
-            estilo.append(("BACKGROUND", (5, i), (5, i), _ROJO_BG))
-    if not filas:
-        estilo.append(("SPAN", (0, 1), (-1, 1)))
-    t = Table(datos, colWidths=anchos, repeatRows=1)
-    t.setStyle(TableStyle(estilo))
-    h.append(t)
+    # 2) Herramientas y materiales
+    h += [Paragraph("Herramientas y materiales usados", st_h2), Spacer(0, 2.5 * mm)]
+    anchos = [24 * mm, 56 * mm, 40 * mm, 14 * mm, 16 * mm, 30 * mm]
+    datos = [[Paragraph(t, st_cabc if t in ("Cant.", "Stock") else st_cab)
+              for t in ("Fecha", "Herramienta / material", "Técnico", "Cant.", "Stock", "Servicio")]]
+    for f in herram:
+        datos.append([
+            fecha_cel(f),
+            Paragraph(_xesc(f["item"]), st_celb),
+            Paragraph(_xesc(f["tecnico"]), st_cel),
+            Paragraph(str(f["cantidad"]), st_num),
+            Paragraph("—" if f["stock"] is None else str(f["stock"]),
+                      st_num0 if f["stock"] is not None and f["stock"] <= 0 else st_num),
+            Paragraph(_xesc(f["servicio"]), st_celg),
+        ])
+    if not herram:
+        datos.append([Paragraph("No se usaron herramientas ni materiales en este período.", st_celg)] + [""] * 5)
+    datos.append([Paragraph("Total herramientas y materiales", st_totl), "", "", Paragraph(str(res["herramienta"]), st_num), "", ""])
+    est = estilo_base(_TINTA, len(datos) - 2)
+    est.append(("SPAN", (0, -1), (2, -1)))
+    if not herram:
+        est.append(("SPAN", (0, 1), (-1, 1)))
+    t = Table(datos, colWidths=anchos, repeatRows=1); t.setStyle(TableStyle(est)); h.append(t)
 
-    # Resumen por técnico (si hay más de uno)
-    resumen = _uso_por_tecnico(filas)
-    if len(resumen) > 1:
-        h += [Spacer(0, 8 * mm), Paragraph("Resumen por técnico", st_h2), Spacer(0, 3 * mm)]
-        d2 = [[Paragraph("Técnico", st_cab), Paragraph("Unidades", st_cabc)]]
-        d2 += [[Paragraph(_xesc(k), st_cel), Paragraph(str(v), st_num)] for k, v in resumen.items()]
-        t2 = Table(d2, colWidths=[70 * mm, 24 * mm], hAlign="LEFT")
-        t2.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), _AZUL), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("LINEBELOW", (0, 1), (-1, -1), 0.5, _LINEA),
-        ]))
-        h.append(t2)
+    # 3) Routers recuperados que volvieron al stock
+    h += [Spacer(0, 7 * mm), Paragraph("Routers recuperados que volvieron al stock", P("h2v", parent=st_h2, textColor=VERDE)),
+          Spacer(0, 2.5 * mm)]
+    datos = [[Paragraph(t, st_cabc if t == "Cant." else st_cab)
+              for t in ("Fecha", "Router", "Cant.", "De dónde / nota", "Cargado por")]]
+    for r in recuperados:
+        fx = _fecha_iso(r.get("fecha"))
+        datos.append([
+            Paragraph(f"{fx:%d/%m/%Y}<br/><font color='#64748B' size='8'>{fx:%H:%M}</font>" if fx else _xesc(str(r.get('fecha') or '')), st_cel),
+            Paragraph(_xesc(r["equipo"] or ""), st_celb),
+            Paragraph(str(r["cantidad"]), st_num),
+            Paragraph(_xesc(r["motivo"] or "—"), st_celg),
+            Paragraph(_xesc(r["cargado_por"] or "—"), st_cel),
+        ])
+    if not recuperados:
+        datos.append([Paragraph("No se cargaron routers recuperados en este período.", st_celg)] + [""] * 4)
+    datos.append([Paragraph("Total recuperados", st_totl), "", Paragraph(str(total_rec), st_num), "", ""])
+    est = estilo_base(VERDE, len(datos) - 2)
+    est.append(("SPAN", (0, -1), (1, -1)))
+    if not recuperados:
+        est.append(("SPAN", (0, 1), (-1, 1)))
+    t = Table(datos, colWidths=[24 * mm, 50 * mm, 14 * mm, 62 * mm, 30 * mm], repeatRows=1)
+    t.setStyle(TableStyle(est)); h.append(t)
 
-    # Equipos sin stock: lo que hay que reponer
+    # 4) Resumen por técnico
+    det = _uso_por_tecnico_detalle(filas)
+    if det:
+        h.append(Spacer(0, 7 * mm))
+        titulo_tec = [Paragraph("Resumen por técnico", st_h2), Spacer(0, 2.5 * mm)]
+        d2 = [[Paragraph("Técnico", st_cab), Paragraph("Routers nuevos", st_cabc), Paragraph("Routers recup.", st_cabc),
+               Paragraph("Herram. / mat.", st_cabc), Paragraph("Total", st_cabc)]]
+        d2 += [[Paragraph(_xesc(k), st_cel), Paragraph(str(v["nuevo"]), st_num), Paragraph(str(v["recuperado"]), st_num),
+                Paragraph(str(v["herramienta"]), st_num), Paragraph(str(v["total"]), st_num)] for k, v in det.items()]
+        t2 = Table(d2, colWidths=[60 * mm, 28 * mm, 28 * mm, 28 * mm, 20 * mm], hAlign="LEFT")
+        t2.setStyle(TableStyle(estilo_base(_AZUL, len(d2) - 1, con_total=False)))
+        h.append(KeepTogether(titulo_tec + [t2]))
+
+    # 5) Stock actual de routers: nuevos y recuperados
+    if stock_routers:
+        h.append(Spacer(0, 7 * mm))
+        titulo_stock = [Paragraph("Stock actual de routers", st_h2), Spacer(0, 2.5 * mm)]
+        d4 = [[Paragraph("Router", st_cab), Paragraph("Nuevos", st_cabc), Paragraph("Recuperados", st_cabc),
+               Paragraph("Total", st_cabc)]]
+        for r in stock_routers:
+            tot = int(r["stock"] or 0); rec = int(r["recuperados"] or 0)
+            d4.append([Paragraph(_xesc(r["nombre"]), st_celb), Paragraph(str(tot - rec), st_num),
+                       Paragraph(str(rec), st_num), Paragraph(str(tot), st_num0 if tot <= 0 else st_num)])
+        t4 = Table(d4, colWidths=[70 * mm, 26 * mm, 26 * mm, 22 * mm], hAlign="LEFT")
+        t4.setStyle(TableStyle(estilo_base(_AZUL, len(d4) - 1, con_total=False)))
+        h.append(KeepTogether(titulo_stock + [t4]))
+
+    # 6) Sin stock: lo que hay que reponer
     if sin_stock:
-        h += [Spacer(0, 8 * mm), Paragraph("Equipos sin stock (reponer)", P("h2r", parent=st_h2, textColor=_ROJO)),
-              Spacer(0, 3 * mm)]
-        d3 = [[Paragraph("Equipo", st_cab), Paragraph("Tipo", st_cab), Paragraph("Stock", st_cabc)]]
-        d3 += [[Paragraph(_xesc(e["nombre"]), st_celb), Paragraph(_xesc(e.get("tipo") or ""), st_celg),
+        h += [Spacer(0, 7 * mm), Paragraph("Sin stock (reponer)", P("h2r", parent=st_h2, textColor=_ROJO)),
+              Spacer(0, 2.5 * mm)]
+        d3 = [[Paragraph("Ítem", st_cab), Paragraph("Categoría", st_cab), Paragraph("Stock", st_cabc)]]
+        d3 += [[Paragraph(_xesc(e["nombre"]), st_celb),
+                Paragraph("Equipo (router)" if e.get("categoria") == "equipo" else "Herramienta / material", st_celg),
                 Paragraph("0", st_num0)] for e in sin_stock]
-        t3 = Table(d3, colWidths=[70 * mm, 40 * mm, 20 * mm], hAlign="LEFT")
+        t3 = Table(d3, colWidths=[70 * mm, 45 * mm, 20 * mm], hAlign="LEFT")
         t3.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), _ROJO), ("BACKGROUND", (0, 1), (-1, -1), _ROJO_BG),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -2712,9 +2929,12 @@ def equipos_descargar_hoy_pdf():
     conn = get_db()
     hoy, rows = _query_uso_hoy(conn)
     sin_stock = _query_sin_stock(conn)
+    recup = _query_recuperados(conn, hoy, hoy)
+    stock_r = _stock_routers(conn)
     conn.close()
     sub = f"{_fecha_es(hoy)} · Sucursal {g.sucursal_nombre}"
-    return _uso_pdf("Uso de equipos por técnicos", sub, rows, sin_stock, f"uso_items_{hoy}.pdf")
+    return _uso_pdf("Uso de equipos y herramientas por técnicos", sub, rows, sin_stock, f"uso_items_{hoy}.pdf",
+                    recuperados=recup, stock_routers=stock_r)
 
 def _args_rango():
     desde = request.args.get("desde") or date.today().isoformat()
@@ -2745,9 +2965,11 @@ def equipos_descargar_rango_pdf():
     conn = get_db()
     rows, tec_nombre = _query_uso_rango(conn, desde, hasta, tecnico_id)
     sin_stock = _query_sin_stock(conn)
+    recup = _query_recuperados(conn, desde, hasta)
+    stock_r = _stock_routers(conn)
     conn.close()
-    return _uso_pdf("Uso de equipos por técnicos", _sub_rango(desde, hasta, tec_nombre), rows, sin_stock,
-                    f"uso_items_{desde}_a_{hasta}.pdf")
+    return _uso_pdf("Uso de equipos y herramientas por técnicos", _sub_rango(desde, hasta, tec_nombre), rows, sin_stock,
+                    f"uso_items_{desde}_a_{hasta}.pdf", recuperados=recup, stock_routers=stock_r)
 
 # ===========================
 #  Ventas de equipos a clientes (separadas del uso de los técnicos)
@@ -2766,12 +2988,33 @@ def _ensure_ventas():
             vendido_por TEXT, fecha TEXT)""")
         if table_columns(conn, "equipos") and "precio" not in table_columns(conn, "equipos"):
             conn.execute("ALTER TABLE equipos ADD COLUMN precio INTEGER")
+        if table_columns(conn, "equipos") and "categoria" not in table_columns(conn, "equipos"):
+            conn.execute("ALTER TABLE equipos ADD COLUMN categoria TEXT")
+        # Routers recuperados (de clientes dados de baja, cambios de equipo, etc.)
+        if table_columns(conn, "equipos") and "stock_recuperado" not in table_columns(conn, "equipos"):
+            conn.execute("ALTER TABLE equipos ADD COLUMN stock_recuperado INTEGER DEFAULT 0")
+        for _t in ("uso_items", "movimientos_equipos", "ventas_equipos"):
+            _c = table_columns(conn, _t)
+            if _c and "condicion" not in _c:
+                conn.execute(f"ALTER TABLE {_t} ADD COLUMN condicion TEXT")
+        # Los que todavía no tienen categoría: routers = equipo; lo demás = herramienta o material
+        if "categoria" in table_columns(conn, "equipos"):
+            conn.execute("""UPDATE equipos SET categoria = CASE WHEN lower(IFNULL(tipo,'') || ' ' || IFNULL(nombre,''))
+                                LIKE '%router%' THEN 'equipo' ELSE 'herramienta' END
+                             WHERE categoria IS NULL OR categoria = ''""")
         conn.commit()
         conn.close()
     except Exception as e:
         print("Aviso: no se pudo preparar la tabla de ventas:", e)
 
 _ensure_ventas()
+
+def _categoria_form(form, tipo=""):
+    """'equipo' (routers) o 'herramienta' (todo lo demás). Si no viene, se deduce del tipo."""
+    c = (form.get("categoria") or "").strip().lower()
+    if c in ("equipo", "herramienta"):
+        return c
+    return "equipo" if "router" in (tipo or "").lower() else "herramienta"
 
 def _gs(n):
     """150000 -> '150.000 Gs.'"""
@@ -2825,12 +3068,18 @@ def equipos_vender():
         conn.close(); flash("Escribe o elige el cliente que compra.", "warning"); return redirect(url_for("equipos"))
     if precio is None:
         conn.close(); flash("Escribe el precio de venta.", "warning"); return redirect(url_for("equipos"))
+    condicion = _condicion_form(f) if (eq["categoria"] if "categoria" in eq.keys() else "") == "equipo" else None
+    if condicion:
+        err = _validar_condicion(eq, condicion, cantidad)
+        if err:
+            conn.close(); flash(err, "warning"); return redirect(url_for("equipos", tab="ventas"))
     if cliente_id:   # el nombre manda: si no coincide con el cliente elegido, se guarda solo el nombre
         c = conn.execute("SELECT nombre FROM clientes WHERE id=? AND sucursal_id=?", (cliente_id, sid)).fetchone()
         if not c or (c["nombre"] or "").strip().lower() != cliente.lower():
             cliente_id = None
 
-    ok, res = ajustar_stock(conn, eid, -cantidad, "egreso", tecnico=None, motivo=f"Venta a {cliente}")
+    ok, res = ajustar_stock(conn, eid, -cantidad, "egreso", tecnico=None, motivo=f"Venta a {cliente}",
+                            condicion=condicion)
     if not ok:
         conn.close(); flash(f"No se pudo vender {eq['nombre']}: {res}", "warning"); return redirect(url_for("equipos"))
 
@@ -2840,6 +3089,8 @@ def equipos_vender():
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                  (sid, eid, eq["nombre"], eq["tipo"], cliente_id, cliente, cantidad, precio, total, forma_pago, nota,
                   session.get("nombre") or session.get("usuario"), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    if condicion and "condicion" in table_columns(conn, "ventas_equipos"):
+        conn.execute("UPDATE ventas_equipos SET condicion=? WHERE id=last_insert_rowid()", (condicion,))
     # Primer precio cargado: queda como precio de venta del equipo
     if "precio" in eq.keys() and not eq["precio"]:
         conn.execute("UPDATE equipos SET precio=? WHERE id=?", (precio, eid))
@@ -2861,7 +3112,8 @@ def equipos_venta_anular(vid):
     v = conn.execute("SELECT * FROM ventas_equipos WHERE id=? AND sucursal_id=?", (vid, current_sucursal_id())).fetchone()
     if v:
         if v["equipo_id"] and conn.execute("SELECT 1 FROM equipos WHERE id=?", (v["equipo_id"],)).fetchone():
-            ajustar_stock(conn, v["equipo_id"], v["cantidad"], "ingreso", motivo=f"Anulación de venta a {v['cliente']}")
+            ajustar_stock(conn, v["equipo_id"], v["cantidad"], "ingreso", motivo=f"Anulación de venta a {v['cliente']}",
+                          condicion=(v["condicion"] if "condicion" in v.keys() else None))
         conn.execute("DELETE FROM ventas_equipos WHERE id=?", (vid,))
         conn.commit()
         flash(f"Venta anulada: {v['cantidad']} × {v['equipo']} volvió al stock.", "success")
@@ -2924,7 +3176,10 @@ def _ventas_pdf(titulo, subtitulo, ventas, resumen, filename):
         fx = str(v["fecha"] or "")
         datos.append([
             Paragraph(f"{fx[8:10]}/{fx[5:7]}/{fx[:4]}<br/><font color='#64748B' size='8'>{fx[11:16]}</font>", st_cel),
-            Paragraph(f"<b>{_xesc(v['equipo'] or '')}</b><br/><font color='#64748B' size='8'>{_xesc(v['equipo_tipo'] or '')}</font>", st_cel),
+            Paragraph(f"<b>{_xesc(v['equipo'] or '')}</b><br/><font color='#64748B' size='8'>{_xesc(v['equipo_tipo'] or '')}"
+                      + (" · <font color='#C2410C'><b>RECUPERADO</b></font>" if v.get('condicion') == 'recuperado'
+                         else (" · <font color='#1D4ED8'><b>NUEVO</b></font>" if v.get('condicion') == 'nuevo' else ""))
+                      + "</font>", st_cel),
             Paragraph(_xesc(v["cliente"] or "") + (f"<br/><font color='#64748B' size='8'>{_xesc(v['nota'])}</font>" if v.get("nota") else ""), st_cel),
             Paragraph(str(v["cantidad"]), st_num),
             Paragraph(_gs(v["precio_unit"]), st_der),
@@ -5749,11 +6004,10 @@ def informe_general_pdf():
         ventas = _query_ventas(db, sid, desde, hasta)
     except sqlite3.Error:
         ventas = []
-    try:
-        usos = db.execute("""SELECT COALESCE(SUM(cantidad),0) FROM uso_items
-                              WHERE sucursal_id=? AND date(fecha) BETWEEN ? AND ?""", (sid, desde, hasta)).fetchone()[0]
-    except sqlite3.Error:
-        usos = 0
+    try:   # uso de técnicos separado: routers (nuevos / recuperados) y herramientas
+        usos = _resumen_categorias(_filas_uso(_query_uso_rango(db, desde, hasta, None)[0]))
+    except (sqlite3.Error, KeyError, TypeError):
+        usos = {"nuevo": 0, "recuperado": 0, "herramienta": 0}
     db.close()
 
     E = _Estilos(); empresa = get_empresa().get("nombre_comercial") or "SPYnet"
@@ -5766,11 +6020,13 @@ def informe_general_pdf():
         ("Asistencias realizadas", str(len(asis)), "en el período"),
         ("Pendientes hoy", str(pend["inst"] + pend["asis"]), f"{pend['inst']} instalaciones · {pend['asis']} asistencias"),
         ("Ventas de equipos", _gs(sum(v.get("total") or 0 for v in ventas)), f"{sum(v['cantidad'] for v in ventas)} unidades"),
-        ("Equipos usados", str(usos), "por técnicos"),
+        ("Routers usados", str(usos["nuevo"] + usos["recuperado"]),
+         f"{usos['nuevo']} nuevos · {usos['recuperado']} recuperados"),
+        ("Herramientas usadas", str(usos["herramienta"]), "herramientas y materiales"),
     ]
     celdas = [[Paragraph(a, E.kl), Paragraph(b, E.kv), Paragraph(c, E.ks)] for a, b, c in tarjetas]
-    tk = Table([celdas], colWidths=[_ANCHO_H / 5] * 5)
-    tk.setStyle(TableStyle([("BOX", (i, 0), (i, 0), 0.8, _LINEA) for i in range(5)] + [
+    tk = Table([celdas], colWidths=[_ANCHO_H / 6] * 6)
+    tk.setStyle(TableStyle([("BOX", (i, 0), (i, 0), 0.8, _LINEA) for i in range(6)] + [
         ("BACKGROUND", (0, 0), (-1, -1), rl_colors.HexColor("#F8FAFF")),
         ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
     h += [tk, Spacer(0, 7 * mm)]
@@ -5997,7 +6253,9 @@ def api_ubicacion_desde_enlace():
         return jsonify({"error": "sin_coordenadas"}), 404
     return jsonify({"lat": coords[0], "lng": coords[1]})
 
-
+# ===========================
+#  Main
+# ===========================
 # ===========================
 #  Movil Check: ingreso directo con el usuario de SPYnet
 #  La tarjeta "Movil Check" del menú apunta a /ir-a-movilcheck. Esta ruta arma un pase

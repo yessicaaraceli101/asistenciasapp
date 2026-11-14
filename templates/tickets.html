@@ -117,16 +117,15 @@
 
   /* Estado */
   .tk-status{
-    display:inline-flex; align-items:center; gap:6px;
-    padding:3px 10px; border-radius:999px;
+    display:inline-flex; align-items:center; gap:0;
+    padding:3px 10px; border-radius:6px;
     font-size:12.5px; font-weight:500; white-space:nowrap;
     border:1px solid transparent;
   }
-  .tk-status::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
-  .st-pendiente  { color:#8A5A00; background:#FFF7E6; border-color:#F5E0B3; }
-  .st-en_progreso{ color:#0369A1; background:#EAF6FD; border-color:#C4E4F7; }
-  .st-resuelto   { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
-  .st-cancelado  { color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+  .st-pendiente  { color:#fff; background:#D97706; border-color:#D97706; font-weight:600; }
+  .st-en_progreso{ color:#fff; background:#0284C7; border-color:#0284C7; font-weight:600; }
+  .st-resuelto   { color:#fff; background:#16A34A; border-color:#16A34A; font-weight:600; }
+  .st-cancelado  { color:#fff; background:#64748B; border-color:#64748B; font-weight:600; }
   .tk-baja{ display:block; font-size:12px; color:var(--ink-faint); margin-top:4px; white-space:nowrap; }
 
   /* Acciones */
