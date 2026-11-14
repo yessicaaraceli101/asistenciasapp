@@ -1008,6 +1008,78 @@
   </script>
   {% endif %}
 
+  <!-- Paginación de tablas: <table data-paginar="15"> (respeta la búsqueda y las pestañas de cada página) -->
+  <style>
+    tr.pg-off{ display:none !important; }
+    .pg-nav{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;
+             padding:12px 16px; border-top:1px solid #E5E9F0; font-size:13px; color:#64748B; }
+    .pg-nav[hidden]{ display:none; }
+    .pg-btns{ display:flex; gap:4px; flex-wrap:wrap; }
+    .pg-btns button, .pg-btns span{
+      min-width:34px; height:34px; padding:0 8px; border-radius:6px; border:1px solid transparent;
+      display:inline-flex; align-items:center; justify-content:center;
+      background:none; font:inherit; font-size:14px; color:#0F1B2D; cursor:pointer; }
+    .pg-btns button:hover:not(:disabled){ background:#F1F5F9; border-color:#E2E8F0; }
+    .pg-btns button.active{ background:#0B78C8; color:#fff; font-weight:600; }
+    .pg-btns button:disabled{ color:#C3CBD6; cursor:default; }
+    .pg-btns span{ cursor:default; color:#94A3B8; }
+  </style>
+  <script>
+  (function(){
+    document.querySelectorAll('table[data-paginar]').forEach(tabla => {
+      const tbody = tabla.tBodies[0];
+      if (!tbody) return;
+      const porPag = parseInt(tabla.dataset.paginar, 10) || 15;
+      const nav = document.createElement('nav');
+      nav.className = 'pg-nav'; nav.hidden = true; nav.setAttribute('aria-label', 'Paginación');
+      nav.innerHTML = '<span class="pg-info"></span><div class="pg-btns"></div>';
+      (tabla.parentElement.matches('[class*="scroll"], [class*="wrap"]') ? tabla.parentElement : tabla).after(nav);
+      const info = nav.querySelector('.pg-info'), btns = nav.querySelector('.pg-btns');
+      let pagina = 1;
+
+      // filas de datos (las filas con id son los avisos de "sin resultados")
+      const filas = () => [...tbody.rows].filter(tr => !tr.id);
+
+      function dibujar(){
+        const visibles = filas().filter(tr => !tr.hidden);
+        const total = Math.max(1, Math.ceil(visibles.length / porPag));
+        if (pagina > total) pagina = total;
+        filas().forEach(tr => tr.classList.remove('pg-off'));
+        visibles.forEach((tr, i) => {
+          if (i < (pagina - 1) * porPag || i >= pagina * porPag) tr.classList.add('pg-off');
+        });
+        nav.hidden = visibles.length <= porPag;
+        if (nav.hidden) return;
+        const desde = (pagina - 1) * porPag + 1, hasta = Math.min(pagina * porPag, visibles.length);
+        info.textContent = `Mostrando ${desde}–${hasta} de ${visibles.length} · Página ${pagina} de ${total}`;
+        const b = (txt, p, extra) => `<button type="button" data-p="${p}" ${extra || ''}>${txt}</button>`;
+        let html = b('‹', pagina - 1, (pagina <= 1 ? 'disabled ' : '') + 'aria-label="Anterior"');
+        for (let p = 1; p <= total; p++){
+          if (p === 1 || p === total || Math.abs(p - pagina) <= 2)
+            html += b(p, p, p === pagina ? 'class="active" aria-current="page"' : '');
+          else if (Math.abs(p - pagina) === 3) html += '<span>…</span>';
+        }
+        html += b('›', pagina + 1, (pagina >= total ? 'disabled ' : '') + 'aria-label="Siguiente"');
+        btns.innerHTML = html;
+      }
+      btns.addEventListener('click', e => {
+        const bt = e.target.closest('button[data-p]');
+        if (!bt || bt.disabled) return;
+        pagina = parseInt(bt.dataset.p, 10);
+        dibujar();
+        tabla.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      // cuando la búsqueda o las pestañas ocultan/muestran filas, volver a la página 1
+      let pend = false;
+      new MutationObserver(() => {
+        if (pend) return; pend = true;
+        requestAnimationFrame(() => { pend = false; pagina = 1; dibujar(); });
+      }).observe(tbody, { attributes: true, attributeFilter: ['hidden'], subtree: true, childList: true });
+      dibujar();
+    });
+  })();
+  </script>
+
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

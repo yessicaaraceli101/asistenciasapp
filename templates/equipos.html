@@ -746,7 +746,7 @@
       <button class="btn-venta" type="button" onclick="vender()"><i class="bi bi-cart-plus"></i> Nueva venta</button>
     </div>
     <div class="hist-wrap" style="overflow-x:auto;">
-      <table class="hist-table">
+      <table class="hist-table" data-paginar="15">
         <thead>
           <tr>
             <th>Fecha</th><th>Equipo</th><th>Cliente</th><th class="num">Cant.</th>
@@ -795,7 +795,7 @@
   <!-- TAB: historial -->
   <div id="tab-historial" style="display:none;">
     <div class="hist-wrap">
-      <table class="hist-table">
+      <table class="hist-table" data-paginar="15">
         <thead>
           <tr>
             <th>Ítem</th>

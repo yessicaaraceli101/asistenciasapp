@@ -29,14 +29,14 @@
   .cd-btn-sm{ height:34px; padding:0 12px; font-size:13px; }
 
   .cd-status{
-    display:inline-flex; align-items:center; gap:6px;
-    padding:3px 10px; border-radius:999px; border:1px solid transparent;
-    font-size:12.5px; font-weight:500; white-space:nowrap;
+    display:inline-flex; align-items:center;
+    padding:4px 10px; border-radius:6px; border:1px solid transparent;
+    font-size:12.5px; font-weight:600; white-space:nowrap; color:#fff;
   }
-  .cd-status::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
-  .st-ok  { color:#177A56; background:#EDF8F3; border-color:#C9EBDC; }
-  .st-warn{ color:#8A5A00; background:#FFF7E6; border-color:#F5E0B3; }
-  .st-off { color:#5B6778; background:#F1F4F7; border-color:#DDE3EA; }
+  .st-ok  { background:#16A34A; border-color:#16A34A; }
+  .st-bad { background:#DC2626; border-color:#DC2626; }
+  .st-warn{ background:#D97706; border-color:#D97706; }
+  .st-off { background:#64748B; border-color:#64748B; }
 
   .cd-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
   .cd-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; }
@@ -113,7 +113,7 @@
       <h1>{{ nombre }}</h1>
       <div class="cd-meta">
         {% if campo('situacion') %}
-          <span class="cd-status {% if 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspen' in sit or 'bloq' in sit or 'deud' in sit or 'pendiente' in sit %}st-warn{% else %}st-off{% endif %}">{{ campo('situacion')|capitalize }}</span>
+          <span class="cd-status {% if 'cancel' in sit or 'baja' in sit or 'inactiv' in sit or 'inativ' in sit %}st-bad{% elif 'activ' in sit or 'ativ' in sit or 'al dia' in sit or 'al día' in sit %}st-ok{% elif 'mora' in sit or 'suspen' in sit or 'bloq' in sit or 'deud' in sit or 'pendiente' in sit %}st-warn{% else %}st-off{% endif %}">{{ campo('situacion')|capitalize }}</span>
         {% elif c['activo'] == 1 %}
           <span class="cd-status st-ok">Activo</span>
         {% else %}
@@ -219,7 +219,18 @@
               {% else %}—{% endif %}
             </dd>
           </div>
-          <div><dt>N.º de serie ONU</dt><dd class="{{ 'empty' if not campo('onu_serie') }}">{{ campo('onu_serie') or '—' }}</dd></div>
+          <div>
+            <dt>N.º de serie ONU</dt>
+            <dd class="{{ 'empty' if not campo('onu_serie') and not campo('onu_foto') }}">
+              {{ campo('onu_serie') or ('' if campo('onu_foto') else '—') }}
+              {% if campo('onu_foto') %}
+                {% set fu = url_for('static', filename='img/onu/' ~ campo('onu_foto')) %}
+                <a href="{{ fu }}" target="_blank" rel="noopener" title="Ver la foto de la etiqueta" style="display:block;margin-top:6px">
+                  <img src="{{ fu }}" alt="Etiqueta de la ONU" style="width:96px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--line)">
+                </a>
+              {% endif %}
+            </dd>
+          </div>
           <div>
             <dt>Duración del servicio</dt>
             <dd class="{{ 'empty' if not campo('contrato_tipo') }}">
