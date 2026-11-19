@@ -85,6 +85,11 @@
                   data-accion="vender" data-id="{{ e['id'] }}">
             <i class="bi bi-cart-check"></i> Vender a cliente
           </button>
+          {% if e['categoria'] == 'equipo' %}
+          <button type="button" class="eq-recup" data-accion="recuperado" data-id="{{ e['id'] }}">
+            <i class="bi bi-arrow-repeat"></i> Cargar router recuperado
+          </button>
+          {% endif %}
 
           {% if stk <= 0 %}
             <p class="eq-no-stock">
@@ -159,6 +164,20 @@
   cursor:pointer;transition:background .15s;
 }
 .btn-success-eq:hover{background:#15803d;}
+.btn-recup-eq{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:10px;
+  background:#ea580c;border:none;
+  color:#fff;font-size:.875rem;font-weight:700;
+  cursor:pointer;transition:background .15s;
+}
+.btn-recup-eq:hover{background:#c2410c;}
+.eq-recup{
+  width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:8px 10px;border-radius:10px;border:1.5px solid #fed7aa;background:#fff7ed;
+  color:#c2410c;font-size:.82rem;font-weight:700;cursor:pointer;
+}
+.eq-recup:hover{background:#ffedd5;}
 
 /* stats */
 .eq-stats{
@@ -562,6 +581,7 @@
       {% endif %}
       <button class="btn-venta" onclick="vender()"><i class="bi bi-cart-check"></i> Vender a cliente</button>
       <button class="btn-success-eq" onclick="reponer()"><i class="bi bi-plus-circle"></i> Reponer stock</button>
+      <button type="button" class="btn-recup-eq" data-accion="recuperado"><i class="bi bi-arrow-repeat"></i> Cargar recuperado</button>
       <button class="btn-primary-eq" onclick="nuevoItem()"><i class="bi bi-plus-lg"></i> Nuevo</button>
     </div>
   </div>
@@ -903,7 +923,7 @@
 <div id="modalReponerStock" class="sp-modal-backdrop" style="display:none;">
   <div class="sp-modal">
     <div class="sp-modal-head">
-      <h3><i class="bi bi-plus-circle" style="color:#16a34a;margin-right:6px;"></i> Reponer stock</h3>
+      <h3 id="repTitulo"><i class="bi bi-plus-circle" style="color:#16a34a;margin-right:6px;"></i> Reponer stock</h3>
       <button class="btn-close-modal" onclick="cerrarModal('modalReponerStock')"><i class="bi bi-x"></i></button>
     </div>
     <form method="POST" action="{{ url_for('equipos_ingresar_stock') }}">
@@ -913,10 +933,16 @@
           <select name="equipo_id" id="reponerEquipo" required>
             <option value="" disabled selected>Seleccioná un equipo…</option>
             {% for cat, titulo in [('equipo', 'Equipos (routers)'), ('herramienta', 'Herramientas y materiales')] %}
-            <optgroup label="{{ titulo }}">
+            <optgroup label="{{ titulo }}" data-cat="{{ cat }}">
               {% for e in equipos if ((e['categoria'] or 'herramienta') == 'equipo') == (cat == 'equipo') %}
               <option value="{{ e['id'] }}" data-cat="{{ cat }}">{{ e['nombre'] }} — {{ e['tipo'] }} (stock: {{ e['stock'] or 0 }}{% if cat == 'equipo' %} · {{ e['stock_recuperado'] or 0 }} recup.{% endif %})</option>
               {% endfor %}
+              {% if cat == 'equipo' %}
+                {% set ya = equipos|map(attribute='nombre')|map('lower')|map('trim')|list %}
+                {% for nf in equipos_fijos or [] if nf|lower not in ya %}
+                <option value="crear:{{ nf }}" data-cat="equipo">{{ nf }} (stock: 0)</option>
+                {% endfor %}
+              {% endif %}
             </optgroup>
             {% endfor %}
           </select>
@@ -946,7 +972,7 @@
       </div>
       <div class="sp-modal-foot">
         <button type="button" class="btn-back" onclick="cerrarModal('modalReponerStock')">Cancelar</button>
-        <button type="submit" class="btn-success-eq"><i class="bi bi-plus-circle"></i> Reponer</button>
+        <button type="submit" class="btn-success-eq" id="repBoton"><i class="bi bi-plus-circle"></i> Reponer</button>
       </div>
     </form>
   </div>
@@ -1287,6 +1313,7 @@ document.addEventListener('click', ev => {
   const d = b.dataset;
   if (d.accion === 'vender')   vender(d.id);
   if (d.accion === 'reponer')  reponer(d.id);
+  if (d.accion === 'recuperado') reponerRecuperado(d.id);
   if (d.accion === 'editar')   abrirEditar(d.id, d.nombre, d.tipo, d.desc, d.precio, d.categoria);
   if (d.accion === 'eliminar') abrirEliminar(d.id, d.nombre);
 });
@@ -1343,11 +1370,32 @@ function syncReponer(){
 }
 document.getElementById('reponerEquipo').addEventListener('change', syncReponer);
 document.querySelectorAll('#repOrigen input').forEach(r => r.addEventListener('change', syncReponer));
-function reponer(id){
+function modoReponer(recup){
   const sel = document.getElementById('reponerEquipo');
+  sel.querySelectorAll('optgroup[data-cat=herramienta]').forEach(g => { g.hidden = recup; g.disabled = recup; });
+  document.getElementById('repTitulo').innerHTML = recup
+    ? '<i class="bi bi-arrow-repeat" style="color:#ea580c;margin-right:6px;"></i> Cargar router recuperado'
+    : '<i class="bi bi-plus-circle" style="color:#16a34a;margin-right:6px;"></i> Reponer stock';
+  document.getElementById(recup ? 'repRecup' : 'repNuevo').checked = true;
+  const bt = document.getElementById('repBoton');
+  bt.className = recup ? 'btn-recup-eq' : 'btn-success-eq';
+  bt.innerHTML = recup ? '<i class="bi bi-arrow-repeat"></i> Cargar al stock' : '<i class="bi bi-plus-circle"></i> Reponer';
+}
+/* Router recuperado (de un cliente dado de baja, cambio de equipo, etc.): vuelve al stock como recuperado */
+function reponerRecuperado(id){
+  const sel = document.getElementById('reponerEquipo');
+  modoReponer(true);
   sel.value = id || '';
   if (!id) sel.selectedIndex = 0;
-  document.getElementById('repNuevo').checked = true;
+  syncReponer();
+  abrirModal('modalReponerStock');
+  (id ? document.querySelector('#repDe input') : sel).focus();
+}
+function reponer(id){
+  const sel = document.getElementById('reponerEquipo');
+  modoReponer(false);
+  sel.value = id || '';
+  if (!id) sel.selectedIndex = 0;
   syncReponer();
   abrirModal('modalReponerStock');
   (id ? document.getElementById('reponerCantidad') : sel).focus();

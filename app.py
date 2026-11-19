@@ -2055,6 +2055,7 @@ def equipos():
 
     return render_template(
         "equipos.html",
+        equipos_fijos=list(EQUIPOS_ROUTER_FIJOS),
         ventas=ventas,
         ventas_res=ventas_res,
         clientes_venta=clientes_venta,
@@ -2223,22 +2224,47 @@ def registrar_uso_item():
         flash("Uso registrado correctamente.", "success")
     return redirect(url_for("equipos"))
 
+# Equipos que siempre aparecen para cargar (aunque todavía no estén en el stock)
+EQUIPOS_ROUTER_FIJOS = {   # nombre: (tipo, descripción)
+    "Equipo 5G con ONU":   ("Router 5G",  "Router 5G con ONU incluida"),
+    "Equipo 5G sin ONU":   ("Router 5G",  "Router 5G sin ONU"),
+    "Equipo 2.4G con ONU": ("Router 2.4", "Router 2.4 GHz con ONU incluida"),
+    "Equipo 2.4G sin ONU": ("Router 2.4", "Router 2.4 GHz sin ONU"),
+}
+
+
 @app.route("/equipos/ingresar_stock", methods=["POST"])
 def equipos_ingresar_stock():
     if "usuario" not in session and "usuario_id" not in session:
         return redirect(url_for("login"))
 
-    equipo_id = request.form.get("equipo_id", type=int)
+    equipo_raw = (request.form.get("equipo_id") or "").strip()
+    equipo_id = int(equipo_raw) if equipo_raw.isdigit() else None
     cantidad  = request.form.get("cantidad", type=int)
     # El formulario manda "nota"; se acepta también "motivo"
     motivo    = (request.form.get("nota") or request.form.get("motivo") or "").strip()
     tecnico   = session.get("usuario")
 
+    conn = get_db()
+    # Equipos de la lista fija (Equipo 5G con ONU / sin ONU): si todavía no existen en el stock, se crean
+    if equipo_raw.startswith("crear:") and equipo_raw[6:] in EQUIPOS_ROUTER_FIJOS and cantidad and cantidad > 0:
+        nombre = equipo_raw[6:]
+        sid = current_sucursal_id()
+        r = conn.execute("SELECT id FROM equipos WHERE sucursal_id=? AND lower(TRIM(nombre))=lower(?)", (sid, nombre)).fetchone()
+        if r:
+            equipo_id = r["id"]
+        else:
+            cur = conn.execute("""INSERT INTO equipos (nombre, tipo, descripcion, sucursal_id, stock, categoria)
+                                  VALUES (?, ?, ?, ?, 0, 'equipo')""",
+                               (nombre, *EQUIPOS_ROUTER_FIJOS[nombre], sid))
+            conn.commit()
+            equipo_id = cur.lastrowid
+
     if not equipo_id or not cantidad or cantidad <= 0:
+        conn.close()
         flash("Completá equipo y una cantidad positiva.", "warning")
         return redirect(url_for("equipos"))
 
-    conn = get_db()
     eq = conn.execute("SELECT * FROM equipos WHERE id=? AND sucursal_id=?",
                       (equipo_id, current_sucursal_id())).fetchone()
     es_router = bool(eq) and (eq["categoria"] if "categoria" in eq.keys() else "") == "equipo"
