@@ -162,6 +162,17 @@
             background:var(--warn-bg); color:#5C3D00; font-size:13px; }
   .ub-nota i{ color:var(--warn); margin-top:2px; }
   .reg i{ color:var(--ok); }
+  .zona-tag{ display:inline-block; background:#EA580C; color:#fff; font-size:11px; font-weight:700; letter-spacing:.02em;
+             text-transform:uppercase; padding:2px 8px; border-radius:4px; margin-bottom:4px; }
+  .zona-lista{ margin:0 16px 16px; border:1px solid var(--line, #E5E9F0); border-radius:10px; overflow:hidden; }
+  .zona-lista summary{ padding:12px 14px; font-weight:600; cursor:pointer; background:#F8FAFC; }
+  .zona-lista ul{ list-style:none; margin:0; padding:0; max-height:420px; overflow:auto; }
+  .zona-lista li{ display:flex; align-items:center; gap:8px; padding:10px 14px; border-top:1px solid #EEF2F6; }
+  .zona-lista .zn{ flex:1; min-width:0; font-size:14.5px; font-weight:600; }
+  .zona-lista .zn small{ display:block; font-weight:400; font-size:12.5px; color:#64748B; }
+  .zona-lista a{ width:40px; height:40px; display:grid; place-items:center; border-radius:10px; border:1px solid #E2E8F0;
+                 color:#0B78C8; text-decoration:none; flex:none; }
+  .zona-lista a.zw{ color:#16A34A; }
 </style>
 </head>
 <body>
@@ -233,9 +244,10 @@
   <!-- Cliente -->
   <section class="card">
     <div class="cli">
-      <div class="avatar">{{ (t.cliente or '?')[:1]|upper }}</div>
+      <div class="avatar" {% if t.zona %}style="background:#EA580C;color:#fff"{% endif %}>{% if t.zona %}<i class="fa-solid fa-users"></i>{% else %}{{ (t.cliente or '?')[:1]|upper }}{% endif %}</div>
       <div style="min-width:0">
-        <h1>{{ t.cliente or 'Cliente' }}</h1>
+        {% if t.zona %}<div class="zona-tag">Asistencia de zona</div>{% endif %}
+        <h1>{{ (('Caja NAP ' if t.zona_tipo == 'nap' else 'Barrio ') ~ t.zona) if t.zona else (t.cliente or 'Cliente') }}</h1>
         <div class="sub">
           {{ t.tipo or 'Ticket' }} ·
           <span class="chip {{ 'chip-ok' if est == 'resuelto' else ('chip-prog' if est == 'en_progreso' else 'chip-pend') }}">
@@ -244,6 +256,13 @@
         </div>
       </div>
     </div>
+    {% if t.zona %}
+    <div class="acciones">
+      <a class="c-map {{ '' if como_llegar else 'off' }}" href="{{ como_llegar or '#' }}" target="_blank" rel="noopener" style="grid-column:1/-1"><i class="fa-solid fa-location-dot"></i>Cómo llegar a la zona</a>
+    </div>
+    <div class="ub-nota"><i class="fa-solid fa-users"></i>
+      <span>La falla afecta a <b>{{ zona_lista|length or t.zona_clientes or 0 }} clientes</b>. Es el mismo problema para todos: carga un solo diagnóstico.</span></div>
+    {% else %}
     <div class="acciones">
       <a class="c-tel {{ '' if c.telefono else 'off' }}" href="{{ 'tel:' ~ c.telefono if c.telefono else '#' }}"><i class="fa-solid fa-phone"></i>Llamar</a>
       <a class="c-wa {{ '' if c_wa else 'off' }}" href="{{ 'https://wa.me/' ~ c_wa if c_wa else '#' }}"><i class="fa-brands fa-whatsapp"></i>WhatsApp</a>
@@ -256,7 +275,30 @@
       <div class="ub-nota"><i class="fa-solid fa-triangle-exclamation"></i>
         <span><b>Ubicación aproximada:</b> se buscó por la dirección y puede no ser la casa. Confírmala con el cliente y, al llegar, guárdala abajo.</span></div>
     {% endif %}
+    {% endif %}
   </section>
+
+  {% if t.zona %}
+  <section class="card">
+    <div class="card-h"><span class="ico" style="background:#FFF1E6;color:#EA580C"><i class="fa-solid fa-users"></i></span>
+      <h2>Clientes afectados ({{ zona_lista|length }})</h2></div>
+    {% if t.problema %}<div class="problema" style="margin:0 16px 12px"><i class="fa-solid fa-triangle-exclamation"></i><span>{{ t.problema }}</span></div>{% endif %}
+    <details class="zona-lista" {{ 'open' if zona_lista|length <= 8 }}>
+      <summary>Ver la lista de clientes</summary>
+      <ul>
+        {% for z in zona_lista %}
+        <li>
+          <span class="zn">{{ z.nombre }}<small>{{ z.telefono or 'Sin teléfono' }}{% if z.pppoe %} · {{ z.pppoe }}{% endif %}</small></span>
+          {% if z.telefono %}<a href="tel:{{ z.telefono }}" aria-label="Llamar a {{ z.nombre }}"><i class="fa-solid fa-phone"></i></a>{% endif %}
+          {% if z.wa %}<a href="https://wa.me/{{ z.wa }}" target="_blank" rel="noopener" class="zw" aria-label="WhatsApp a {{ z.nombre }}"><i class="fa-brands fa-whatsapp"></i></a>{% endif %}
+        </li>
+        {% else %}
+        <li><span class="zn">No hay clientes activos en esta zona.</span></li>
+        {% endfor %}
+      </ul>
+    </details>
+  </section>
+  {% else %}
 
   <section class="card">
     <dl class="datos" style="padding-top:16px">
@@ -267,6 +309,7 @@
     </dl>
     {% if t.problema %}<div class="problema"><i class="fa-solid fa-triangle-exclamation"></i><span>{{ t.problema }}</span></div>{% endif %}
   </section>
+  {% endif %}
 
   {% if error %}<div class="aviso error"><i class="fa-solid fa-circle-exclamation"></i><span>{{ error }}</span></div>{% endif %}
   {% if t.diag_completado %}
@@ -331,7 +374,7 @@
         {% else %}
         <div class="campo">
           <label for="falla"><i class="fa-solid fa-plug-circle-exclamation"></i> Falla</label>
-          <input class="inp" id="falla" name="falla" list="dlFalla" value="{{ t.falla or '' }}" placeholder="¿Qué problema encontraste?" autocomplete="off">
+          <input class="inp" id="falla" name="falla" list="dlFalla" value="{{ t.falla or '' }}" placeholder="{{ '¿Cuál fue la causa en la zona?' if t.zona else '¿Qué problema encontraste?' }}" autocomplete="off">
           <datalist id="dlFalla">
             <option value="Sin internet"><option value="Internet lento"><option value="Cortes intermitentes">
             <option value="LOS en rojo"><option value="Fibra cortada"><option value="Conector dañado">
@@ -339,7 +382,7 @@
             <option value="Poca cobertura WiFi"><option value="Sin energía en el equipo">
           </datalist>
           <div class="rapidas" data-para="falla">
-            {% for o in ['Sin internet', 'LOS en rojo', 'Fibra cortada', 'Internet lento', 'Router dañado'] %}<button type="button">{{ o }}</button>{% endfor %}
+            {% for o in (['Fibra troncal cortada', 'Caja NAP dañada', 'Splitter dañado', 'Corte de energía', 'Falla en la OLT'] if t.zona else ['Sin internet', 'LOS en rojo', 'Fibra cortada', 'Internet lento', 'Router dañado']) %}<button type="button">{{ o }}</button>{% endfor %}
           </div>
         </div>
 
@@ -352,7 +395,7 @@
             <option value="Empalme de fibra"><option value="Cambio de fibra drop"><option value="Reconfiguración del router">
           </datalist>
           <div class="rapidas" data-para="cambio">
-            {% for o in ['Ninguno', 'Cambio de conector', 'Cambio de router', 'Empalme de fibra', 'Reconfiguración del router'] %}<button type="button">{{ o }}</button>{% endfor %}
+            {% for o in (['Empalme de fibra troncal', 'Cambio de caja NAP', 'Cambio de splitter', 'Cambio de conectores', 'Reinicio de equipos'] if t.zona else ['Ninguno', 'Cambio de conector', 'Cambio de router', 'Empalme de fibra', 'Reconfiguración del router']) %}<button type="button">{{ o }}</button>{% endfor %}
           </div>
         </div>
 
@@ -398,6 +441,7 @@
         </div>
         {% endfor %}
 
+        {% if not t.zona %}
         <div class="campo">
           <label><i class="fa-solid fa-barcode"></i> Foto de la etiqueta de la ONU <span class="opt">(n.º de serie)</span></label>
           <label class="foto" for="onu_foto" style="font-weight:400">
@@ -411,6 +455,7 @@
           </label>
           {% if c.onu_foto %}<div class="ref">El cliente ya tiene una foto de la ONU. Súbela solo si se cambió o instaló otro equipo.</div>{% endif %}
         </div>
+        {% endif %}
 
         <div class="campo" style="margin-bottom:0">
           <label for="trabajo_realizado"><i class="fa-solid fa-clipboard-list"></i> {{ 'Observaciones' if es_inst else 'Trabajo realizado' }} <span class="opt">(opcional)</span></label>
@@ -420,15 +465,16 @@
     </section>
 
     <section class="card">
-      <div class="card-h"><span class="ico" style="background:#FDECEC;color:#E5484D"><i class="fa-solid fa-house-signal"></i></span><h2>Ubicación de la casa</h2></div>
+      <div class="card-h"><span class="ico" style="background:#FDECEC;color:#E5484D"><i class="fa-solid fa-house-signal"></i></span><h2>{{ 'Ubicación de la falla' if t.zona else 'Ubicación de la casa' }}</h2></div>
       <div class="card-b">
         <input type="hidden" name="casa_lat" id="casaLat">
         <input type="hidden" name="casa_lng" id="casaLng">
         <button type="button" class="btn btn-g" id="btnCasa" style="height:48px">
-          <i class="fa-solid fa-location-crosshairs" style="color:#E5484D"></i> Estoy en la casa: guardar ubicación
+          <i class="fa-solid fa-location-crosshairs" style="color:#E5484D"></i> {{ 'Estoy donde está la falla: guardar ubicación' if t.zona else 'Estoy en la casa: guardar ubicación' }}
         </button>
         <div id="casaMsg" style="font-size:13px;color:var(--faint);margin-top:8px">
-          {% if tiene_ub and not ub_aprox %}Ya tiene una ubicación guardada. Úsalo solo si está mal.{% else %}Usa el GPS del celular. Se guarda en el cliente para las próximas visitas.{% endif %}
+          {% if t.zona %}Opcional: marca dónde estaba el corte o la caja dañada. Va en el mensaje a la oficina.
+          {% elif tiene_ub and not ub_aprox %}Ya tiene una ubicación guardada. Úsalo solo si está mal.{% else %}Usa el GPS del celular. Se guarda en el cliente para las próximas visitas.{% endif %}
         </div>
       </div>
     </section>

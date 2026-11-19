@@ -1244,6 +1244,14 @@ def nuevo_ticket():
         if not (falla or cambio or senal or megas):
             diagnostico = None   # el resumen vacío no se guarda
 
+        _dbz = get_db()
+        zona = _zona_del_form(_dbz, current_sucursal_id(), request.form)
+        _dbz.close()
+        if zona == {}:
+            flash("Elige el barrio o la caja NAP afectada.", "warning")
+            return redirect(url_for("nuevo_ticket", origen="agenda"))
+        if zona:
+            cliente, cliente_id, cedula, pppoe = zona["cliente"], None, "", ""
         if not cliente:
             flash("Selecciona un cliente.", "warning")
             return redirect(url_for("nuevo_ticket", origen="agenda"))
@@ -1254,7 +1262,9 @@ def nuevo_ticket():
 
         # Si no llegaron coordenadas, intentamos geocodificar en el servidor
         ubic_origen = (request.form.get("ubic_origen") or "").strip() or None
-        if (lat is None or lng is None) and direccion:
+        if zona:
+            lat, lng, ubic_origen, direccion = zona["lat"], zona["lng"], zona["ubic_origen"], zona["direccion"]
+        if (lat is None or lng is None) and direccion and not zona:
             glat, glng = _try_geocode_server(direccion)
             if glat is not None and glng is not None:
                 lat, lng = glat, glng
@@ -1306,6 +1316,7 @@ def nuevo_ticket():
             "senal": senal,
             "megas": megas,
             "diagnostico": diagnostico,
+            **({k: zona[k] for k in ("zona", "zona_tipo", "zona_ref", "zona_clientes")} if zona else {}),
         })
         db.close()
 
@@ -1329,7 +1340,9 @@ def nuevo_ticket():
 
     # ----- GET: mostrar formulario -----
     clientes, tecnicos = _datos_form_ticket()
-    return render_template("nuevo_ticket.html", clientes=clientes, tecnicos=tecnicos, fecha_pre=_fecha_agenda())
+    _db = get_db(); barrios, naps = _zonas_form(_db, current_sucursal_id()); _db.close()
+    return render_template("nuevo_ticket.html", clientes=clientes, tecnicos=tecnicos, fecha_pre=_fecha_agenda(),
+                           zonas_barrio=barrios, zonas_nap=naps)
 
 @app.route("/tickets")
 def tickets():
@@ -3837,7 +3850,9 @@ def tickets_editar(tid):
     if request.method == "GET":
         db.close()
         clientes, tecnicos = _datos_form_ticket()
-        return render_template("nuevo_ticket.html", clientes=clientes, tecnicos=tecnicos, t=t, modo="editar")
+        _db = get_db(); barrios, naps = _zonas_form(_db, sid); _db.close()
+        return render_template("nuevo_ticket.html", clientes=clientes, tecnicos=tecnicos, t=t, modo="editar",
+                               zonas_barrio=barrios, zonas_nap=naps)
 
     f = request.form
     estado = (f.get("estado") or t.get("estado") or "pendiente").strip().lower()
@@ -3846,7 +3861,12 @@ def tickets_editar(tid):
 
     if "cliente" in f:
         # ---- Formulario completo ----
-        cliente = (f.get("cliente") or "").strip()
+        zona = _zona_del_form(db, sid, f)
+        if zona == {}:
+            db.close()
+            flash("Elige el barrio o la caja NAP afectada.", "warning")
+            return redirect(url_for("tickets_editar", tid=tid))
+        cliente = zona["cliente"] if zona else (f.get("cliente") or "").strip()
         if not cliente:
             db.close()
             flash("Selecciona un cliente.", "warning")
@@ -3887,7 +3907,16 @@ def tickets_editar(tid):
             "problema": (f.get("problema") or "").strip() or None,
             "estado": estado,
         }
+        if "zona" in acols:
+            if zona:
+                data.update({k: zona[k] for k in ("zona", "zona_tipo", "zona_ref", "zona_clientes",
+                                                  "cliente_id", "cedula", "pppoe", "direccion")})
+            else:
+                data.update({"zona": None, "zona_tipo": None, "zona_ref": None, "zona_clientes": None})
         la, lo = f.get("lat", type=float), f.get("lng", type=float)
+        if zona:
+            la, lo = zona["lat"], zona["lng"]
+            data["ubic_origen"] = zona["ubic_origen"]
         if la is not None and lo is not None:
             data["lat"], data["lng"] = la, lo
             data["ubic_origen"] = (f.get("ubic_origen") or "").strip() or t.get("ubic_origen")
@@ -4960,9 +4989,14 @@ def _ot_datos(db, t, sid):
     """Arma los datos de la OT de un ticket: cliente, técnico, mapa y mensaje de WhatsApp."""
     from urllib.parse import quote
 
+    # Asistencia de zona: no hay un cliente, sino todos los de un barrio o caja NAP
+    zona_lista = _clientes_de_zona(db, sid, t.get("zona_tipo"), t.get("zona"), t.get("zona_ref")) if t.get("zona") else []
+
     # Cliente: por cliente_id o, si no hay, por nombre
     c = None
-    if t.get("cliente_id"):
+    if t.get("zona"):
+        pass
+    elif t.get("cliente_id"):
         c = db.execute("SELECT * FROM clientes WHERE id=?", (t["cliente_id"],)).fetchone()
     if not c and t.get("cliente"):
         c = db.execute("SELECT * FROM clientes WHERE lower(nombre)=lower(?) AND sucursal_id=?",
@@ -5027,14 +5061,28 @@ def _ot_datos(db, t, sid):
             lineas.append(f"Visita: {_fh(t['programada_en'])}")
         if _tecnicos_txt(t, tec.get("nombre")):
             lineas.append(f"{'Técnicos' if t.get('tecnico2') else 'Técnico'}: {_tecnicos_txt(t, tec.get('nombre'))}")
-        lineas += [
-            "",
-            f"*Cliente:* {t.get('cliente') or '-'}",
-            f"CI: {t.get('cedula') or c.get('cedula') or '-'}  |  PPPoE: {t.get('pppoe') or c.get('pppoe') or '-'}",
-            f"Tel: {c.get('telefono') or '-'}",
-            f"Barrio: {c.get('barrio') or '-'}",
-        ]
-        if direccion:
+        if t.get("zona"):
+            tipo_z = "Caja NAP" if t.get("zona_tipo") == "nap" else "Barrio"
+            n_z = len(zona_lista) or (t.get("zona_clientes") or 0)
+            lineas += ["", "*ASISTENCIA DE ZONA*", f"*{tipo_z}:* {t['zona']}",
+                       f"Clientes afectados: {n_z}"]
+            if maps_url:
+                lineas.append(f"Ubicación aproximada: {maps_url}")
+            if zona_lista:
+                lineas += ["", "*Clientes de la zona:*"]
+                for z in zona_lista[:40]:
+                    lineas.append(f"- {z['nombre']}" + (f" ({z['telefono']})" if z.get("telefono") else ""))
+                if len(zona_lista) > 40:
+                    lineas.append(f"... y {len(zona_lista) - 40} más (ver OT completa)")
+        else:
+            lineas += [
+                "",
+                f"*Cliente:* {t.get('cliente') or '-'}",
+                f"CI: {t.get('cedula') or c.get('cedula') or '-'}  |  PPPoE: {t.get('pppoe') or c.get('pppoe') or '-'}",
+                f"Tel: {c.get('telefono') or '-'}",
+                f"Barrio: {c.get('barrio') or '-'}",
+            ]
+        if direccion and not t.get("zona"):
             lineas.append(f"Dirección: {direccion}")
         if c.get("referencia"):
             lineas.append(f"Referencia: {c['referencia']}")
@@ -5042,7 +5090,7 @@ def _ot_datos(db, t, sid):
             lineas.append(f"Plan: {_plan_txt(c)}")
         if c.get("nap_txt"):
             lineas.append(f"Caja NAP: {c['nap_txt']}")
-        if maps_url:
+        if maps_url and not t.get("zona"):
             lineas.append(f"Ubicación: {maps_url}")
 
         # Lo que reportó el cliente (solo si se cargó)
@@ -5074,7 +5122,7 @@ def _ot_datos(db, t, sid):
         wa_diag_url = "https://wa.me/?text=" + quote(_texto_diagnostico(t, c))
 
     return dict(c=c, tec=tec, ot_num=ot_num, maps_url=maps_url, ot_url=ot_url, diag_url=diag_url, wa_diag_url=wa_diag_url,
-                wa_url=wa_url, tec_tiene_tel=bool(tel_tec), direccion=direccion)
+                wa_url=wa_url, tec_tiene_tel=bool(tel_tec), direccion=direccion, zona_lista=zona_lista)
 
 # ===========================
 #  Diagnóstico del técnico (enlace por WhatsApp, sin usuario)
@@ -5194,12 +5242,18 @@ def _texto_diagnostico(t, c=None):
         return f"{v[8:10]}/{v[5:7]} {v[11:16]}" if len(v) >= 16 else v
     est = (t.get("estado") or "pendiente").lower()
     filas = [
-        f"*Diagnóstico de Asistencia - OT-{int(t['id']):06d}*",
+        f"*Diagnóstico de {'Asistencia de ZONA' if t.get('zona') else 'Asistencia'} - OT-{int(t['id']):06d}*",
         f"Tipo: {t.get('tipo') or 'Ticket'}",
-        f"Cliente: {t.get('cliente') or '-'}",
     ]
-    if t.get("direccion"):
-        filas.append(f"Dirección: {t['direccion']}")
+    if t.get("zona"):
+        filas += [f"{'Caja NAP' if t.get('zona_tipo') == 'nap' else 'Barrio'}: {t['zona']}",
+                  f"Clientes afectados: {t.get('zona_clientes') or 0}"]
+        if t.get("ubic_origen") == "tecnico" and t.get("lat") is not None and t.get("lng") is not None:
+            filas.append(f"Punto de la falla: https://www.google.com/maps?q={t['lat']},{t['lng']}")
+    else:
+        filas.append(f"Cliente: {t.get('cliente') or '-'}")
+        if t.get("direccion"):
+            filas.append(f"Dirección: {t['direccion']}")
     filas += [
         "",
         f"Falla: {t.get('falla') or '-'}",
@@ -5211,13 +5265,13 @@ def _texto_diagnostico(t, c=None):
         filas.append(f"Trabajo realizado: {t['trabajo_realizado']}")
     filas.append("")
     if est == "resuelto":
-        filas.append("Estado: *RESUELTO*")
+        filas.append("Estado: *RESUELTO*" + (" (servicio restablecido en la zona)" if t.get("zona") else ""))
         if t.get("resuelto_por"):
             filas.append(f"Dado de baja por: *{t['resuelto_por']}*" + (f" ({fh(t.get('resuelto_en'))})" if t.get("resuelto_en") else ""))
     else:
         filas.append("Estado: *PENDIENTE* (todavía no quedó solucionado)")
     filas.append(f"{'Técnicos' if t.get('tecnico2') else 'Técnico'}: {_tecnicos_txt(t) or t.get('diag_por') or '-'}")
-    if t.get("diag_por") and t.get("diag_por") not in (_tecnicos_txt(t) or ""):
+    if t.get("diag_por") and _tecnicos_txt(t) and t.get("diag_por") not in _tecnicos_txt(t):
         filas.append(f"Cargado por: {t['diag_por']}")
     return "\n".join(filas)
 
@@ -5365,9 +5419,13 @@ def diag_tecnico(token):
     if t.get("cliente_id"):
         r = db.execute("SELECT * FROM clientes WHERE id=?", (t["cliente_id"],)).fetchone()
         c = dict(r) if r else {}
+    # Asistencia de zona: la lista de clientes afectados (para avisarles o revisar casa por casa)
+    zona_lista = _clientes_de_zona(db, sid, t.get("zona_tipo"), t.get("zona"), t.get("zona_ref")) if t.get("zona") else []
+    for z in zona_lista:
+        z["wa"] = _tel_whatsapp(z.get("telefono") or "")
     lat, lng, ub_aprox = _mejor_ubicacion(t, c)
     db.close()
-    return render_template("diag_tecnico.html", t=t, c=c, error=error, listo=False, quien=quien,
+    return render_template("diag_tecnico.html", t=t, c=c, error=error, listo=False, quien=quien, zona_lista=zona_lista,
                            ub_aprox=ub_aprox, tiene_ub=lat is not None, es_inst=_es_instalacion(t),
                            c_wa=_tel_whatsapp(c.get("telefono") or ""),
                            como_llegar=(f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}" if lat is not None and lng is not None else None))
@@ -5530,12 +5588,81 @@ def _ensure_red():
             for c in ("nap_id", "nap_puerto"):
                 if c not in ccols:
                     conn.execute(f"ALTER TABLE clientes ADD COLUMN {c} INTEGER")
+        # Asistencias por zona (falla que afecta a todo un barrio o a una caja NAP)
+        acols = table_columns(conn, "asistencias")
+        if acols:
+            for c, tipo in (("zona", "TEXT"), ("zona_tipo", "TEXT"), ("zona_ref", "INTEGER"), ("zona_clientes", "INTEGER")):
+                if c not in acols:
+                    conn.execute(f"ALTER TABLE asistencias ADD COLUMN {c} {tipo}")
         conn.commit()
         conn.close()
     except Exception as e:
         print("Aviso: no se pudo preparar la tabla de cajas NAP:", e)
 
 _ensure_red()
+
+
+def _zonas_form(db, sid):
+    """Barrios y cajas NAP con la cantidad de clientes activos (para el ticket por zona)."""
+    ccols = table_columns(db, "clientes")
+    activo = "AND IFNULL(activo,1)=1" if "activo" in ccols else ""
+    barrios, naps = [], []
+    if "barrio" in ccols:
+        barrios = [dict(r) for r in db.execute(f"""
+            SELECT TRIM(barrio) AS nombre, COUNT(*) AS n
+              FROM clientes WHERE sucursal_id=? AND TRIM(IFNULL(barrio,''))<>'' {activo}
+             GROUP BY lower(TRIM(barrio)) ORDER BY nombre COLLATE NOCASE""", (sid,)).fetchall()]
+    if "nap_id" in ccols:
+        try:
+            naps = [dict(r) for r in db.execute(f"""
+                SELECT n.id, n.nombre, n.lat, n.lng,
+                       (SELECT COUNT(*) FROM clientes c WHERE c.nap_id=n.id {activo}) AS n
+                  FROM cajas_nap n WHERE n.sucursal_id=? ORDER BY n.nombre COLLATE NOCASE""", (sid,)).fetchall()]
+        except sqlite3.Error:
+            naps = []
+    return barrios, naps
+
+
+def _clientes_de_zona(db, sid, zona_tipo, zona, zona_ref=None):
+    """Clientes activos afectados por una asistencia de zona."""
+    ccols = table_columns(db, "clientes")
+    activo = "AND IFNULL(activo,1)=1" if "activo" in ccols else ""
+    cols = ", ".join(c for c in ("id", "nombre", "telefono", "barrio", "pppoe", "lat", "lng") if c in ccols)
+    if zona_tipo == "nap" and zona_ref and "nap_id" in ccols:
+        sql, args = f"SELECT {cols} FROM clientes WHERE sucursal_id=? AND nap_id=? {activo}", (sid, zona_ref)
+    elif "barrio" in ccols and zona:
+        sql, args = f"SELECT {cols} FROM clientes WHERE sucursal_id=? AND lower(TRIM(barrio))=lower(TRIM(?)) {activo}", (sid, zona)
+    else:
+        return []
+    return [dict(r) for r in db.execute(sql + " ORDER BY nombre COLLATE NOCASE", args).fetchall()]
+
+
+def _zona_del_form(db, sid, form):
+    """Lee la zona del formulario. Devuelve dict con los campos del ticket, o None si es un solo cliente."""
+    if (form.get("alcance") or "") != "zona":
+        return None
+    zt = "nap" if form.get("zona_tipo") == "nap" else "barrio"
+    if zt == "nap":
+        ref = form.get("zona_nap", type=int)
+        r = db.execute("SELECT * FROM cajas_nap WHERE id=? AND sucursal_id=?", (ref, sid)).fetchone() if ref else None
+        if not r:
+            return {}
+        nombre, lat, lng = r["nombre"], r["lat"], r["lng"]
+    else:
+        ref, nombre = None, (form.get("zona_barrio") or "").strip()
+        if not nombre:
+            return {}
+        lat = lng = None
+    afectados = _clientes_de_zona(db, sid, zt, nombre, ref)
+    if lat is None:   # centro aproximado de la zona: promedio de los clientes con ubicación
+        pts = [(c["lat"], c["lng"]) for c in afectados if c.get("lat") is not None and c.get("lng") is not None]
+        if pts:
+            lat, lng = sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
+    etiqueta = ("Caja NAP " if zt == "nap" else "Barrio ") + nombre
+    return {"zona": nombre, "zona_tipo": zt, "zona_ref": ref, "zona_clientes": len(afectados),
+            "cliente": f"Zona: {etiqueta}", "cliente_id": None, "cedula": None, "pppoe": None,
+            "lat": lat, "lng": lng, "ubic_origen": "aproximada" if lat is not None else None,
+            "direccion": etiqueta}
 
 def _naps(db, sid, nap_id=None):
     """Cajas de la sucursal con ocupación, reclamos recientes y estado (color)."""

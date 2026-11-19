@@ -146,6 +146,12 @@
   .nt-seg label{ margin:0 !important; padding:7px 18px; border-radius:6px; font-size:14px; font-weight:500; color:var(--ink-soft); cursor:pointer; }
   .nt-seg input:checked + label{ background:#fff; color:var(--ink); box-shadow:0 1px 2px rgba(15,27,45,.12); }
   .nt-seg input:focus-visible + label{ outline:2px solid var(--accent); outline-offset:1px; }
+  .nt-seg input:disabled + label{ opacity:.45; cursor:not-allowed; }
+  .nt-hint{ font-size:12.5px; color:var(--ink-faint); margin-top:8px; line-height:1.5; }
+  .nt-zona-res{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:8px;
+                background:#FFF7ED; border:1px solid #FED7AA; color:#9A3412; font-size:14px; }
+  #zonaError{ display:none; }
+  #bloqueZona.invalid #zonaError{ display:block; }
   [hidden]{ display:none !important; }
   .tec-resumen{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:8px; font-size:14px; margin-top:-4px; }
   .tec-resumen.ok{ background:#EDF8F3; border:1px solid #C9EBDC; color:#177A56; }
@@ -201,11 +207,55 @@
   <form method="POST" action="{{ url_for('tickets_editar', tid=tt.id) if editar else url_for('nuevo_ticket') }}" id="form-ticket" novalidate data-editar="{{ 1 if editar else 0 }}">
 
     <!-- ============ 1. Cliente ============ -->
+    {% set es_zona = editar and tt.zona %}
     <section class="nt-section">
       <div class="nt-section-head">
-        <h2>Cliente</h2>
+        <h2>¿A quién afecta?</h2>
       </div>
       <div class="nt-section-body">
+        <div class="nt-field">
+          <div class="nt-seg" role="radiogroup" aria-label="Alcance de la asistencia">
+            <input type="radio" name="alcance" id="alcCliente" value="cliente" {{ 'checked' if not es_zona }}>
+            <label for="alcCliente"><i class="fa-solid fa-user" aria-hidden="true"></i> Un cliente</label>
+            <input type="radio" name="alcance" id="alcZona" value="zona" {{ 'checked' if es_zona }}>
+            <label for="alcZona"><i class="fa-solid fa-users" aria-hidden="true"></i> Una zona</label>
+          </div>
+          <div class="nt-hint">Usa <b>Una zona</b> cuando la falla es de todo un barrio o una caja NAP: se carga un solo ticket en vez de uno por cliente.</div>
+        </div>
+
+        <!-- Zona: barrio o caja NAP -->
+        <div id="bloqueZona" {{ '' if es_zona else 'hidden' }}>
+          <div class="nt-field">
+            <div class="nt-seg" role="radiogroup" aria-label="Tipo de zona">
+              <input type="radio" name="zona_tipo" id="ztBarrio" value="barrio" {{ 'checked' if not (es_zona and tt.zona_tipo == 'nap') }}>
+              <label for="ztBarrio">Barrio</label>
+              <input type="radio" name="zona_tipo" id="ztNap" value="nap" {{ 'checked' if es_zona and tt.zona_tipo == 'nap' }} {{ 'disabled' if not zonas_nap }}>
+              <label for="ztNap">Caja NAP</label>
+            </div>
+          </div>
+          <div class="nt-field" id="fieldZonaBarrio">
+            <label for="zona_barrio">Barrio afectado<span class="req" aria-hidden="true">*</span></label>
+            <select id="zona_barrio" name="zona_barrio">
+              <option value="">Elige el barrio…</option>
+              {% for b in zonas_barrio or [] %}
+                <option value="{{ b.nombre }}" data-n="{{ b.n }}" {{ 'selected' if es_zona and tt.zona_tipo != 'nap' and (tt.zona or '')|lower == b.nombre|lower }}>{{ b.nombre }} ({{ b.n }} cliente{{ 's' if b.n != 1 }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="nt-field" id="fieldZonaNap" hidden>
+            <label for="zona_nap">Caja NAP afectada<span class="req" aria-hidden="true">*</span></label>
+            <select id="zona_nap" name="zona_nap">
+              <option value="">Elige la caja…</option>
+              {% for n in zonas_nap or [] %}
+                <option value="{{ n.id }}" data-n="{{ n.n }}" {{ 'selected' if es_zona and tt.zona_tipo == 'nap' and tt.zona_ref == n.id }}>{{ n.nombre }} ({{ n.n }} cliente{{ 's' if n.n != 1 }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="nt-zona-res" id="zonaRes" hidden></div>
+          <div class="nt-error" id="zonaError">Elige el barrio o la caja NAP afectada.</div>
+        </div>
+
+        <div id="bloqueCliente" {{ 'hidden' if es_zona }}>
         <div class="nt-field" id="fieldCliente">
           <label for="cliente">Cliente<span class="req" aria-hidden="true">*</span></label>
           <select id="cliente" name="cliente" required>
@@ -249,11 +299,12 @@
             <div><dt>Plan</dt><dd id="vValor"></dd></div>
           </dl>
         </div>
+        </div>
       </div>
     </section>
 
     <!-- ============ 2. Ubicación ============ -->
-    <section class="nt-section">
+    <section class="nt-section" id="secUbicacion" {{ 'hidden' if es_zona }}>
       <div class="nt-section-head">
         <h2>Ubicación</h2>
         <span>Se completa con los datos del cliente</span>
@@ -651,9 +702,39 @@
   document.querySelectorAll('input[name=repetidor]').forEach(r => r.addEventListener('change', syncRep));
   syncRep();
 
+  // ---------- Un cliente / una zona ----------
+  const esZona = () => $('alcZona').checked;
+  const zonaSel = () => $('ztNap').checked ? $('zona_nap') : $('zona_barrio');
+  function syncAlcance(){
+    const z = esZona();
+    $('bloqueZona').hidden = !z;
+    $('bloqueCliente').hidden = z;
+    $('secUbicacion').hidden = z;
+    $('cliente').required = !z;
+    $('fieldZonaBarrio').hidden = $('ztNap').checked;
+    $('fieldZonaNap').hidden = !$('ztNap').checked;
+    const op = zonaSel().options[zonaSel().selectedIndex];
+    const res = $('zonaRes');
+    if (z && op && op.value){
+      const n = parseInt(op.dataset.n || '0', 10);
+      res.innerHTML = `<i class="fa-solid fa-users" aria-hidden="true"></i><span>Afecta a <b>${n} cliente${n === 1 ? '' : 's'}</b> activos de esta zona. En la orden de trabajo va la lista completa.</span>`;
+      res.hidden = false;
+      $('bloqueZona').classList.remove('invalid');
+    } else res.hidden = true;
+  }
+  ['alcCliente','alcZona','ztBarrio','ztNap','zona_barrio','zona_nap'].forEach(id => $(id).addEventListener('change', syncAlcance));
+  syncAlcance();
+
   // ---------- Envío ----------
   form.addEventListener('submit', e => {
-    if (!sel.value){
+    if (esZona()){
+      if (!zonaSel().value){
+        e.preventDefault();
+        $('bloqueZona').classList.add('invalid');
+        zonaSel().focus();
+        return;
+      }
+    } else if (!sel.value){
       e.preventDefault();
       fieldCli.classList.add('invalid');
       jQuery('#cliente').select2('open');

@@ -137,6 +137,10 @@
     .ot-sec{ break-inside:avoid; }
     a{ color:inherit; text-decoration:none; }
   }
+  .ot-zona{ width:100%; border-collapse:collapse; margin-top:10px; font-size:12.5px; }
+  .ot-zona th{ text-align:left; background:#F1F5F9; color:#475569; font-weight:600; padding:6px 8px; border-bottom:1px solid #E2E8F0; }
+  .ot-zona td{ padding:5px 8px; border-bottom:1px solid #EEF2F6; }
+  .ot-zona tr{ break-inside:avoid; }
 </style>
 {% endblock %}
 
@@ -324,6 +328,27 @@
       </dl>
     </section>
 
+    {% if t.zona %}
+    <section class="ot-sec">
+      <h2>Zona afectada</h2>
+      <dl class="ot-dl">
+        <div class="s2"><dt>{{ 'Caja NAP' if t.zona_tipo == 'nap' else 'Barrio' }}</dt><dd>{{ t.zona }}</dd></div>
+        <div><dt>Clientes afectados</dt><dd>{{ zona_lista|length or t.zona_clientes or 0 }}</dd></div>
+        <div><dt>Tipo</dt><dd>Falla de zona (mismo problema para todos)</dd></div>
+      </dl>
+      {% if zona_lista %}
+      <table class="ot-zona">
+        <thead><tr><th>#</th><th>Cliente</th><th>Teléfono</th><th>PPPoE</th><th>Barrio</th></tr></thead>
+        <tbody>
+          {% for z in zona_lista %}
+          <tr><td>{{ loop.index }}</td><td>{{ z.nombre }}</td><td>{{ z.telefono or '—' }}</td>
+              <td>{{ z.pppoe or '—' }}</td><td>{{ z.barrio or '—' }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </section>
+    {% else %}
     <section class="ot-sec">
       <h2>Cliente</h2>
       <dl class="ot-dl">
@@ -376,6 +401,7 @@
         {% endif %}
       </dl>
     </section>
+    {% endif %}
 
     <section class="ot-sec">
       <h2>Ubicación</h2>

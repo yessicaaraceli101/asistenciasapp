@@ -162,6 +162,8 @@
     .tk-search{ max-width:none; }
     .tk-table .col-hide{ display:none; }
   }
+  .tk-zona{ display:inline-block; background:#EA580C; color:#fff; font-size:11px; font-weight:700;
+             padding:1px 6px; border-radius:4px; margin-right:2px; }
 </style>
 {% endblock %}
 
@@ -259,15 +261,19 @@
         <tbody>
           {% for t in tickets or [] %}
             {% set est = (t.get('estado') or 'pendiente')|lower %}
-            {% set barrio = t.get('c_barrio') or t.get('barrio') %}
+            {% set barrio = t.get('c_barrio') or t.get('barrio') or (t.get('zona') if t.get('zona_tipo') == 'barrio' else ('NAP ' ~ t.get('zona') if t.get('zona') else '')) %}
             {% set fecha = (t.get('fecha') or '')|string %}
             <tr data-estado="{{ est }}"
                 data-search="{{ [t.get('cliente'), t.get('cedula'), t.get('pppoe'), barrio, t.get('tipo'), t.get('tecnico'), t.get('tecnico2'), t.get('prioridad')]|select|join(' ')|lower }}">
               <td class="tk-client">
                 <strong><a href="{{ url_for('tickets_ot', tid=t['id']) }}" title="Ver la orden de trabajo">{{ t.get('cliente') or '—' }}</a></strong>
                 <small>
+                  {% if t.get('zona') %}
+                    <span class="tk-zona">Zona</span> {{ t.get('zona_clientes') or 0 }} clientes afectados
+                  {% else %}
                   CI {{ t.get('cedula') or '—' }}
                   {% if t.get('pppoe') %}· PPPoE {{ t.get('pppoe') }}{% endif %}
+                  {% endif %}
                 </small>
               </td>
               <td class="col-hide">{% if barrio %}{{ barrio }}{% else %}<span class="tk-muted">—</span>{% endif %}</td>
