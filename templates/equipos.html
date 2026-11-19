@@ -45,7 +45,10 @@
           </div>
 
           {% set rec = e['stock_recuperado'] or 0 %}
-          {% if e['categoria'] == 'equipo' %}
+          {% set es_fuente = 'fuente' in ((e['nombre'] or '') ~ ' ' ~ (e['tipo'] or ''))|lower %}
+          {% set recok = e['categoria'] == 'equipo' or es_fuente %}
+          {% set que = 'Fuente' if es_fuente else 'Router' %}
+          {% if recok %}
             <p class="eq-cond-stock">
               <span class="cond-nuevo">{{ stk - rec }} nuevo{{ 's' if stk - rec != 1 }}</span>
               <span class="cond-recup">{{ rec }} recuperado{{ 's' if rec != 1 }}</span>
@@ -68,10 +71,10 @@
                 <option value="{{ t.nombre }}">{{ t.nombre }}</option>
               {% endfor %}
             </select>
-            {% if e['categoria'] == 'equipo' %}
+            {% if recok %}
             <select name="condicion" class="eq-use-tecnico" {% if stk <= 0 %}disabled{% endif %}>
-              <option value="nuevo" {% if stk - rec <= 0 %}disabled{% else %}selected{% endif %}>Router nuevo ({{ stk - rec }})</option>
-              <option value="recuperado" {% if rec <= 0 %}disabled{% elif stk - rec <= 0 %}selected{% endif %}>Router recuperado ({{ rec }})</option>
+              <option value="nuevo" {% if stk - rec <= 0 %}disabled{% else %}selected{% endif %}>{{ que }} nuevo{{ 'a' if es_fuente }} ({{ stk - rec }})</option>
+              <option value="recuperado" {% if rec <= 0 %}disabled{% elif stk - rec <= 0 %}selected{% endif %}>{{ que }} recuperad{{ 'a' if es_fuente else 'o' }} ({{ rec }})</option>
             </select>
             {% endif %}
             <input type="number" name="cantidad" min="1" max="{{ stk }}" value="1" {% if stk <= 0 %}disabled{% endif %}>
@@ -85,9 +88,9 @@
                   data-accion="vender" data-id="{{ e['id'] }}">
             <i class="bi bi-cart-check"></i> Vender a cliente
           </button>
-          {% if e['categoria'] == 'equipo' %}
+          {% if recok %}
           <button type="button" class="eq-recup" data-accion="recuperado" data-id="{{ e['id'] }}">
-            <i class="bi bi-arrow-repeat"></i> Cargar router recuperado
+            <i class="bi bi-arrow-repeat"></i> Cargar {{ 'fuente recuperada' if es_fuente else 'router recuperado' }}
           </button>
           {% endif %}
 
@@ -834,6 +837,9 @@
               {% if u['categoria'] == 'equipo' %}
                 <span class="cond-tag {{ 'cond-recup' if u['condicion'] == 'recuperado' else 'cond-nuevo' }}">
                   Router {{ 'recuperado' if u['condicion'] == 'recuperado' else 'nuevo' }}</span>
+              {% elif u['condicion'] %}
+                <span class="cond-tag {{ 'cond-recup' if u['condicion'] == 'recuperado' else 'cond-nuevo' }}">
+                  {{ 'Recuperado' if u['condicion'] == 'recuperado' else 'Nuevo' }}</span>
               {% else %}
                 <span class="cond-tag cond-herr">Herramienta / material</span>
               {% endif %}
@@ -935,12 +941,18 @@
             {% for cat, titulo in [('equipo', 'Equipos (routers)'), ('herramienta', 'Herramientas y materiales')] %}
             <optgroup label="{{ titulo }}" data-cat="{{ cat }}">
               {% for e in equipos if ((e['categoria'] or 'herramienta') == 'equipo') == (cat == 'equipo') %}
-              <option value="{{ e['id'] }}" data-cat="{{ cat }}">{{ e['nombre'] }} — {{ e['tipo'] }} (stock: {{ e['stock'] or 0 }}{% if cat == 'equipo' %} · {{ e['stock_recuperado'] or 0 }} recup.{% endif %})</option>
+              {% set recok = cat == 'equipo' or 'fuente' in ((e['nombre'] or '') ~ ' ' ~ (e['tipo'] or ''))|lower %}
+              <option value="{{ e['id'] }}" data-cat="{{ cat }}" data-rec="{{ 1 if recok else 0 }}">{{ e['nombre'] }} — {{ e['tipo'] }} (stock: {{ e['stock'] or 0 }}{% if recok %} · {{ e['stock_recuperado'] or 0 }} recup.{% endif %})</option>
               {% endfor %}
               {% if cat == 'equipo' %}
                 {% set ya = equipos|map(attribute='nombre')|map('lower')|map('trim')|list %}
                 {% for nf in equipos_fijos or [] if nf|lower not in ya %}
-                <option value="crear:{{ nf }}" data-cat="equipo">{{ nf }} (stock: 0)</option>
+                <option value="crear:{{ nf }}" data-cat="equipo" data-rec="1">{{ nf }} (stock: 0)</option>
+                {% endfor %}
+              {% else %}
+                {% set ya = equipos|map(attribute='nombre')|map('lower')|map('trim')|list %}
+                {% for nf in herramientas_fijas or [] if nf|lower not in ya %}
+                <option value="crear:{{ nf }}" data-cat="herramienta" data-rec="1">{{ nf }} (stock: 0)</option>
                 {% endfor %}
               {% endif %}
             </optgroup>
@@ -948,7 +960,7 @@
           </select>
         </div>
         <div class="sp-form-group rep-origen" id="repOrigen">
-          <label>¿El router es nuevo o recuperado?</label>
+          <label>¿Es nuevo o recuperado?</label>
           <div class="cat-seg">
             <input type="radio" name="origen" id="repNuevo" value="nuevo" checked>
             <label for="repNuevo"><i class="bi bi-box-seam"></i> Nuevo (compra)</label>
@@ -996,6 +1008,7 @@
               {% for e in equipos if ((e['categoria'] or 'herramienta') == 'equipo') == (cat == 'equipo') %}
                 {% set stk = e['stock'] or 0 %}
                 <option value="{{ e['id'] }}" data-stock="{{ stk }}" data-precio="{{ e['precio'] or '' }}" data-cat="{{ cat }}"
+                        data-rec="{{ 1 if (cat == 'equipo' or 'fuente' in ((e['nombre'] or '') ~ ' ' ~ (e['tipo'] or ''))|lower) else 0 }}"
                         data-recup="{{ e['stock_recuperado'] or 0 }}" {% if stk <= 0 %}disabled{% endif %}>
                   {{ e['nombre'] }} — stock {{ stk }}{% if e['precio'] %} · {{ '{:,}'.format(e['precio']|int).replace(',', '.') }} Gs.{% endif %}
                 </option>
@@ -1005,7 +1018,7 @@
           </select>
         </div>
         <div class="sp-form-group rep-origen" id="vCondBox">
-          <label>¿Router nuevo o recuperado?</label>
+          <label>¿Nuevo o recuperado?</label>
           <div class="cat-seg">
             <input type="radio" name="condicion" id="vNuevo" value="nuevo" checked>
             <label for="vNuevo" id="vNuevoLbl"><i class="bi bi-box-seam"></i> Nuevo</label>
@@ -1282,10 +1295,10 @@ function calcularTotal(){
 function syncEquipo(){
   const op = vEquipo.options[vEquipo.selectedIndex];
   const box = document.getElementById('vCondBox');
-  box.classList.toggle('show', !!(op && op.dataset.cat === 'equipo'));
+  box.classList.toggle('show', !!(op && op.dataset.rec === '1'));
   if (!op || !op.value) return;
   let stk = parseInt(op.dataset.stock || '0', 10);
-  if (op.dataset.cat === 'equipo'){
+  if (op.dataset.rec === '1'){
     const rec = parseInt(op.dataset.recup || '0', 10), nue = stk - rec;
     document.getElementById('vNuevoLbl').innerHTML = `<i class="bi bi-box-seam"></i> Nuevo (${nue})`;
     document.getElementById('vRecupLbl').innerHTML = `<i class="bi bi-arrow-repeat"></i> Recuperado (${rec})`;
@@ -1364,7 +1377,7 @@ document.querySelectorAll('.sp-modal-backdrop').forEach(backdrop => {
 function syncReponer(){
   const sel = document.getElementById('reponerEquipo');
   const op = sel.options[sel.selectedIndex];
-  const router = !!(op && op.dataset.cat === 'equipo');
+  const router = !!(op && op.dataset.rec === '1');
   document.getElementById('repOrigen').classList.toggle('show', router);
   document.getElementById('repDe').classList.toggle('show', router && document.getElementById('repRecup').checked);
 }
@@ -1372,9 +1385,15 @@ document.getElementById('reponerEquipo').addEventListener('change', syncReponer)
 document.querySelectorAll('#repOrigen input').forEach(r => r.addEventListener('change', syncReponer));
 function modoReponer(recup){
   const sel = document.getElementById('reponerEquipo');
-  sel.querySelectorAll('optgroup[data-cat=herramienta]').forEach(g => { g.hidden = recup; g.disabled = recup; });
+  // Recuperados: solo routers y fuentes
+  sel.querySelectorAll('option[data-rec]').forEach(o => { const no = recup && o.dataset.rec !== '1'; o.hidden = no; o.disabled = no; });
+  sel.querySelectorAll('optgroup').forEach(g => {
+    if (!g.dataset.lbl) g.dataset.lbl = g.label;
+    g.label = (recup && g.dataset.cat === 'herramienta') ? 'Fuentes' : g.dataset.lbl;
+    g.hidden = recup && !g.querySelector('option[data-rec="1"]');
+  });
   document.getElementById('repTitulo').innerHTML = recup
-    ? '<i class="bi bi-arrow-repeat" style="color:#ea580c;margin-right:6px;"></i> Cargar router recuperado'
+    ? '<i class="bi bi-arrow-repeat" style="color:#ea580c;margin-right:6px;"></i> Cargar equipo recuperado'
     : '<i class="bi bi-plus-circle" style="color:#16a34a;margin-right:6px;"></i> Reponer stock';
   document.getElementById(recup ? 'repRecup' : 'repNuevo').checked = true;
   const bt = document.getElementById('repBoton');

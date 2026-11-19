@@ -1924,9 +1924,22 @@ def _condicion_form(form):
     return "recuperado" if c.startswith("recup") else "nuevo"
 
 
+def _es_fuente(nombre="", tipo=""):
+    return "fuente" in f"{nombre or ''} {tipo or ''}".lower()
+
+
+def _admite_recuperado(eq):
+    """Se lleva la cuenta de nuevos y recuperados en los routers y en las fuentes."""
+    if not eq:
+        return False
+    k = eq.keys()
+    return ((eq["categoria"] if "categoria" in k else "") == "equipo"
+            or _es_fuente(eq["nombre"] if "nombre" in k else "", eq["tipo"] if "tipo" in k else ""))
+
+
 def _validar_condicion(eq, condicion, cantidad):
-    """Revisa que haya routers nuevos/recuperados suficientes. Devuelve un mensaje de error o None."""
-    if (eq["categoria"] if "categoria" in eq.keys() else "") != "equipo":
+    """Revisa que haya routers/fuentes nuevos o recuperados suficientes. Devuelve un mensaje de error o None."""
+    if not _admite_recuperado(eq):
         return None
     stock = eq["stock"] or 0
     recup = (eq["stock_recuperado"] if "stock_recuperado" in eq.keys() else 0) or 0
@@ -2056,6 +2069,7 @@ def equipos():
     return render_template(
         "equipos.html",
         equipos_fijos=list(EQUIPOS_ROUTER_FIJOS),
+        herramientas_fijas=list(HERRAMIENTAS_FIJAS),
         ventas=ventas,
         ventas_res=ventas_res,
         clientes_venta=clientes_venta,
@@ -2168,7 +2182,7 @@ def registrar_uso_item():
     condicion = None
     if equipo:
         # Routers: se indica si se lleva uno nuevo o uno recuperado
-        if (equipo["categoria"] if "categoria" in equipo.keys() else "") == "equipo":
+        if _admite_recuperado(equipo):
             condicion = _condicion_form(request.form)
             err = _validar_condicion(equipo, condicion, cantidad)
             if err:
@@ -2231,6 +2245,10 @@ EQUIPOS_ROUTER_FIJOS = {   # nombre: (tipo, descripción)
     "Equipo 2.4G con ONU": ("Router 2.4", "Router 2.4 GHz con ONU incluida"),
     "Equipo 2.4G sin ONU": ("Router 2.4", "Router 2.4 GHz sin ONU"),
 }
+# Herramientas/materiales fijos que también se pueden recuperar
+HERRAMIENTAS_FIJAS = {
+    "Fuente": ("Fuente", "Fuente de alimentación del router / ONU"),
+}
 
 
 @app.route("/equipos/ingresar_stock", methods=["POST"])
@@ -2247,16 +2265,19 @@ def equipos_ingresar_stock():
 
     conn = get_db()
     # Equipos de la lista fija (Equipo 5G con ONU / sin ONU): si todavía no existen en el stock, se crean
-    if equipo_raw.startswith("crear:") and equipo_raw[6:] in EQUIPOS_ROUTER_FIJOS and cantidad and cantidad > 0:
+    fijos = {**{k: (*v, "equipo") for k, v in EQUIPOS_ROUTER_FIJOS.items()},
+             **{k: (*v, "herramienta") for k, v in HERRAMIENTAS_FIJAS.items()}}
+    if equipo_raw.startswith("crear:") and equipo_raw[6:] in fijos and cantidad and cantidad > 0:
         nombre = equipo_raw[6:]
         sid = current_sucursal_id()
         r = conn.execute("SELECT id FROM equipos WHERE sucursal_id=? AND lower(TRIM(nombre))=lower(?)", (sid, nombre)).fetchone()
         if r:
             equipo_id = r["id"]
         else:
+            tipo_f, desc_f, cat_f = fijos[nombre]
             cur = conn.execute("""INSERT INTO equipos (nombre, tipo, descripcion, sucursal_id, stock, categoria)
-                                  VALUES (?, ?, ?, ?, 0, 'equipo')""",
-                               (nombre, *EQUIPOS_ROUTER_FIJOS[nombre], sid))
+                                  VALUES (?, ?, ?, ?, 0, ?)""",
+                               (nombre, tipo_f, desc_f, sid, cat_f))
             conn.commit()
             equipo_id = cur.lastrowid
 
@@ -2268,7 +2289,7 @@ def equipos_ingresar_stock():
     eq = conn.execute("SELECT * FROM equipos WHERE id=? AND sucursal_id=?",
                       (equipo_id, current_sucursal_id())).fetchone()
     es_router = bool(eq) and (eq["categoria"] if "categoria" in eq.keys() else "") == "equipo"
-    condicion = _condicion_form(request.form) if es_router else None
+    condicion = _condicion_form(request.form) if _admite_recuperado(eq) else None
     if condicion == "recuperado":
         de = (request.form.get("recuperado_de") or "").strip()
         motivo = "Recuperado" + (f" de {de}" if de else "") + (f" · {motivo}" if motivo else "")
@@ -2279,7 +2300,8 @@ def equipos_ingresar_stock():
 
     if ok:
         if condicion == "recuperado":
-            flash(f"Router recuperado cargado al stock. Stock total: {res}", "success")
+            que = "Router recuperado" if es_router else f"{eq['nombre']} recuperado"
+            flash(f"{que} cargado al stock. Stock total: {res}", "success")
         else:
             flash(f"Ingreso registrado. Stock nuevo: {res}", "success")
     else:
@@ -2559,7 +2581,7 @@ def _filas_uso(rows):
             "router": (r.get("categoria") == "equipo"),
             "categoria_txt": "Equipo (router)" if r.get("categoria") == "equipo" else "Herramienta / material",
             "condicion": ("Recuperado" if r.get("condicion") == "recuperado" else "Nuevo")
-                         if r.get("categoria") == "equipo" else "",
+                         if (r.get("categoria") == "equipo" or _es_fuente(r.get("nombre_item"))) else "",
             "tecnico": str(r.get("tecnico") or "").strip() or "Sin asignar",
             "cantidad": int(r.get("cantidad") or 1),
             "servicio": str(r.get("servicio") or "").capitalize() or "—",
@@ -2606,8 +2628,9 @@ def _stock_routers(conn):
     rec = "IFNULL(stock_recuperado,0)" if "stock_recuperado" in ec else "0"
     return [dict(r) for r in conn.execute(f"""
         SELECT nombre, IFNULL(stock,0) AS stock, {rec} AS recuperados
-          FROM equipos WHERE sucursal_id=? AND categoria='equipo'
-         ORDER BY nombre COLLATE NOCASE""", (current_sucursal_id(),)).fetchall()]
+          FROM equipos WHERE sucursal_id=? AND (categoria='equipo'
+                OR lower(IFNULL(nombre,'') || ' ' || IFNULL(tipo,'')) LIKE '%fuente%')
+         ORDER BY categoria='equipo' DESC, nombre COLLATE NOCASE""", (current_sucursal_id(),)).fetchall()]
 
 def _uso_por_tecnico(filas):
     res = {}
@@ -2818,7 +2841,7 @@ def _uso_pdf(titulo, subtitulo, rows, sin_stock, filename, recuperados=None, sto
     kpis = [("Routers nuevos usados", res["nuevo"], _AZUL),
             ("Routers recuperados usados", res["recuperado"], NARANJA),
             ("Herramientas y materiales", res["herramienta"], _TINTA),
-            ("Routers recuperados ingresados", total_rec, VERDE)]
+            ("Recuperados ingresados (routers y fuentes)", total_rec, VERDE)]
     celdas = [[Paragraph(str(v), P(f"kv{i}", parent=st_kv, textColor=c)), Paragraph(t, st_kl)]
               for i, (t, v, c) in enumerate(kpis)]
     tk = Table([celdas], colWidths=[45 * mm] * 4)
@@ -2862,7 +2885,8 @@ def _uso_pdf(titulo, subtitulo, rows, sin_stock, filename, recuperados=None, sto
     for f in herram:
         datos.append([
             fecha_cel(f),
-            Paragraph(_xesc(f["item"]), st_celb),
+            Paragraph(_xesc(f["item"]) + (f" <font size='8' color='{'#C2410C' if f['condicion'] == 'Recuperado' else '#1D4ED8'}'>· {f['condicion'].upper()}</font>"
+                                           if f["condicion"] else ""), st_celb),
             Paragraph(_xesc(f["tecnico"]), st_cel),
             Paragraph(str(f["cantidad"]), st_num),
             Paragraph("—" if f["stock"] is None else str(f["stock"]),
@@ -2879,10 +2903,10 @@ def _uso_pdf(titulo, subtitulo, rows, sin_stock, filename, recuperados=None, sto
     t = Table(datos, colWidths=anchos, repeatRows=1); t.setStyle(TableStyle(est)); h.append(t)
 
     # 3) Routers recuperados que volvieron al stock
-    h += [Spacer(0, 7 * mm), Paragraph("Routers recuperados que volvieron al stock", P("h2v", parent=st_h2, textColor=VERDE)),
+    h += [Spacer(0, 7 * mm), Paragraph("Routers y fuentes recuperados que volvieron al stock", P("h2v", parent=st_h2, textColor=VERDE)),
           Spacer(0, 2.5 * mm)]
     datos = [[Paragraph(t, st_cabc if t == "Cant." else st_cab)
-              for t in ("Fecha", "Router", "Cant.", "De dónde / nota", "Cargado por")]]
+              for t in ("Fecha", "Equipo", "Cant.", "De dónde / nota", "Cargado por")]]
     for r in recuperados:
         fx = _fecha_iso(r.get("fecha"))
         datos.append([
@@ -2893,7 +2917,7 @@ def _uso_pdf(titulo, subtitulo, rows, sin_stock, filename, recuperados=None, sto
             Paragraph(_xesc(r["cargado_por"] or "—"), st_cel),
         ])
     if not recuperados:
-        datos.append([Paragraph("No se cargaron routers recuperados en este período.", st_celg)] + [""] * 4)
+        datos.append([Paragraph("No se cargaron routers ni fuentes recuperados en este período.", st_celg)] + [""] * 4)
     datos.append([Paragraph("Total recuperados", st_totl), "", Paragraph(str(total_rec), st_num), "", ""])
     est = estilo_base(VERDE, len(datos) - 2)
     est.append(("SPAN", (0, -1), (1, -1)))
@@ -2918,8 +2942,8 @@ def _uso_pdf(titulo, subtitulo, rows, sin_stock, filename, recuperados=None, sto
     # 5) Stock actual de routers: nuevos y recuperados
     if stock_routers:
         h.append(Spacer(0, 7 * mm))
-        titulo_stock = [Paragraph("Stock actual de routers", st_h2), Spacer(0, 2.5 * mm)]
-        d4 = [[Paragraph("Router", st_cab), Paragraph("Nuevos", st_cabc), Paragraph("Recuperados", st_cabc),
+        titulo_stock = [Paragraph("Stock actual de routers y fuentes", st_h2), Spacer(0, 2.5 * mm)]
+        d4 = [[Paragraph("Equipo", st_cab), Paragraph("Nuevos", st_cabc), Paragraph("Recuperados", st_cabc),
                Paragraph("Total", st_cabc)]]
         for r in stock_routers:
             tot = int(r["stock"] or 0); rec = int(r["recuperados"] or 0)
@@ -3107,7 +3131,7 @@ def equipos_vender():
         conn.close(); flash("Escribe o elige el cliente que compra.", "warning"); return redirect(url_for("equipos"))
     if precio is None:
         conn.close(); flash("Escribe el precio de venta.", "warning"); return redirect(url_for("equipos"))
-    condicion = _condicion_form(f) if (eq["categoria"] if "categoria" in eq.keys() else "") == "equipo" else None
+    condicion = _condicion_form(f) if _admite_recuperado(eq) else None
     if condicion:
         err = _validar_condicion(eq, condicion, cantidad)
         if err:
