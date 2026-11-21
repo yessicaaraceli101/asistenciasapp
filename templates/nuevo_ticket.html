@@ -263,7 +263,7 @@
             {% for c in clientes %}
               {% set nombre_completo = (c.nombre|default('') ~ (' ' ~ c.apellido if c.apellido is defined and c.apellido else ''))|trim %}
               <option
-                value="{{ nombre_completo }}" {{ 'selected' if editar and tt.cliente_id and c.id == tt.cliente_id }}
+                value="{{ nombre_completo }}" {{ 'selected' if (editar and tt.cliente_id and c.id == tt.cliente_id) or (not editar and cliente_pre and c.id == cliente_pre) }}
                 data-id="{{ c.id|default('') }}"
                 data-cedula="{{ c.cedula|default('', true) }}"
                 data-pppoe="{{ c.pppoe|default('', true) }}"
@@ -349,9 +349,9 @@
       <div class="nt-section-body nt-grid">
         <div class="nt-field">
           <label for="tipo">Tipo</label>
-          {% set tipos = ['Reparación', 'Cambio de router', 'Otro'] %}
+          {% set tipos = ['Reparación', 'Cambio de router', 'Reconexión', 'Otro'] %}
           <select id="tipo" name="tipo">
-            {% for x in tipos %}<option {{ 'selected' if tt.tipo == x }}>{{ x }}</option>{% endfor %}
+            {% for x in tipos %}<option {{ 'selected' if tt.tipo == x or (not editar and tipo_pre == x) }}>{{ x }}</option>{% endfor %}
             {% if tt.tipo and tt.tipo not in tipos %}<option selected>{{ tt.tipo }}</option>{% endif %}
           </select>
         </div>

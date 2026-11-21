@@ -1194,6 +1194,24 @@ def _tecnico_bloqueado(t):
     """Con el trabajo resuelto, el técnico ya no se puede cambiar (hay que reabrirlo primero)."""
     return (t.get("estado") or "").lower() == "resuelto"
 
+def _es_reconexion(tipo):
+    return "reconex" in str(tipo or "").lower()
+
+
+def _reconectar_cliente(db, cliente_id):
+    """Reconexión terminada: el cliente que había cancelado vuelve a estar activo."""
+    if not cliente_id:
+        return
+    ccols = table_columns(db, "clientes")
+    sets = ["activo=1"] if "activo" in ccols else []
+    if "situacion" in ccols:
+        sets.append("situacion='Activo'")
+    if "reconectado_en" in ccols:
+        sets.append("reconectado_en=datetime('now','localtime')")
+    if sets:
+        db.execute(f"UPDATE clientes SET {', '.join(sets)} WHERE id=?", (cliente_id,))
+
+
 def _desde_agenda():
     """Los tickets y las instalaciones nuevas solo se registran desde la Agenda."""
     return (request.values.get("origen") or "") == "agenda"
@@ -1342,6 +1360,7 @@ def nuevo_ticket():
     clientes, tecnicos = _datos_form_ticket()
     _db = get_db(); barrios, naps = _zonas_form(_db, current_sucursal_id()); _db.close()
     return render_template("nuevo_ticket.html", clientes=clientes, tecnicos=tecnicos, fecha_pre=_fecha_agenda(),
+                           cliente_pre=request.args.get("cliente_id", type=int), tipo_pre=request.args.get("tipo") or "",
                            zonas_barrio=barrios, zonas_nap=naps)
 
 @app.route("/tickets")
@@ -3864,6 +3883,8 @@ def tickets_cambiar_estado(tid):
     # Instalación realizada: el cliente que esperaba la instalación pasa a activo
     if nuevo == "resuelto" and "cliente_id" in acols:
         t = db.execute("SELECT tipo, cliente_id FROM asistencias WHERE id=?", (tid,)).fetchone()
+        if t and t["cliente_id"] and _es_reconexion(t["tipo"]):
+            _reconectar_cliente(db, t["cliente_id"])
         if t and t["cliente_id"] and str(t["tipo"] or "").lower().startswith("instal"):
             ccols = table_columns(db, "clientes")
             if "situacion" in ccols:
@@ -4002,6 +4023,9 @@ def tickets_editar(tid):
     data = {k: v for k, v in data.items() if k in acols}
     db.execute(f"UPDATE asistencias SET {', '.join(k + '=?' for k in data)} WHERE id=? AND sucursal_id=?",
                list(data.values()) + [tid, sid])
+    t2 = db.execute("SELECT tipo, estado, cliente_id FROM asistencias WHERE id=?", (tid,)).fetchone()
+    if t2 and (t2["estado"] or "").lower() == "resuelto" and _es_reconexion(t2["tipo"]):
+        _reconectar_cliente(db, t2["cliente_id"])
     db.commit()
     db.close()
     flash("Ticket actualizado.", "success")
@@ -5444,6 +5468,9 @@ def diag_tecnico(token):
             if resuelto and t.get("cliente_id") and str(t.get("tipo") or "").lower().startswith("instal"):
                 db.execute("""UPDATE clientes SET activo=1, situacion='activo'
                                WHERE id=? AND lower(IFNULL(situacion,'')) LIKE 'pendiente%'""", (t["cliente_id"],))
+            # Reconexión terminada: el cliente que había cancelado vuelve a activo
+            if resuelto and t.get("cliente_id") and _es_reconexion(t.get("tipo")):
+                _reconectar_cliente(db, t["cliente_id"])
             db.commit()
             push_notificacion(f"Diagnóstico completado: {t.get('cliente') or 'cliente'}",
                               " · ".join(x for x in [
@@ -5638,6 +5665,8 @@ def _ensure_red():
             for c in ("nap_id", "nap_puerto"):
                 if c not in ccols:
                     conn.execute(f"ALTER TABLE clientes ADD COLUMN {c} INTEGER")
+        if ccols and "reconectado_en" not in ccols:
+            conn.execute("ALTER TABLE clientes ADD COLUMN reconectado_en TEXT")
         # Asistencias por zona (falla que afecta a todo un barrio o a una caja NAP)
         acols = table_columns(conn, "asistencias")
         if acols:

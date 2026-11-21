@@ -88,6 +88,9 @@
     .cd-actions{ width:100%; }
     .cd-actions > *{ flex:1; }
   }
+  .cd-btn-reco{ background:#16A34A; border-color:#16A34A; color:#fff; }
+  .cd-btn-reco:hover{ background:#15803D; border-color:#15803D; color:#fff; }
+  .cd-reco-info{ font-size:12.5px; color:#64748B; }
 </style>
 {% endblock %}
 
@@ -121,9 +124,16 @@
         {% endif %}
         {% if c['exonerado'] in (1, '1') %}<span class="cd-status st-warn">Exonerado</span>{% endif %}
         {% if campo('external_id') %}<span>ID externo #{{ campo('external_id') }}</span>{% endif %}
+        {% if campo('reconectado_en') %}<span class="cd-reco-info">Reconectado el {{ campo('reconectado_en')[:10] }}</span>{% endif %}
       </div>
     </div>
     <div class="cd-actions">
+      {% if 'cancel' in sit or 'baja' in sit or 'inactiv' in sit or 'inativ' in sit or (not campo('situacion') and c['activo'] != 1) %}
+      <a class="cd-btn cd-btn-reco" href="{{ url_for('nuevo_ticket', cliente_id=c['id'], tipo='Reconexión', origen='agenda') }}"
+         title="Crea un ticket de reconexión; al resolverlo el cliente vuelve a Activo">
+        <i class="fa-solid fa-plug-circle-bolt" aria-hidden="true"></i> Reconexión
+      </a>
+      {% endif %}
       <a class="cd-btn cd-btn-ghost" href="{{ url_for('clientes_editar', cid=c['id']) }}">
         <i class="fa-regular fa-pen-to-square" aria-hidden="true"></i> Editar
       </a>

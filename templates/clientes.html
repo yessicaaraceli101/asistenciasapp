@@ -134,6 +134,9 @@
     .cl-head-actions{ width:100%; }
     .cl-head-actions > *{ flex:1; }
   }
+  .cl-reco{ display:inline-flex; align-items:center; gap:5px; margin-top:6px; font-size:12px; font-weight:600;
+            color:#15803D; text-decoration:none; }
+  .cl-reco:hover{ text-decoration:underline; }
 </style>
 {% endblock %}
 
@@ -259,6 +262,11 @@
                   </span>
                 {% else %}<span class="cl-muted">—</span>{% endif %}
                 {% if c.exonerado %}<span class="cl-exo">Exonerado</span>{% endif %}
+                {% if 'cancel' in sit or 'baja' in sit or 'inactiv' in sit or 'inativ' in sit %}
+                  <a class="cl-reco" href="{{ url_for('nuevo_ticket', cliente_id=c.id, tipo='Reconexión', origen='agenda') }}"
+                     title="Crear ticket de reconexión">
+                    <i class="fa-solid fa-plug-circle-bolt" aria-hidden="true"></i> Reconexión</a>
+                {% endif %}
               </td>
               <td>
                 <div class="cl-actions">
